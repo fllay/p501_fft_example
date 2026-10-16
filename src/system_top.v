@@ -89,11 +89,17 @@ module system_top (
   assign clk_en[0]=1;
   assign clk_en[1]=1;
   
+  // MDIO pad: the generated block design exposes i/o/t, the board has one bidirectional pin
+  wire mdio_phy_i, mdio_phy_o, mdio_phy_t;
+  IOBUF i_mdio_iobuf (.I(mdio_phy_o), .IO(MDIO_PHY_mdio_io), .O(mdio_phy_i), .T(mdio_phy_t));
+
   // instantiations
 
   system_wrapper i_system_wrapper (
     .MDIO_PHY_mdc(MDIO_PHY_mdc),
-    .MDIO_PHY_mdio_io(MDIO_PHY_mdio_io),
+    .MDIO_PHY_mdio_i(mdio_phy_i),
+    .MDIO_PHY_mdio_o(mdio_phy_o),
+    .MDIO_PHY_mdio_t(mdio_phy_t),
     .RGMII_rd(RGMII_rd),
     .RGMII_rx_ctl(RGMII_rx_ctl),
     .RGMII_rxc(RGMII_rxc),

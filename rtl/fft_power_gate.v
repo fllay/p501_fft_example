@@ -7,6 +7,9 @@
 //         transfer always starts on a frame boundary and receives only whole
 //         frames - the FFT itself runs free and is never stalled.
 // The output FIFO behind this block must be at least one frame deep.
+// m_axis_tlast is held low on purpose: the ADI axi_dmac ends a transfer at the first TLAST
+// it sees (it treats it as an end-of-packet), so forwarding the per-frame TLAST would stop
+// a multi-frame DMA transfer after one frame. Frame alignment is guaranteed by the gate.
 `timescale 1ns/1ps
 module fft_power_gate (
   (* X_INTERFACE_PARAMETER = "ASSOCIATED_BUSIF s_axis:m_axis, ASSOCIATED_RESET resetn" *)
@@ -68,7 +71,7 @@ module fft_power_gate (
       im2 <= im_q * im_q;
 
       m_axis_tvalid <= v2 & p2;
-      m_axis_tlast  <= l2;
+      m_axis_tlast  <= 1'b0;
       m_axis_tdata  <= re2 + im2;      // <= 2^31, fits in 32 bit unsigned
     end
   end

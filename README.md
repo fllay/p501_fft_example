@@ -75,8 +75,16 @@ python3 tools/fix_hwh.py build/overlay/p501_fft.hwh        # make the HWH loadab
   constant is held on the config channel with TVALID high (forward transform + scaling schedule `SCALE_SHIFT`).
 * **Power + frame gate.** `fft_power_gate` computes re^2+im^2 and passes a frame only if the DMA's `xfer_req` was high on
   its first bin. A DMA transfer therefore always starts on a frame boundary and gets whole frames; the FFT is never stalled.
-  Program the DMA for `frames x N x 4` bytes and the next frames land in memory.
+  Program the DMA for `frames x N x 4` bytes and the next frames land in memory. The per-frame TLAST is *not* forwarded to
+  the DMA: the ADI `axi_dmac` ends a transfer at the first TLAST, which would cut a multi-frame transfer after one frame.
 * **Output.** 32-bit unsigned power per bin. Take `10*log10(avg + 1)` in Python.
+
+## Verified
+
+Built with Vivado 2024.1 (default options: N=1024, scale shift 6) and run on the board: the tone transmitted on bin 267 appears
+on bin 267, 66 dB above the median floor, and the FPGA power matches NumPy's FFT of a raw ADC capture to 0.00 dB at the tone
+(`notebook/P501_FFT_Example.ipynb` is saved with its outputs, `notebook/fft_result.png` is the figure). Post-route timing is met
+(WNS +0.42 ns, WHS +0.01 ns); one minimum-pulse-width endpoint shows -0.002 ns, which comes from the reference base design.
 
 ## Using it from PYNQ
 
