@@ -1,6 +1,8 @@
 # P501 FFT example - a streaming FFT on the AD9361 data, as a PYNQ overlay
 
 A starting point for doing signal processing in the FPGA on the PZSDR P501 (Zynq UltraScale+ XCZU5EV + AD9361).
+> **Layout:** clone this repository next to the [puzi501iio](https://github.com/fllay/puzi501iio) repository (folder `pzsdr-p501`), so that `../pzsdr-p501/hdl/library` exists: it provides the packaged ADI IP the design uses. Otherwise pass `LIB=<path to its hdl/library>` or set `P501_HDL_LIBRARY`.
+
 **New here? Follow [tutorial/TUTORIAL.md](tutorial/TUTORIAL.md): it starts from the base design without FFT and adds the blocks one by one.**
 
 One Tcl script creates a Vivado 2024.1 project that contains
