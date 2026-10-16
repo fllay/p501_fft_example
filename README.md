@@ -1,6 +1,8 @@
 # P501 FFT example - a streaming FFT on the AD9361 data, as a PYNQ overlay
 
 A starting point for doing signal processing in the FPGA on the PZSDR P501 (Zynq UltraScale+ XCZU5EV + AD9361).
+**New here? Follow [tutorial/TUTORIAL.md](tutorial/TUTORIAL.md): it starts from the base design without FFT and adds the blocks one by one.**
+
 One Tcl script creates a Vivado 2024.1 project that contains
 
 * the **P501 base design** (Zynq PS, `axi_ad9361`, the ADI RX/TX DMAs, the RGMII Ethernet bridge) - recreated
@@ -51,7 +53,8 @@ python3 tools/fix_hwh.py build/overlay/p501_fft.hwh        # make the HWH loadab
 | `SCALE_SHIFT` | NFFT_LOG2-4 | total FFT scaling in bits (even). Raise it if the FFT output overflows, lower it for more dynamic range |
 | `LIB` | `../pzsdr-p501/hdl/library` | ADI hdl library |
 | `RUN` | none | `synth`, `impl` or `bit`: build right away. Or run `build.tcl` later (`-tclargs RUN=bit`) |
-| `JOBS`, `NAME` | 8, `p501_fft` | parallel jobs, project name |
+| `FFT` | 1 | `0` = base design only, the starting point of the [tutorial](tutorial/TUTORIAL.md) (project `p501_fft_tut`) |
+| `JOBS`, `NAME` | 8, `p501_fft` | parallel jobs, project name (the overlay files are named after it) |
 
 ## Files
 
@@ -60,11 +63,13 @@ python3 tools/fix_hwh.py build/overlay/p501_fft.hwh        # make the HWH loadab
 | `create_project.tcl` | entry point: project, sources, base block design, FFT chain, wrapper |
 | `build.tcl` | synthesis / implementation / bitstream, collects `build/overlay/p501_fft.{bit,hwh}` |
 | `bd/p501_base_bd.tcl` | the base block design, exported with `write_bd_tcl` from the reference project |
-| `bd/fft_chain.tcl` | **the part to read and modify**: adds the FFT chain to that design |
+| `bd/fft_chain.tcl`, `tutorial/steps/` | **the part to read and modify**: the FFT chain, as five small scripts (one block each) that `fft_chain.tcl` runs in order |
+| `tutorial/TUTORIAL.md` | **step-by-step tutorial**: build the chain by hand from the base design, then test it on the board |
 | `rtl/adc_frame_gen.v`, `rtl/fft_power_gate.v` | the two small RTL blocks |
 | `src/` | top level (`system_top.v`), constraints, and the helper RTL the base design needs (copied from the reference) |
 | `tools/fix_hwh.py` | post-export fix of the `.hwh` for PYNQ |
 | `notebook/P501_FFT_Example.ipynb` | PYNQ notebook that runs the overlay and plots the spectrum |
+| `notebook/P501_FFT_Tutorial.ipynb` | the graded test notebook of the tutorial (four tests) |
 
 ## How it works
 

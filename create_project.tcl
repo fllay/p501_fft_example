@@ -14,13 +14,17 @@
 #   RUN=none         none | synth | impl | bit   how far to build right away (or run build.tcl later)
 #   JOBS=8           parallel jobs for synthesis/implementation
 #   NAME=p501_fft    project name (created in ./build/<NAME>)
+#   FFT=1            0 = only the P501 base design (the tutorial's starting point,
+#                    see tutorial/TUTORIAL.md); the project is then called p501_fft_tut
 # -----------------------------------------------------------------------------
 set script_dir [file dirname [file normalize [info script]]]
 
-array set opt {NFFT_LOG2 10 SCALE_SHIFT {} LIB {} RUN none JOBS 8 NAME p501_fft PART xczu5ev-sfvc784-2-i}
+array set opt {NFFT_LOG2 10 SCALE_SHIFT {} LIB {} RUN none JOBS 8 NAME p501_fft FFT 1 PART xczu5ev-sfvc784-2-i}
 foreach a $argv {
   if {[regexp {^(\w+)=(.*)$} $a -> k v]} { set opt($k) $v }
 }
+
+if {!$opt(FFT) && $opt(NAME) eq "p501_fft"} { set opt(NAME) p501_fft_tut }
 
 if {$opt(LIB) eq {}} {
   foreach c [list [file join $script_dir .. pzsdr-p501 hdl library] \
@@ -50,7 +54,7 @@ update_compile_order -fileset sources_1
 # ---- block design: base design, then the FFT chain ---------------------------
 source [file join $script_dir bd p501_base_bd.tcl]
 source [file join $script_dir bd fft_chain.tcl]
-p501_add_fft_chain $opt(NFFT_LOG2) $opt(SCALE_SHIFT)
+if {$opt(FFT)} { p501_add_fft_chain $opt(NFFT_LOG2) $opt(SCALE_SHIFT) }
 regenerate_bd_layout
 validate_bd_design
 save_bd_design

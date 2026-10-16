@@ -6,8 +6,8 @@
 #   RUN=synth   synthesis only
 #   RUN=impl    synthesis + implementation
 #   RUN=bit     ... + bitstream, and collects the PYNQ overlay files in
-#               build/overlay/: p501_fft.bit and p501_fft.hwh
-#               (then run  python3 tools/fix_hwh.py build/overlay/p501_fft.hwh )
+#               build/overlay/: <NAME>.bit and <NAME>.hwh
+#               (then run  python3 tools/fix_hwh.py build/overlay/<NAME>.hwh )
 # -----------------------------------------------------------------------------
 set script_dir [file dirname [file normalize [info script]]]
 if {[info exists ::P501_BUILD_OPT]} {
@@ -28,9 +28,9 @@ switch -- $opt(RUN) {
     if {[get_property PROGRESS [get_runs impl_1]] ne "100%"} { error "implementation did not complete" }
     set out [file join $script_dir build overlay]
     file mkdir $out
-    file copy -force [file join $proj_dir $opt(NAME).runs impl_1 system_top.bit] [file join $out p501_fft.bit]
-    file copy -force [file join $proj_dir $opt(NAME).gen sources_1 bd system hw_handoff system.hwh] [file join $out p501_fft.hwh]
-    puts "== overlay files: $out/p501_fft.bit  $out/p501_fft.hwh"
+    file copy -force [file join $proj_dir $opt(NAME).runs impl_1 system_top.bit] [file join $out $opt(NAME).bit]
+    file copy -force [file join $proj_dir $opt(NAME).gen sources_1 bd system hw_handoff system.hwh] [file join $out $opt(NAME).hwh]
+    puts "== overlay files: $out/$opt(NAME).bit  $out/$opt(NAME).hwh"
   }
   default { error "RUN must be synth, impl or bit" }
 }
