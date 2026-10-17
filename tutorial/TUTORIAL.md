@@ -4,17 +4,7 @@ In this tutorial you start from the **P501 base block design** (the design the P
 AD9361 interface `axi_ad9361`, ADC/DAC DMAs, Ethernet bridge) and add a streaming FFT to it, one block at a time.
 You then build the bitstream, copy it to the board, load it as a PYNQ overlay and test it from a notebook.
 
-```mermaid
-flowchart LR
-  subgraph base["base design (already there)"]
-    AD[axi_ad9361] --> FIFO[util_ad9361_adc_fifo] --> PACK[cpack] --> DMA1[axi_ad9361_adc_dma]
-  end
-  AD -- "adc_data_i0/q0, adc_valid_i0, l_clk" --> F
-  subgraph new["what you add"]
-    F["1 fft_framer<br/>(RTL)"] --> X["2 fft_core<br/>(Xilinx FFT IP)"] --> P["3 fft_power<br/>(RTL)"] --> Q["4 fft_fifo<br/>(AXIS FIFO)"] --> D["5 fft_dma<br/>(axi_dmac)"]
-  end
-  D --> DDR[(DDR, via HPC0)]
-```
+![The base design and the FFT chain added to it](img/fft_chain.png)
 
 | step | you do | result |
 |---|---|---|
@@ -27,37 +17,11 @@ flowchart LR
 
 ### The big picture: both data paths
 
-The base design already moves samples both ways through DMAs, so Python can read and write them. The chip's core also has a built-in DDS
-(selected by a register, which we used for the DDS-versus-DMA test). The tutorial adds one DSP branch on the receive side (FFT); the dashed
-blocks show where a hardware signal source for the DAC, or more DSP such as a FIR filter, would go.
+The base design already moves samples both ways through DMAs, so Python can read and write them. This tutorial adds the receive-side
+FFT (teal, solid). The [DDS tutorial](TUTORIAL_DDS.md) adds a hardware signal source for TX1: in that overlay the DDS drives the DAC input instead
+of the DAC DMA path, so the source is chosen by choosing the overlay (no mux). The dashed block shows where a FIR filter would go.
 
-```mermaid
-flowchart LR
-  PS["PS + DDR<br/>PYNQ, Python"]
-  subgraph TX["TX: DAC path"]
-    direction LR
-    DD["dac_dma"] --> UP["upack + fifo<br/>(to l_clk)"] --> MUX["source mux<br/>DMA or HW"]
-    REG["ctrl regs<br/>freq, select"] -.-> GEN["DDS / ROM<br/>HW generator"] -.-> MUX
-  end
-  subgraph RX["RX: ADC path"]
-    direction RL
-    FIFO["adc fifo"] --> CP["cpack"] --> AD["adc_dma"]
-    FIR["FIR / decimator<br/>optional"] --> FFT["FFT chain<br/>this tutorial"] --> FD["fft_dma"]
-  end
-  CHIP["axi_ad9361<br/>(built-in DDS)"]
-  PS --> DD
-  PS -.-> REG
-  MUX --> CHIP
-  CHIP --> FIFO
-  CHIP -.-> FIR
-  CHIP --> FFT
-  AD --> PS
-  FD --> PS
-  classDef new fill:#e1f5ee,stroke:#0f6e56,color:#04342c;
-  classDef idea fill:#e1f5ee,stroke:#0f6e56,stroke-dasharray:4 3,color:#04342c;
-  class FFT,FD new;
-  class MUX,REG,GEN,FIR idea;
-```
+![Data paths of the P501 overlays: TX through DAC DMA or DDS, RX through the ADC DMA and the FFT chain](img/data_paths.png)
 
 **You need:** Vivado 2024.1, the ADI hdl library of the [puzi501iio](https://github.com/fllay/puzi501iio) repository (the script finds it at
 `../pzsdr-p501/hdl/library`, otherwise pass `LIB=<dir>`), a P501 board running the PYNQ image with network access, and about 45 minutes

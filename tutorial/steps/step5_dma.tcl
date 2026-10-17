@@ -22,9 +22,11 @@ connect_bd_intf_net [get_bd_intf_pins fft_fifo/M_AXIS] [get_bd_intf_pins fft_dma
 connect_bd_net [get_bd_pins fft_dma/s_axis_xfer_req] [get_bd_pins fft_power/frame_en]
 
 # PS side: one more port on each SmartConnect, PS clock and reset
-set_property CONFIG.NUM_MI {5} [get_bd_cells axi_cpu_interconnect]
+set cpu [get_bd_cells axi_cpu_interconnect]
+set mi [get_property CONFIG.NUM_MI $cpu]            ;# first free master port (4 in the base design)
+set_property CONFIG.NUM_MI [expr {$mi + 1}] $cpu
 set_property CONFIG.NUM_SI {2} [get_bd_cells axi_hp1_interconnect]
-connect_bd_intf_net [get_bd_intf_pins axi_cpu_interconnect/M04_AXI] [get_bd_intf_pins fft_dma/s_axi]
+connect_bd_intf_net [get_bd_intf_pins $cpu/[format M%02d_AXI $mi]] [get_bd_intf_pins fft_dma/s_axi]
 connect_bd_intf_net [get_bd_intf_pins fft_dma/m_dest_axi]           [get_bd_intf_pins axi_hp1_interconnect/S01_AXI]
 connect_bd_net [get_bd_pins sys_ps8/pl_clk0] [get_bd_pins fft_dma/s_axi_aclk] [get_bd_pins fft_dma/m_dest_axi_aclk]
 connect_bd_net [get_bd_pins sys_rstgen/peripheral_aresetn] \

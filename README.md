@@ -3,7 +3,7 @@
 A starting point for doing signal processing in the FPGA on the PZSDR P501 (Zynq UltraScale+ XCZU5EV + AD9361).
 > **Layout:** clone this repository next to the [puzi501iio](https://github.com/fllay/puzi501iio) repository (folder `pzsdr-p501`), so that `../pzsdr-p501/hdl/library` exists: it provides the packaged ADI IP the design uses. Otherwise pass `LIB=<path to its hdl/library>` or set `P501_HDL_LIBRARY`.
 
-**New here? Follow [tutorial/TUTORIAL.md](tutorial/TUTORIAL.md): it starts from the base design without FFT and adds the blocks one by one.**
+**New here? Two tutorials start from the base design and add blocks one by one: [FFT on the ADC data](tutorial/TUTORIAL.md) and [a hardware DDS on the DAC](tutorial/TUTORIAL_DDS.md).**
 
 One Tcl script creates a Vivado 2024.1 project that contains
 
@@ -55,8 +55,9 @@ python3 tools/fix_hwh.py build/overlay/p501_fft.hwh        # make the HWH loadab
 | `SCALE_SHIFT` | NFFT_LOG2-4 | total FFT scaling in bits (even). Raise it if the FFT output overflows, lower it for more dynamic range |
 | `LIB` | `../pzsdr-p501/hdl/library` | ADI hdl library |
 | `RUN` | none | `synth`, `impl` or `bit`: build right away. Or run `build.tcl` later (`-tclargs RUN=bit`) |
-| `FFT` | 1 | `0` = base design only, the starting point of the [tutorial](tutorial/TUTORIAL.md) (project `p501_fft_tut`) |
-| `JOBS`, `NAME` | 8, `p501_fft` | parallel jobs, project name (the overlay files are named after it) |
+| `FFT` | 1 | `0` = leave the FFT chain out (with `DDS=0`: the base design only, the starting point of both tutorials) |
+| `DDS` | 0 | `1` = add the DAC DDS ([DDS tutorial](tutorial/TUTORIAL_DDS.md)): it drives TX1 instead of the DAC DMA. `FFT=1 DDS=1` gives both |
+| `JOBS`, `NAME` | 8, `p501_fft` | parallel jobs, project name (the overlay files are named after it). Defaults: `p501_fft`, `p501_dds`, `p501_fft_dds`, `p501_fft_tut` (neither) |
 
 ## Files
 
@@ -66,12 +67,16 @@ python3 tools/fix_hwh.py build/overlay/p501_fft.hwh        # make the HWH loadab
 | `build.tcl` | synthesis / implementation / bitstream, collects `build/overlay/p501_fft.{bit,hwh}` |
 | `bd/p501_base_bd.tcl` | the base block design, exported with `write_bd_tcl` from the reference project |
 | `bd/fft_chain.tcl`, `tutorial/steps/` | **the part to read and modify**: the FFT chain, as five small scripts (one block each) that `fft_chain.tcl` runs in order |
-| `tutorial/TUTORIAL.md` | **step-by-step tutorial**: build the chain by hand from the base design, then test it on the board |
+| `tutorial/TUTORIAL.md` | **tutorial 1**: build the FFT chain by hand from the base design, then test it on the board |
+| `tutorial/TUTORIAL_DDS.md`, `tutorial/dds_steps/`, `bd/dds_chain.tcl` | **tutorial 2**: a Xilinx DDS in the FPGA replaces the Python tone on the DAC; registers set from PYNQ |
+| `rtl/dds_regs.v`, `rtl/dds_scale.v`, `src/dds_cdc.xdc` | DDS register block (AXI-Lite, clock-domain hand-over), amplitude/enable stage, and its constraints |
+| `tutorial/img/` | figures (`make_figures.py` regenerates the diagrams) |
 | `rtl/adc_frame_gen.v`, `rtl/fft_power_gate.v` | the two small RTL blocks |
 | `src/` | top level (`system_top.v`), constraints, and the helper RTL the base design needs (copied from the reference) |
 | `tools/fix_hwh.py` | post-export fix of the `.hwh` for PYNQ |
 | `notebook/P501_FFT_Example.ipynb` | PYNQ notebook that runs the overlay and plots the spectrum |
-| `notebook/P501_FFT_Tutorial.ipynb` | the graded test notebook of the tutorial (four tests) |
+| `notebook/P501_FFT_Tutorial.ipynb` | the graded test notebook of tutorial 1 (four tests) |
+| `notebook/P501_DDS_Tutorial.ipynb`, `notebook/p501_dds.py` | the test notebook of tutorial 2 and the Python driver for the DDS registers |
 
 ## How it works
 
