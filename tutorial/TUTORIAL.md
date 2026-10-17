@@ -25,6 +25,40 @@ flowchart LR
 | 8 | load the overlay in a PYNQ notebook | `ol.fft_dma` is there |
 | 9 | run the test notebook | four tests, each `PASS`/`FAIL` |
 
+### The big picture: both data paths
+
+The base design already moves samples both ways through DMAs, so Python can read and write them. The chip's core also has a built-in DDS
+(selected by a register, which we used for the DDS-versus-DMA test). The tutorial adds one DSP branch on the receive side (FFT); the dashed
+blocks show where a hardware signal source for the DAC, or more DSP such as a FIR filter, would go.
+
+```mermaid
+flowchart LR
+  PS["PS + DDR<br/>PYNQ, Python"]
+  subgraph TX["TX: DAC path"]
+    direction LR
+    DD["dac_dma"] --> UP["upack + fifo<br/>(to l_clk)"] --> MUX["source mux<br/>DMA or HW"]
+    REG["ctrl regs<br/>freq, select"] -.-> GEN["DDS / ROM<br/>HW generator"] -.-> MUX
+  end
+  subgraph RX["RX: ADC path"]
+    direction RL
+    FIFO["adc fifo"] --> CP["cpack"] --> AD["adc_dma"]
+    FIR["FIR / decimator<br/>optional"] --> FFT["FFT chain<br/>this tutorial"] --> FD["fft_dma"]
+  end
+  CHIP["axi_ad9361<br/>(built-in DDS)"]
+  PS --> DD
+  PS -.-> REG
+  MUX --> CHIP
+  CHIP --> FIFO
+  CHIP -.-> FIR
+  CHIP --> FFT
+  AD --> PS
+  FD --> PS
+  classDef new fill:#e1f5ee,stroke:#0f6e56,color:#04342c;
+  classDef idea fill:#e1f5ee,stroke:#0f6e56,stroke-dasharray:4 3,color:#04342c;
+  class FFT,FD new;
+  class MUX,REG,GEN,FIR idea;
+```
+
 **You need:** Vivado 2024.1, the ADI hdl library of the [puzi501iio](https://github.com/fllay/puzi501iio) repository (the script finds it at
 `../pzsdr-p501/hdl/library`, otherwise pass `LIB=<dir>`), a P501 board running the PYNQ image with network access, and about 45 minutes
 (most of it the 12 minute build).
