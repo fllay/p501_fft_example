@@ -255,7 +255,24 @@ analog imbalance in a digital loopback. The one over the air shows what the tran
 
 ---
 
-## 9. Design notes
+## 9. Transmit continuously and watch it live
+
+`notebook/P501_DDS_Live.ipynb` starts a tone and shows what the receiver sees **in real time**: the spectrum, a max-hold trace and a waterfall of the last 60 frames, about 10 frames per second.
+Sliders set the frequency and amplitude, a checkbox switches the transmitter on and off, one runs a frequency sweep from -1.5 to +1.5 MHz, and one turns on the AD9361's digital loopback (no antennas needed).
+Moving a slider changes the tone in the FPGA within a fraction of a millisecond; no Python loop generates the signal, the notebook only watches it.
+
+![Live view with the sweep on: the waterfall shows the swept tone, the grey trace is the max hold](img/dds_live.png)
+
+How it works: a background thread runs `capture -> spectrum -> picture` and puts the PNG into an image widget, so the notebook stays responsive while the loop runs.
+The picture is drawn with NumPy and Pillow instead of matplotlib: on the Zynq's ARM cores matplotlib needs about 0.4 s to draw one figure (2 frames/s); direct drawing takes tens of milliseconds.
+The notebook runs a self-test first (frame rate, the thread with the sweep on, and every slider, checkbox and button driven from Python).
+
+**The tone keeps transmitting until you turn it off**, also after the browser tab is closed or a cell fails: the generator is in the FPGA. The last cell of the notebook, *Stop and silence*,
+turns the DDS off, the loopback off, and sets 80 dB of TX attenuation. The AD9361's transmit chain stays powered (a weak LO carrier remains); loading another overlay or powering down gives complete silence.
+
+---
+
+## 10. Design notes
 
 * **Latency.** From the register write to the DAC: the commit takes two `l_clk` periods to cross, then the DDS pipeline and the scaler a few more *samples*. That is a few microseconds,
   and `STATUS` tells you when the new value is in. Phase is never reset by a change: frequency changes are phase-continuous.
@@ -287,3 +304,4 @@ analog imbalance in a digital loopback. The one over the air shows what the tran
 | `src/dds_cdc.xdc` | false paths of the hand-over |
 | `notebook/p501_dds.py` | Python driver |
 | `notebook/P501_DDS_Tutorial.ipynb` | the test notebook |
+| `notebook/P501_DDS_Live.ipynb` | continuous transmit with a live spectrum and waterfall |

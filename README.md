@@ -77,6 +77,7 @@ python3 tools/fix_hwh.py build/overlay/p501_fft.hwh        # make the HWH loadab
 | `notebook/P501_FFT_Example.ipynb` | PYNQ notebook that runs the overlay and plots the spectrum |
 | `notebook/P501_FFT_Tutorial.ipynb` | the graded test notebook of tutorial 1 (four tests) |
 | `notebook/P501_DDS_Tutorial.ipynb`, `notebook/p501_dds.py` | the test notebook of tutorial 2 and the Python driver for the DDS registers |
+| `notebook/P501_DDS_Live.ipynb` | continuous transmit with sliders and a live spectrum/waterfall (DDS overlay) |
 
 ## How it works
 
