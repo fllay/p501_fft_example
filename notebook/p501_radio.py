@@ -24,9 +24,11 @@ FS_HZ = 3_840_000                # sample rate of the clock-chain preset
 def bring_up(ol, lo_hz=700_000_000, rf_bw_hz=4_000_000, tx_atten_db=10, rx_gain_index=45):
     """Configure the AD9361 for 3.84 MSPS, 1R1T (TX1/RX1) at the given LO and enable the axi_ad9361 core.
 
+    The TX attenuation is held at its maximum (89.75 dB) until the calibrations have run, then set to `tx_atten_db`.
     Returns the AD9361 object; `ad.info` holds the lock flags and calibration results."""
     ad = AD9361()
     ad.power_up_clocks()
+    ad.set_tx_atten_db(89.75)          # quietest before anything is switched on: the calibrations below run with the TX path active
     if not ad.set_bbpll_rate(983_040_000):
         raise RuntimeError("BBPLL did not lock")
     ad.set_clock_chain()                                                     # 3.84 MSPS
@@ -44,7 +46,7 @@ def bring_up(ol, lo_hz=700_000_000, rf_bw_hz=4_000_000, tx_atten_db=10, rx_gain_
     ad.reg_write(fb.REG_LVDS_BIAS_CTRL, fb.LVDS_BIAS_CTRL)
     cal = ad.analog_init(rf_rx_bw_hz=rf_bw_hz, rf_tx_bw_hz=rf_bw_hz, rx_freq_hz=lo_hz)
     ad.set_rx_manual_gain(rx_gain_index)
-    ad.set_tx_atten_db(tx_atten_db)
+    ad.set_tx_atten_db(tx_atten_db)    # the requested level, only now that the calibrations are done
     ad.enable_fdd()
     coef = make_fir_coef()
     ad.load_fir_filter_coef(FIR_RX1, 0, coef)
