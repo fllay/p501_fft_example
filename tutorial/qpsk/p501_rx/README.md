@@ -98,10 +98,11 @@ Both loops are then 16 times narrower, which matters at lower signal levels (bel
 What the receiver measures (averaged over 2 s from the registers): **carrier offset +9.68 to +9.71 kHz, clock offset +9.9 to +10.8 ppm** (narrow loops; 7 to 9 ppm with 2 pi/400, whose timing jitter is larger): the 10.4 ppm of chapter 4.0 (two-tone measurement)
 within its accuracy; in P501-to-P501 operation 0.0 to 0.7 ppm.
 
-**Lower signal levels** (B210 TX gain; acquisition 2 pi/100 for 30 ms, then the tracking bandwidth shown; two runs each, BER over everything including the pull-in):
+**Signal levels** (B210 TX gain; 80 dB was added at the user's request, cold start with 2 pi/400 gave one lock with 102 bit errors in total and one run that never locked; acquisition 2 pi/100 for 30 ms, then the tracking bandwidth shown; two runs each, BER over everything including the pull-in):
 
 | B210 TX gain | tracking 2 pi/400 | tracking 2 pi/1600 | GNU Radio (4b, stock loops) |
 |---|---|---|---|
+| 80 dB | no error after the pull-in (2 of 2; pull-in 0.09 / 30 ms) | no error after the pull-in (2 of 2; pull-in 32 / 93 ms) | not tried |
 | 75 dB | no error after the pull-in | no error after the pull-in | no error after the pull-in |
 | 70 dB | 4.5e-4, 2.4e-6 | 1.9e-2, 1.1e-5 | about 6e-5 |
 | 65 dB | 6.2e-3, 5.0e-3 | 3.4e-3, 5.8e-4 | not tried |
