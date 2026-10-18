@@ -1,64 +1,73 @@
-# Plan: tutorial 4 - a QPSK link over the P501
+# Plan: tutorial 4 - a QPSK link between the P501 and a USRP B210 (GNU Radio)
 
-Status: **plan only**, nothing of this is built yet. Same method as tutorials 1-3: first in software with a measurable pass/fail, then one block at a time into the FPGA, each step checked
-against the software version.
+Status: **plan only**, nothing of this is built yet. Same method as tutorials 1-3: a trusted reference first, then one block at a time into the FPGA, each step checked against the reference.
 
-## Goal
+## Test setup
 
-Send bits as QPSK from TX1 to RX1 and get them back with a measured bit error rate, then move the modem from Python into the FPGA.
+```
+  P501 (PYNQ, FPGA modem)  <---- cable + attenuators ---->  USRP B210 (USB 3) + GNU Radio on the host PC
+        TX1 / RX1                                              TX/RX or RX2 / TX2
+```
 
-Numbers to start with: 3.84 MSPS, **4 samples per symbol** -> 960 ksym/s -> **1.92 Mbit/s** raw; root-raised-cosine (RRC) pulse, roll-off 0.35, span 11 symbols; occupied bandwidth about 1.3 MHz, inside the 4 MHz RF bandwidth of the bring-up.
+* **GNU Radio is the golden reference on the other end.** The B210 is an AD9361 radio too (70 MHz - 6 GHz), driven by GNU Radio's standard blocks. We do not have to trust our own receiver to test our own transmitter, and the other way round.
+* **Two radios, two independent clocks.** This is the real situation, and it changes the synchronisation problem (next section): there *is* a carrier frequency offset and a sample-clock drift, and the receivers need their loops.
+* **Cable, not antennas**, with at least 30-40 dB of attenuators and the lowest TX gain first: check the maximum output of one radio against the maximum input of the other before connecting anything. A cable also keeps the link clean for measuring.
+* Common settings: LO e.g. 915 MHz (tested on the P501), sample rate 3.84 MSPS on both (B210: master clock 30.72 MHz and decimation/interpolation 8), 4 samples per symbol, RRC roll-off 0.35.
+* Connection to the host for data: first **files** (a capture from the P501 as `complex64`, a bit file for its transmitter), later a **stream** over the P501's Ethernet (15 MB/s for 3.84 MSPS of 16-bit I/Q is small for gigabit; ZeroMQ or UDP).
 
-## What has to be synchronised (and how GNU Radio does it)
+## What has to be synchronised
 
-A receiver gets a stream of complex samples with unknown *when* (time), unknown *phase* and (with two radios) unknown *frequency*. A typical GNU Radio QPSK receiver chain, with what each block recovers:
+A receiver gets complex samples with unknown *when*, unknown *phase* and, between two radios, unknown *frequency* and a slightly different *sample rate*. The standard GNU Radio QPSK receiver chain, with what each block recovers:
 
 | block (GNU Radio) | recovers | how |
 |---|---|---|
 | AGC | amplitude | a gain that tracks the signal power: the later loops need a constant level |
-| FLL band-edge | coarse carrier **frequency** offset | filters at both band edges of the RRC spectrum; a loop drives the difference of their powers to zero. Only needed when TX and RX clocks differ (two radios) |
-| **Polyphase clock sync** | **symbol timing**: which sample is the best one, and the slow drift | a bank of e.g. 32 matched (RRC) filters, each with a different fractional-sample delay, plus a bank of their derivatives. The *derivative* of the matched-filter output is the timing error; a loop filter steers which sub-filter is used, and slips a whole sample when it wraps. Output: **one sample per symbol** |
-| equaliser (CMA / LMS) | the channel (multipath, filter ripple) | adaptive FIR on the symbol-rate samples (optional here) |
+| **FLL band-edge** | coarse carrier **frequency** offset | filters at both band edges of the RRC spectrum; a loop drives the difference of their powers to zero |
+| **Polyphase clock sync** | **symbol timing**: the best sample, and the slow drift | a bank of e.g. 32 matched (RRC) filters, each with a different fractional-sample delay, plus a bank of their derivatives. The *derivative* of the matched-filter output is the timing error; a loop filter steers which sub-filter is used, and slips a whole sample when it wraps. Output: **one sample per symbol** |
+| equaliser (CMA / LMS) | the channel (cable, filter ripple) | adaptive FIR on the symbol-rate samples (optional here) |
 | **Costas loop** (order 4) | carrier **phase** and the fine frequency | a numerically controlled oscillator (NCO) de-rotates the symbols; the phase error is the angle between each symbol and its nearest QPSK point, a 2nd-order loop filter drives it to zero. Order 4 = QPSK: it cannot tell the four rotations by 90° apart |
 | differential decoding, or a known word | the **4-fold phase ambiguity** left by the Costas loop | encode the data as phase *changes*, or use the preamble to pick the rotation |
-| correlate access code | **frame start** | correlation of the bit stream (or of the samples) with a known preamble |
+| correlate access code | **frame start** | correlation of the bit stream with a known preamble |
 
-The "symbol sync" block of newer GNU Radio versions does the timing step with a choice of timing error detectors (Gardner, Mueller-Müller, maximum likelihood) and an interpolating resampler
-instead of the polyphase bank: same job.
+(GNU Radio also has an all-in-one *Constellation Receiver* and a *Symbol Sync* block with Gardner / Mueller-Müller / maximum-likelihood timing detectors and an interpolating resampler instead of the polyphase bank: same job.)
 
-### What this platform needs of that
+### What the two-radio link needs of that
 
-* **One chip, one clock.** TX and RX of the AD9361 share the reference, so the sample clocks do not drift against each other and, with the same LO, there is **no carrier frequency offset**: no FLL, and the symbol timing is a *constant* fractional delay. The first link can therefore use a preamble to find frame start, timing and phase **once per packet**, with no loops at all.
-* **The loops come in when the problem becomes real.** We can create a real frequency offset on purpose with two LO frequencies (`set_tx_lo_freq` a few kHz away from `set_rx_lo_freq`), and a timing drift by resampling the transmit waveform by a few ppm. Then the Costas loop and the timing loop have something to do, and we can show them working.
-* **Latency is not a synchronisation problem** once there is a preamble: the receiver does not care how long the chain delays, it finds the packet by correlation. We still measure it (a delay in samples between a transmitted burst and its arrival), because it sets the turnaround time of any acknowledgement protocol.
+* **Carrier frequency offset.** Each radio's LO comes from its own reference, typically a few ppm: at 915 MHz that is a couple of kHz per radio, so up to roughly +-4 kHz between them (0.4 % of the 960 ksym/s symbol rate). The FLL plus Costas loop must pull this in; or a **coarse estimate from a preamble tone with the FFT chain of tutorial 1** can pre-set the NCO. Measuring this offset is the first experiment (chapter 4.0).
+* **Sample-clock offset.** A few ppm of 960 ksym/s is a few symbols of slip per second: the symbol-timing loop is not optional, a preamble alone only works for packets short enough that the drift stays well under a sample.
+* **Latency is not a synchronisation problem** once there is a preamble, the receiver finds the packet by correlation. We still measure it (round trip P501 -> B210 -> P501) because it sets the turnaround time of any acknowledgement protocol.
 
 ## Chapters
 
 | # | chapter | what you build | check |
 |---|---|---|---|
-| 4a | **Software QPSK link, digital loopback** | `qpsk_tx`: bits -> Gray-mapped QPSK -> RRC (NumPy), preamble + guard of zeros; sent with the DAC DMA in the AD9361's digital loopback; `qpsk_rx`: capture, **preamble correlation** (frame start, fractional timing, phase), matched filter, slicer; measures the chain's latency | 0 bit errors in 10^6 bits; constellation and eye diagram; latency in samples |
-| 4b | **Over the air, with loops** | the same over antennas; **polyphase clock sync** and **Costas loop** in NumPy (reference implementations); inject an LO offset and a ppm drift to show the loops lock; BER versus TX attenuation (SNR) | BER curve against the theoretical QPSK curve; loops lock with 2 kHz offset |
-| 4c | **Transmitter in the FPGA** | AXI-Stream chain: bit FIFO -> QPSK mapper -> RRC interpolating FIR (Xilinx FIR Compiler, x4) -> `dds_out`-style connection to `dac_data_i0/q0`; register block for gain and enable; bits arrive over a DMA | the FPGA waveform equals the NumPy one (sample-exact for the same bits, within rounding); the 4a receiver decodes it |
-| 4d | **Receiver in the FPGA** | RX chain: matched FIR -> timing recovery (Gardner or the polyphase bank as a multi-coefficient-set FIR) -> Costas loop (the **DDS Compiler as NCO** from tutorial 2 + a complex multiplier + a small RTL phase detector and loop filter) -> slicer -> bit stream over a DMA; loop gains from registers | the demodulated bits equal the NumPy receiver's bits; BER curve unchanged |
-| 4e | **Packets and throughput** (optional) | preamble detector and header/CRC in RTL, back-to-back packets, throughput and latency figures; two boards (needs the FLL) | CRC pass rate, sustained bit rate |
+| 4.0 | **Link-up and offset measurement** (no new HDL) | tone from GNU Radio (B210) into the P501 and read it with the **FFT chain** (tutorial 1/3); tone from the P501's **DDS** into the B210 and look at it in a GNU Radio FFT sink. Gain settings and levels for both directions | the P501 FFT sees the B210's tone at the expected bin; the **carrier offset in kHz** between the two radios, and its drift over minutes; the B210 sees the DDS tone |
+| 4a | **GNU Radio QPSK reference** | a flowgraph with the standard transmitter (bits -> constellation modulator -> RRC) and receiver (AGC, FLL, polyphase clock sync, Costas, differential decode, access-code correlation); first on the **B210 alone** (TX to RX with a cable) | 0 bit errors, constellation and eye diagram; the flowgraphs (`.grc`) go into the repository |
+| 4b | **P501 receives GNU Radio's QPSK** | the P501 captures I/Q (ADC DMA) while the B210 transmits; the file goes to GNU Radio / NumPy for **offline** decoding with the same receiver; then the NumPy reference receiver (polyphase sync, Costas) used later as the model for the FPGA | BER of the offline decode; the offsets and drift the loops have to track; BER versus attenuation |
+| 4c | **Transmitter in the FPGA** | AXI-Stream chain: bit FIFO -> QPSK mapper -> RRC interpolating FIR (Xilinx FIR Compiler, x4) -> connected to `dac_data_i0/q0` like `dds_out` in tutorial 2; register block for gain and enable; bits arrive over a DMA | **the B210 + GNU Radio standard receiver decodes it** (BER, constellation); and the FPGA samples equal a NumPy-generated waveform for the same bits |
+| 4d | **Receiver in the FPGA** | RX chain: matched FIR -> timing recovery (Gardner, or the polyphase bank as a multi-coefficient-set FIR) -> Costas loop (the **DDS Compiler as NCO** from tutorial 2, a complex multiplier, a small RTL phase detector and loop filter) -> slicer -> bits over a DMA; loop gains and initial NCO frequency from registers (the FFT chain can estimate the coarse offset) | the bits from the FPGA equal the NumPy reference receiver's; BER against the GNU Radio transmitter on the B210 |
+| 4e | **Both directions, packets** (optional) | preamble detector and header/CRC in RTL, back-to-back packets, a loop P501 -> B210 -> P501 with an acknowledgement, throughput and round-trip latency | CRC pass rate, sustained bit rate, turnaround time |
 
 ## Why this order
 
-1. **Software first** because the loops are the hard part and need tuning (bandwidths, damping, initial lock): NumPy shows every internal signal. The FPGA versions are then ports of a working algorithm.
-2. **Preamble before loops** so that the first chapter has a clear pass/fail (zero errors) and measures the latency.
-3. **TX before RX in hardware** because it is feed-forward (no loops, bit-exact check against NumPy), the receiver reuses the DDS and FIR blocks learned on the way.
+1. **Chapters 4.0 and 4a need no new FPGA work** and remove the doubts early: do the two radios hear each other, what is the offset, does the standard GNU Radio link work on this B210.
+2. **The reference receiver (4b) before the FPGA receiver (4d)**: the loops need tuning (bandwidths, damping, lock-in range) against the real offset and drift measured in 4.0; NumPy shows every internal signal.
+3. **TX in the FPGA (4c) before RX (4d)**: it is feed-forward (no loops), and GNU Radio's receiver is an independent, trusted judge of it.
 
 ## Things to decide tonight
 
-* Samples per symbol 4 (simple, 1.92 Mbit/s) or 8 (easier timing recovery, 0.96 Mbit/s)?
-* Roll-off 0.35 or 0.25? (bandwidth versus sensitivity to timing error)
+* Samples per symbol 4 (1.92 Mbit/s) or 8 (easier timing recovery, 0.96 Mbit/s)? Roll-off 0.35 or 0.25?
 * Differential encoding (no phase ambiguity at all, ~2 dB worse) or a known preamble to resolve the 4-fold ambiguity?
+* Carrier frequency: 915 MHz (tested on the P501) with cables only, or an ISM-band over-the-air test later (power and licensing rules!).
+* Does the B210 get a better clock reference (an external 10 MHz / GPSDO) to separate the two radios' offsets, or do we live with the TCXO offsets (more realistic)?
 * Fixed-point formats in the FPGA: 16-bit samples (as everywhere), loop filter in 24 bits.
 * Packet format for 4e: preamble length, header, CRC.
 
 ## Risks and what we already know
 
-* **Stale data and pipeline latency** (tutorial 3): a stream through a FIFO needs a flush at the start of a packet, and the first frames after a change are old. In the modem the preamble makes this harmless, but the TX FIFO must start empty and end with zeros (the DAC replays its last samples after a DMA stop).
-* **The AD9361's analog state** after a start is random (image rejection 40-60 dB): `settle` stays in the bring-up; QPSK is tolerant of 40 dB image rejection, but not 25 dB.
+* **Levels.** Two AD9361 radios facing each other through a cable can destroy a front end if the TX power is too high: attenuators first, TX gain minimal, then step up (both directions).
+* **Stale data and pipeline latency** (tutorial 3): a stream through a FIFO needs a flush at the start of a packet, and the first frames after a change are old. A preamble makes this harmless, but the TX FIFO must start empty and end with zeros (the DAC replays its last samples after a DMA stop).
+* **The AD9361's analog state** after a start is random on the P501 (image rejection 40-60 dB): `settle` stays in the bring-up; QPSK tolerates 40 dB image rejection but not 25 dB. The B210 does its own calibration in UHD.
+* **USB / host timing on the B210 side.** Overruns and underruns on the host (GNU Radio) look like symbol-timing errors: use a modest rate (3.84 MSPS is easy) and a wired USB 3 port.
 * **Sample-rate limit of the DMAs**: 1 sample = 4 bytes at 3.84 MSPS = 15 MB/s, trivial; the modem in the FPGA only moves *bits*.
-* **Clocking in the FPGA.** In 1R1T `l_clk` = 2 x the sample rate = 7.68 MHz: only 2 clock cycles per sample. The multipliers of a 44-tap RRC at 4 samples per symbol and of the Costas loop need no more than that (a DSP slice can do the multiply-adds in time), but a loop with a long feedback delay (loop filter, NCO, phase detector in series) should be pipelined with care, or the modem can run on a faster PL clock with a small FIFO at the boundary. Decide in 4d with the numbers of 4b.
+* **Clocking in the FPGA.** In 1R1T `l_clk` = 2 x the sample rate = 7.68 MHz: only 2 clock cycles per sample. The multipliers of a 44-tap RRC at 4 samples per symbol and of the Costas loop fit, but a loop with a long feedback delay (loop filter, NCO, phase detector in series) should be pipelined with care, or the modem can run on a faster PL clock with a small FIFO at the boundary. Decide in 4d with the numbers of 4b.
