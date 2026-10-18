@@ -1,4 +1,4 @@
-// FFT output stage: |X|^2 = re^2 + im^2 (unsigned 32 bit) plus a frame gate.
+// FFT output stage: |X|^2 = re^2 + im^2 (unsigned 32 bit) plus a frame gate and a FIFO flush.
 //
 // Input : FFT output frames, TDATA = {im[15:0], re[15:0]}, TLAST on the last bin.
 // Output: one 32-bit power value per bin. A whole frame is forwarded only if
@@ -7,6 +7,14 @@
 //         transfer always starts on a frame boundary and receives only whole
 //         frames - the FFT itself runs free and is never stalled.
 // The output FIFO behind this block must be at least one frame deep.
+//
+// Fresh data: while no transfer is pending the FIFO behind this block is held in
+//         reset (`fifo_resetn` low), so it cannot keep frames of an earlier time that the DMA
+//         did not take (the gate admits one or two frames more than the DMA reads, because
+//         `frame_en` stays high a little after the last beat). Without the flush the first
+//         frames of the next transfer would be old, up to seconds old. After `frame_en`
+//         rises, the gate waits 64 clock cycles (FIFO out of reset) before it admits
+//         a frame, and a frame cut short by `frame_en` falling is dropped.
 // m_axis_tlast is held low on purpose: the ADI axi_dmac ends a transfer at the first TLAST
 // it sees (it treats it as an end-of-packet), so forwarding the per-frame TLAST would stop
 // a multi-frame DMA transfer after one frame. Frame alignment is guaranteed by the gate.
@@ -29,13 +37,27 @@ module fft_power_gate (
   output reg  [31:0] m_axis_tdata,
   output reg         m_axis_tvalid,
   input  wire        m_axis_tready,   // unused: output FIFO absorbs a frame
-  output reg         m_axis_tlast
+  output reg         m_axis_tlast,
+
+  output wire        fifo_resetn      // active-low reset for the output FIFO: low while no transfer is pending
 );
   assign s_axis_tready = 1'b1;
 
+  // FIFO flush and arming: the FIFO is in reset while frame_en is low and
+  // frames are admitted only 64 cycles after it came out of reset
+  reg        fifo_rst_n_r = 1'b0;
+  reg [6:0]  arm_cnt = 7'd0;
+  always @(posedge clk) begin
+    fifo_rst_n_r <= resetn & frame_en;
+    if (!resetn || !frame_en)  arm_cnt <= 7'd0;
+    else if (!arm_cnt[6])      arm_cnt <= arm_cnt + 7'd1;
+  end
+  assign fifo_resetn = fifo_rst_n_r;
+  wire armed = arm_cnt[6];
+
   // frame gate: decided on the first bin of each frame
   reg in_frame, pass_q;
-  wire pass_now = in_frame ? pass_q : frame_en;
+  wire pass_now = armed & (in_frame ? pass_q : frame_en);
 
   always @(posedge clk) begin
     if (!resetn) begin

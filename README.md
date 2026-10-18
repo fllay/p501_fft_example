@@ -3,7 +3,7 @@
 A starting point for doing signal processing in the FPGA on the PZSDR P501 (Zynq UltraScale+ XCZU5EV + AD9361).
 > **Layout:** clone this repository next to the [puzi501iio](https://github.com/fllay/puzi501iio) repository (folder `pzsdr-p501`), so that `../pzsdr-p501/hdl/library` exists: it provides the packaged ADI IP the design uses. Otherwise pass `LIB=<path to its hdl/library>` or set `P501_HDL_LIBRARY`.
 
-**New here? Two tutorials start from the base design and add blocks one by one: [FFT on the ADC data](tutorial/TUTORIAL.md) and [a hardware DDS on the DAC](tutorial/TUTORIAL_DDS.md).**
+**New here? Two tutorials start from the base design and add blocks one by one: [FFT on the ADC data](tutorial/TUTORIAL.md) and [a hardware DDS on the DAC](tutorial/TUTORIAL_DDS.md). A third puts them together: [tone in, spectrum out, over the air, all in hardware](tutorial/TUTORIAL_DDS_FFT.md).**
 
 One Tcl script creates a Vivado 2024.1 project that contains
 
@@ -22,7 +22,7 @@ axi_ad9361 (clock l_clk = 2 x sample rate in 1R1T)
         v
   fft_core    Xilinx FFT 9.1           pipelined streaming, 16 bit, scaled, natural order
         v                              (config word held constant: forward, fixed scaling)
-  fft_power   (rtl/fft_power_gate.v)   |X|^2 (32 bit) + frame gate: a frame passes only while the DMA is running
+  fft_power   (rtl/fft_power_gate.v)   |X|^2 (32 bit) + frame gate: a frame passes only while the DMA is running (the FIFO behind it is flushed between transfers)
         v
   fft_fifo    AXI-S FIFO, 2 frames
         v
@@ -70,6 +70,7 @@ python3 tools/fix_hwh.py build/overlay/p501_fft.hwh        # make the HWH loadab
 | `tutorial/TUTORIAL.md` | **tutorial 1**: build the FFT chain by hand from the base design, then test it on the board |
 | `tutorial/TUTORIAL_DDS.md`, `tutorial/dds_steps/`, `bd/dds_chain.tcl` | **tutorial 2**: a Xilinx DDS in the FPGA replaces the Python tone on the DAC; registers set from PYNQ |
 | `rtl/dds_regs.v`, `rtl/dds_scale.v`, `src/dds_cdc.xdc` | DDS register block (AXI-Lite, clock-domain hand-over), amplitude/enable stage, and its constraints |
+| `tutorial/TUTORIAL_DDS_FFT.md` | **tutorial 3**: the overlay with both blocks (`FFT=1 DDS=1`); DDS transmits, FFT analyses the received signal, Python only sets and reads |
 | `tutorial/img/` | figures (`make_figures.py` regenerates the diagrams) |
 | `rtl/adc_frame_gen.v`, `rtl/fft_power_gate.v` | the two small RTL blocks |
 | `src/` | top level (`system_top.v`), constraints, and the helper RTL the base design needs (copied from the reference) |
@@ -78,6 +79,8 @@ python3 tools/fix_hwh.py build/overlay/p501_fft.hwh        # make the HWH loadab
 | `notebook/P501_FFT_Tutorial.ipynb` | the graded test notebook of tutorial 1 (four tests) |
 | `notebook/P501_DDS_Tutorial.ipynb`, `notebook/p501_dds.py` | the test notebook of tutorial 2 and the Python driver for the DDS registers |
 | `notebook/P501_DDS_Live.ipynb` | continuous transmit with sliders and a live spectrum/waterfall (DDS overlay) |
+| `notebook/P501_DDS_FFT_Tutorial.ipynb`, `notebook/P501_DDS_FFT_Live.ipynb` | tests and live view of tutorial 3 (spectra computed by the FPGA) |
+| `notebook/p501_radio.py`, `notebook/p501_fft.py` | one-call AD9361 bring-up, reader for the FFT frames |
 
 ## How it works
 

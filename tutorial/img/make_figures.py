@@ -92,6 +92,28 @@ def fft_chain():
     f.save("fft_chain")
 
 
+def dds_fft():
+    f = Fig(800, 340)
+    W, H = 108, 56
+    f.o.append('<rect x="20" y="50" width="90" height="250" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1.2"/>')
+    f.txt(65, 175, "PS", 14, 600, "middle"); f.txt(65, 195, "Python", 12, 400, "middle", "#444441")
+    f.o.append('<rect x="626" y="50" width="110" height="250" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1.2"/>')
+    f.txt(681, 160, "axi_ad9361", 14, 600, "middle"); f.txt(681, 180, "AD9361 core", 12, 400, "middle", "#444441")
+    f.txt(642, 98, "TX1", 12, 600, "start", "#444441"); f.txt(642, 228, "RX1", 12, 600, "start", "#444441")
+    f.txt(128, 40, "TX: DDS tutorial"); f.txt(128, 170, "RX: FFT tutorial")
+    f.box(128, 70, W, H, "dds_regs", "freq, amp, enable", T); f.box(252, 70, W, H, "DDS Compiler", "sin / cos", T); f.box(376, 70, W, H, "dds_out", "scale, enable", T)
+    for d in ("M110 98 L126 98", "M236 98 L250 98", "M360 98 L374 98", "M484 98 L624 98"): f.arr(d)
+    f.box(500, 200, W, H, "fft_framer", "TLAST every N", T); f.box(376, 200, W, H, "fft_core", "Xilinx FFT", T)
+    f.box(252, 200, W, H, "fft_power", "|X|^2, frame gate", T); f.box(128, 200, W, H, "fft_fifo + dma", "spectra to DDR", T)
+    for d in ("M624 228 L610 228", "M498 228 L486 228", "M374 228 L362 228", "M250 228 L238 228", "M126 228 L112 228"): f.arr(d)
+    f.arr("M736 98 L772 98 L772 228 L738 228")
+    f.txt(754, 163, "air or", 11, 400, "middle", "#444441"); f.txt(754, 177, "cable", 11, 400, "middle", "#444441")
+    f.txt(128, 284, "No sample passes through Python: it sets the frequency and reads the spectra.", 12, 400, "start", "#444441")
+    f.legend(324, [(128, T, "blocks you add (tutorials 1 and 2)", False), (420, G, "base design", False)])
+    f.save("dds_fft")
+
+
 if __name__ == "__main__":
     data_paths()
     fft_chain()
+    dds_fft()

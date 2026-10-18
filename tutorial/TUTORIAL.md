@@ -58,7 +58,8 @@ length, direction and scaling, so a constant word with `TVALID` tied high does t
 
 **Power and the frame gate.** `fft_power` computes `re² + im²` (32 bit unsigned) and decides, at the first bin of every frame, whether
 the frame passes: only if the DMA currently has a transfer pending. So every DMA transfer starts on a frame boundary and gets whole
-frames, while the FFT itself is never stalled.
+frames, while the FFT itself is never stalled. The gate also **flushes the FIFO** behind it while no transfer is pending (see step 4), so a transfer
+never starts with old frames.
 
 **FIFO and DMA.** The FIFO is two frames deep. The ADI `axi_dmac`, configured with an **AXI-Stream source**, writes the stream to DDR
 through the PS port `HPC0` (cache-coherent, so Python sees the data without cache maintenance beyond `invalidate()`). The PS controls it
@@ -197,8 +198,9 @@ later, replace the two constants by a small AXI-Lite register block.
 | `fft_rstn_inv/Res` | `fft_power/resetn` |
 | `fft_core/M_AXIS_DATA` (interface) | `fft_power/s_axis` |
 
-`fft_power/frame_en` stays open until step 5. Open `rtl/fft_power_gate.v` to see the logic: three pipeline stages for the squares, and a
-gate that samples `frame_en` on the first bin of each frame and keeps that decision for the whole frame.
+`fft_power/frame_en` stays open until step 5, and the output `fft_power/fifo_resetn` is used in step 4. Open `rtl/fft_power_gate.v` to see the logic: three pipeline stages
+for the squares, a gate that samples `frame_en` on the first bin of each frame and keeps that decision for the whole frame, and the FIFO flush: a reset output that is low while
+`frame_en` is low, and a 64-cycle wait after it rises before the first frame is admitted.
 
 Why a separate block and not just "the DMA takes what it gets"? Without the gate a transfer would start in the middle of a frame (the
 stream is free running), and every spectrum in the buffer would be rotated by an unknown number of bins.
@@ -222,12 +224,17 @@ stream is free running), and every spectrum in the buffer would be rotated by an
 | from | to |
 |---|---|
 | `axi_ad9361/l_clk` | `fft_fifo/s_axis_aclk` |
-| `fft_rstn_inv/Res` | `fft_fifo/s_axis_aresetn` |
+| `fft_power/fifo_resetn` | `fft_fifo/s_axis_aresetn` |
 | `fft_power/m_axis` (interface) | `fft_fifo/S_AXIS` |
 
 The gate has no back-pressure (`s_axis_tready` is always 1, the FFT is never stalled), so the FIFO has to absorb a whole frame
 whenever the DMA is momentarily not ready: it must be at least one frame deep. Two frames leave margin for the DMA's burst
 behaviour.
+
+**Why the FIFO reset comes from the gate, not from the common reset.** The gate keeps admitting frames until the DMA's transfer request falls, which is a little after
+the DMA has taken its last word: one or two frames more than the DMA reads stay in the FIFO. Without a flush the next transfer would start with those frames, which can be seconds
+old (we saw this in the first on-board test: after a change of the transmitted tone, the first two or three frames of the next read still showed the old tone, and an average over 16 frames
+was off by 4 dB). Holding the FIFO in reset while no transfer is pending makes every transfer start with fresh data.
 
 > **Checkpoint 4.** Validate.
 
