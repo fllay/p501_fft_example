@@ -451,7 +451,7 @@ The pattern of every driver in this series: **write the parameters, then COMMIT,
 
 **Register map and conversion helpers:**
 
-@@ notebook/p501_qpsk_rx.py 16 36 the register offsets, loop_gains() and regs_from_bw(): from a bandwidth in rad/symbol to the register values
+@@ notebook/p501_qpsk_rx.py 18 36 the register offsets, loop_gains() and regs_from_bw(): from a bandwidth in rad/symbol to the register values
 
 `loop_gains` are the formulas of A.3. `regs_from_bw` applies the fixed-point scale of each register (the same numbers as in the integer model; the two functions must stay identical):
 
@@ -465,14 +465,24 @@ The pattern of every driver in this series: **write the parameters, then COMMIT,
 
 **The class:**
 
-@@ notebook/p501_qpsk_rx.py 38 59 configure() writes everything; set_loops() writes only the four loop gains (while running); start/stop = CTRL bit 0
+@@ notebook/p501_qpsk_rx.py 56 75 configure() writes everything; set_loops() writes only the four loop gains (while running); start() = CTRL bit 0
 
 * `configure()` before `start()`: the start values (`G0`, `W0`) are loaded when `run` rises.
 * `set_loops()` can be called **while the receiver runs**: the RTL reads `TA..CB` on every symbol. This is the "acquire wide, track narrow" mechanism (E.5).
 
+**Starting reliably: `acquire()`.** The Costas loop has no frequency detector in front of it (GNU Radio's receiver has the FLL), and the pull-in range of a loop of bandwidth `2 pi / N` is about
+960 kHz / N: **9.6 kHz for N = 100, exactly where the B210's 9.7 kHz offset is**. Started cold, the receiver sometimes pulls in and sometimes ends at 0 Hz with a smeared constellation and 2 % errors.
+`acquire()` therefore tries initial-frequency hints in turn (0, +6, -6, +12, -12 kHz, the `W0` register), and accepts a try only when the receiver is **locked** (no new mismatch in 50 ms *and* a sane constellation from the capture RAM) and its
+frequency estimate has **stopped moving**; then it narrows both loops live and checks the lock once more:
+
+@@ notebook/p501_qpsk_rx.py 36 51 the lock criterion: the PRBS counters alone are not enough (a receiver that outputs only zeros has no mismatches), so the constellation must be sane too
+@@ notebook/p501_qpsk_rx.py 76 111 locked() and acquire()
+
+On the hardware (B210 at 80 dB TX gain): **20 of 20 acquisitions locked at +9.7 kHz** (first try in 14 of 19 logged cases, otherwise the +6 kHz or -6 kHz hint), taking 0.45 to 1.3 s; three of them had 2 to 57 isolated bit errors in the next 1.5 s, the rest none.
+
 **Reading the results:**
 
-@@ notebook/p501_qpsk_rx.py 61 75 stats() and offsets(): conversion of the raw register values to engineering units
+@@ notebook/p501_qpsk_rx.py 115 130 stats() and offsets(): conversion of the raw register values to engineering units
 
 * `OMEGA` is a signed 32-bit number: `omega / 2^32 x 960000` = the **carrier offset in Hz** (the frequency the Costas loop had to add).
 * `RATE` (signed, Q16 arms per symbol): `-rate / 2^16 / 16 / 4 x 10^6` = the **sample-clock offset in ppm** (16 arms per sample, 4 samples per symbol; the sign is chosen so that a faster transmitter reads positive).
@@ -481,7 +491,7 @@ The pattern of every driver in this series: **write the parameters, then COMMIT,
 
 **The constellation:**
 
-@@ notebook/p501_qpsk_rx.py 77 87 capture(): arm, wait, read 1024 words, split {zq, zi}
+@@ notebook/p501_qpsk_rx.py 131 141 capture(): arm, wait, read 1024 words, split {zq, zi}
 
 Arming needs `CTRL` bit 1 to **rise**, hence the two writes (1, then 3); then `STATUS[1]`; then 1024 reads at `0x1000 + 4 i`. The 32-bit word holds `zq` in the top half and `zi` in the bottom half, both signed 16-bit
 (`view(np.int16)` reinterprets the bits as signed).
@@ -634,6 +644,26 @@ sudo python3 /tmp/p501_qpsk_link.py loopback 89.75 5 45 400
 sudo python3 /tmp/p501_qpsk_link.py air 30 5 70 400
 ```
 
+## E.13 The interactive demo: two GNU Radio flowgraphs and a notebook
+
+For hands-on experiments (instead of the scripted tests above) there is a GUI on each side. **One direction at a time** (both radios use 915.0 MHz):
+
+| direction | B210 side (GNU Radio) | P501 side |
+|---|---|---|
+| **A: B210 -> P501** | `qpsk_b210_tx.grc`: PRBS-15 DQPSK source, controls *Transmit* (OFF at start), *TX gain* (0 to 80 dB, default 80), *amplitude*; spectrum of what is sent | `P501_QPSK_Link_Live.ipynb`: *Start receiver* (`acquire()`), live constellation from the capture RAM, locked / not locked, bit errors and offsets from the FPGA counters, sliders for the loop bandwidths |
+| **B: P501 -> B210** | `qpsk_b210_rx.grc`: the receiver chain of E.7 with a **PRBS-15 BER box**, constellation after the Costas loop, spectrum, sliders for *RX gain* and the loop bandwidth | the same notebook: checkbox *P501 transmits*, *TX attenuation* (20 to 89.75 dB), *amplitude* |
+
+The flowgraphs are generated with GNU Radio Companion's own Python API by `make_flowgraph.py` (so every block has all its default parameters and the file is validated), and open in `gnuradio-companion` like any other `.grc`; `run_flowgraph_headless.py tx|rx` runs them without a screen. The notebook is generated by `p501_rx/make_notebook.py`
+and tested by executing it on the board with `jupyter nbconvert --execute` (15 checks: the overlay, the loopback self-test, the live pictures, every control, and an experiment table against the real B210).
+
+Three things went wrong on the way, and the flowgraphs contain the fixes:
+
+1. **A receiver that runs on noise before the signal appears can stall the whole flowgraph.** The AGC (gain up to 200) turns the noise floor into a burst of tens of units when the signal starts, the polyphase clock sync runs away (it emits ten times too many symbols, with a constant output) and its work function stops the flowgraph. A hard limiter of +-1.5 on each component between the AGC and the FLL prevents it (late start, and signal dropout and return, both re-lock). The first version of the flowgraph looked fine in the first test because the transmitter was already on when the receiver started.
+2. **A stuck bit stream passes the PRBS rule.** `a[n] = a[n-15] ^ a[n-14]` also holds for all zeros, so a runaway receiver showed a BER of 1e-41 in the first test. The BER block therefore reports 0.5 when the fraction of ones leaves 0.35 to 0.65, and the notebook's *locked* needs a sane constellation as well as zero new mismatches.
+3. **One flowgraph with both the transmit and the receive chain** loads the host enough to underflow the transmit stream, and what the P501 then sees is degraded. Hence two flowgraphs.
+
+And one hardware observation: **the B210 at 75 dB TX gain gave poor and irregular results through the air (several runs ended at 0 Hz carrier and 2 % errors), while 70 dB and 80 dB were fine**; the default is 80 dB (the highest value allowed so far).
+
 ---
 
 # Part F. Results, lessons, troubleshooting
@@ -681,11 +711,13 @@ The extra 5 dB of B210 TX gain narrows the clusters from 10.5 to 8.1 degrees of 
 | `TimeoutError: DDS update not taken over` | the AD9361 clock `l_clk` is not running: the bring-up did not run or failed (`ad.info["ok"]` is False) |
 | `not the QPSK receiver (ID 0x...)` | the wrong overlay is loaded (the receiver is at `0x9C470000` in `p501_qpsk_trx` only) |
 | `capture did not complete` | the receiver is not running (`rx.start()`), or `adc_valid` is not toggling |
+| the receiver reads 0 Hz carrier and about 2 % errors | the Costas loop did not pull in the 9.7 kHz offset (cold start with narrow loops, or at the edge of the wide loop's range): press *Start receiver* again, or `rx.acquire()` |
 | B210: `No devices found` | another program holds the B210 (a second test script, an old flowgraph), or the USB 3 port reset: run one test at a time |
 | the BER estimate is about 0.17 and stays there (mismatches on every second bit) | not locked: the signal is too weak (look at `agc_gain`: above about 20 means weak), the offset is out of the loop's pull-in range, or the transmitter is not on |
 | `carrier_offset_hz` = 0 and errors continue | the loops are too narrow for the offset (cold start with 2 pi/1600): acquire wide, or set `init_freq_hz` |
 | `clock_offset_ppm` = +-12,500 | the timing integrator is at its limit (`MAXR`): the pre-fix RTL with a narrow loop, or no signal |
 | `UU` on the host console | B210 underruns: the host cannot keep up; use a USB 3 port and the enlarged buffers |
+| the B210 flowgraph's BER box shows 0.17 or 0.5 | 0.17: not locked (signal too weak or off, or the loops did not pull in); 0.5: the decoded stream is stuck (no valid signal) |
 | `overruns` > 0 | the engine started more than 200 samples late: the engine clock is too slow or stalled |
 
 ## F.5 File index

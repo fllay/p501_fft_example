@@ -9,6 +9,8 @@
     z = rx.capture()    # 1024 soft symbols after the Costas loop (complex numpy array) for a constellation plot
     rx.stop()
 
+    rx.acquire(track_div=400)    # robust start: wide loops with initial-frequency hints until the receiver is locked, then the narrow tracking loops
+
 The bit checker is the self-synchronising PRBS-15 checker of the FPGA: it needs the PRBS-15 transmitter (chapter 4c, or GNU Radio with the same pattern)."""
 import time
 import numpy as np
@@ -29,6 +31,22 @@ def regs_from_bw(timing_bw, phase_bw, ref=16384, mu=40, g0=1024, init_freq_hz=0.
     ta, tb = loop_gains(timing_bw); ca, cb = loop_gains(phase_bw)
     return dict(TA=int(round(ta * 2 ** 24)), TB=int(round(tb * 2 ** 24)), CA=int(round(ca * 2 ** 27 / (2 * np.pi))), CB=int(round(cb * 2 ** 27 / (2 * np.pi))),
                 MU=int(mu), REF=int(ref), G0=int(g0), W0=int(round(init_freq_hz / SYMBOL_RATE * 2 ** 32)) & 0xFFFFFFFF, MAXR=int(round(max_rate * NF * 2 ** 16)))
+
+
+UNIT = 8192.0                                       # soft symbols: the AGC makes the decision points about +-1.24 +-1.24j in these units
+
+
+def soft_quality(z):
+    """(mean |z|, angular spread in degrees) of soft symbols (complex, ADC units): the spread is the standard deviation of the angle to the nearest of the four ideal directions."""
+    zn = np.asarray(z) / UNIT
+    ang = np.angle(zn * np.exp(-1j * np.pi / 4)); dev = (ang + np.pi / 4) % (np.pi / 2) - np.pi / 4
+    return float(np.abs(zn).mean()), float(np.degrees(np.std(dev)))
+
+
+def constellation_ok(z):
+    """Four sane clusters: mean magnitude near 1.75 and an angular spread below 25 degrees (a stuck or rotating receiver fails this, which the PRBS counters alone would not show)."""
+    m, sp = soft_quality(z)
+    return (1.2 < m < 2.4) and sp < 25.0
 
 
 def _signed(v, bits=32):
@@ -54,6 +72,42 @@ class P501QpskRx:
 
     def start(self):
         self.ip.write(REG["CTRL"], 1)
+
+    def locked(self, settle_s=0.05):
+        """True when the receiver runs, no new mismatch appeared in the last settle_s seconds, and the soft symbols form a sane constellation."""
+        m0 = self.ip.read(REG["MISMATCH"]); time.sleep(settle_s)
+        if self.ip.read(REG["MISMATCH"]) != m0 or not (self.ip.read(REG["STATUS"]) & 1):
+            return False
+        try:
+            return constellation_ok(self.capture())
+        except TimeoutError:
+            return False
+
+    def _omega_hz(self, n=10, dt=0.002):
+        v = []
+        for _ in range(n):
+            v.append(_signed(self.ip.read(REG["OMEGA"])) / 2 ** 32 * SYMBOL_RATE); time.sleep(dt)
+        return float(np.mean(v))
+
+    def acquire(self, track_div=400, acq_div=100, hints_hz=(0.0, 6000.0, -6000.0, 12000.0, -12000.0), settle_s=0.08, check_s=0.05):
+        """Start the receiver so that it locks reliably. The Costas loop has no frequency detector in front of it, and the pull-in range of a loop of bandwidth 2 pi/acq_div is
+        about 960 kHz / acq_div (9.6 kHz for 100): the 9.7 kHz offset between the P501 and the B210 is at the edge. So the loops start wide with an initial-frequency hint, in turn
+        0, +6, -6, +12, -12 kHz. A try counts when, after settle_s, the receiver is locked (no new mismatch, sane constellation) *and* the frequency estimate has stopped moving
+        (two averages 40 ms apart within 1500 Hz); then both loops are narrowed live to 2 pi / track_div and the lock is checked once more. Returns {locked, hint_hz, tries, seconds}."""
+        t0 = time.time()
+        for i, h in enumerate(hints_hz):
+            self.stop()
+            self.configure(timing_bw=2 * np.pi / acq_div, phase_bw=2 * np.pi / acq_div, init_freq_hz=h)
+            self.start(); time.sleep(settle_s)
+            f1 = self._omega_hz(); time.sleep(0.04); f2 = self._omega_hz()
+            if abs(f2 - f1) > 1500 or not self.locked(check_s):
+                continue
+            if track_div:
+                self.set_loops(2 * np.pi / track_div, 2 * np.pi / track_div); time.sleep(0.1)
+                if not self.locked(0.1):
+                    continue
+            return dict(locked=True, hint_hz=h, tries=i + 1, seconds=time.time() - t0)
+        return dict(locked=False, hint_hz=None, tries=len(hints_hz), seconds=time.time() - t0)
 
     def stop(self):
         self.ip.write(REG["CTRL"], 0)
