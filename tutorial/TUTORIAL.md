@@ -363,11 +363,13 @@ Expected output of a good run:
 
 ```
 PASS  overlay loaded: fft_dma at 0x9C440000, core version 0x00040461
-PASS  idle frames arrive: 8 frames x 1024 bins, floor 0.5 dB, strongest spur 35 dB over it
-PASS  tone in the right bin: sent +100 -> peak +100 (64 dB over floor); sent +267 -> peak +267 (64 dB over floor); sent -180 -> peak -180 (63 dB over floor)
-PASS  all frames carry data: 64/64 frames non-empty, peak power per frame 2.41e+06 .. 2.43e+06
-PASS  matches NumPy at the tone: FPGA / NumPy = -0.05 dB
-PASS  no overflow: max power 2.43e+06 (limit 2^31 = 2.15e+09)
+product id 0x0A, ENSM 0xA, LO locks True/True, settled after 3 tries (46.5 dB image rejection)
+PASS  AD9361 up: calibrations {'rx_bb_filter': True, 'tx_bb_filter': True, 'bb_dc': True, 'rf_dc': True, 'tx_quad': 3}
+PASS  idle frames arrive: 8 frames x 1024 bins, floor 0.0 dB, strongest spur 32 dB over it
+PASS  tone in the right bin: sent +100 -> peak +100 (65 dB over floor); sent +267 -> peak +267 (64 dB over floor); sent -180 -> peak -180 (65 dB over floor)
+PASS  all frames carry data: 64/64 frames non-empty, peak power per frame 2.9e+06 .. 2.95e+06
+PASS  matches NumPy at the tone: FPGA / NumPy = +0.01 dB
+PASS  no overflow: max power 2.95e+06 (limit 2^31 = 2.15e+09)
 ALL TESTS PASSED
 ```
 
