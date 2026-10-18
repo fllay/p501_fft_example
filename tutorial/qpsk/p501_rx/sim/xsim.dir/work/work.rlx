@@ -1,0 +1,8 @@
+0.7
+2020.2
+May 22 2024
+18:54:44
+/home/pi/projects/p501_fft_example/rtl/qpsk_rx.v,1792319046,verilog,,/home/pi/projects/p501_fft_example/tutorial/qpsk/p501_rx/sim/tb_qpsk_rx.v,,qpsk_rx,,,,,,,,
+/home/pi/projects/p501_fft_example/rtl/qpsk_rx_rom.v,1792318567,verilog,,/home/pi/projects/p501_fft_example/rtl/qpsk_rx_trig.v,,qpsk_rx_rom,,,,,,,,
+/home/pi/projects/p501_fft_example/rtl/qpsk_rx_trig.v,1792318567,verilog,,/home/pi/projects/p501_fft_example/rtl/qpsk_rx.v,,qpsk_rx_trig,,,,,,,,
+/home/pi/projects/p501_fft_example/tutorial/qpsk/p501_rx/sim/tb_qpsk_rx.v,1792318700,verilog,,,,tb,,,,,,,,

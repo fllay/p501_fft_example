@@ -41,3 +41,12 @@ Both decode the recordings of chapters 4b and 4c from a cold start (no frequency
 
 Lessons of stage 1: the loop gains scale with the **square of the symbol amplitude**, so the AGC reference matters as much as the bandwidth: with the symbol amplitude at 1.0 the same
 bandwidths gave a BER 30 times worse; at 2.0 (`REF` = 16384, as in GNU Radio's constellation) they match the float model.
+
+## Stage 2: the RTL, bit-exact (`rtl/qpsk_rx.v`, `qpsk_rx_rom.v`, `qpsk_rx_trig.v`)
+
+`sim/tb_qpsk_rx.v` feeds 60000 samples of a real capture (the 70 dB recording of chapter 4b) to the RTL in xsim, with `adc_valid` every second `l_clk` cycle and the 100 MHz engine clock, and logs every symbol.
+Compared with the integer model `qpsk_rx_fixed.py` over all **14990 symbols**: **0 mismatches** in the decoded bits, the soft symbols (`zi`, `zq`), the Costas frequency, the timing rate, the AGC gain and both loop errors.
+The engine needs about 65 of the 104 clock cycles of a symbol; no overruns.
+
+Two simulation pitfalls found on the way (both are bugs the synthesis would have hidden or reported late): a Gray-to-binary decode written as `always @*` stays unknown in simulation until its input changes (use a function in a
+continuous assignment); and `ic[7:0]` on a 7-bit register is an out-of-range select.
