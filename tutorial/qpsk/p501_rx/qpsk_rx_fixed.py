@@ -4,7 +4,7 @@
   x: int16 I/Q (ADC counts, +-2047)   NF = 16 arms x 44 taps, coefficients int16 (x 2^15)
   MAC:   m = (sum x*cm) >> 11 (24-bit), d = (sum x*cd) >> 11              (Q4: 16 = one ADC count)
   AGC:   m' = clip16((m*g) >> 10), d' likewise; g (Q10, 17 bit) += (MU*(REF - a)) >> 16, a = max(|m'i|,|m'q|) + min/2; REF = 16384 means |z| = 2.0 (as in GNU Radio)
-  timing: e = clip((m'i*d'i + m'q*d'q) >> 13);  rate += (TB*e) >> 21;  p += (NF*SPS << 16) + rate + ((TA*e) >> 21)     (p, rate in Q16 arms)
+  timing: e = clip((m'i*d'i + m'q*d'q) >> 13);  rate += (TB*e + 2^20) >> 21;  p += (NF*SPS << 16) + rate + ((TA*e) >> 21)     (p, rate in Q16 arms)
   Costas: z = m' * exp(-j theta), theta/omega in turns x 2^32, 1024-entry LUT (Q15); e = sgn(zi)*zq - sgn(zq)*zi, clip +-8191
           omega += (CB*e) >> 8;  theta += omega + ((CA*e) >> 8)
   decide: signs of z -> DQPSK point -> differential decode -> inverse pre-differential map -> 2 bits (MSB first)
@@ -63,7 +63,7 @@ def receive_fixed(xi, xq, regs=None, max_symbols=None):
         g = clip(g + ((R["MU"] * (R["REF"] - a)) >> 16), 16, 2 ** 17 - 1)
         # timing loop
         e_t = clip((mi2 * di2 + mq2 * dq2) >> 13, -8191, 8191)
-        rate = clip(rate + ((R["TB"] * e_t) >> (F_T - 3)), -R["MAXR"], R["MAXR"])
+        rate = clip(rate + ((R["TB"] * e_t + (1 << (F_T - 4))) >> (F_T - 3)), -R["MAXR"], R["MAXR"])      # rounded, not floored: a floor is -0.5 LSB per symbol, which runs a narrow loop into its limit
         p += ((NF * SPS) << 16) + rate + ((R["TA"] * e_t) >> (F_T - 3))
         # Costas
         idx = (theta >> 22) & 1023; c, s = cos_l[idx], sin_l[idx]

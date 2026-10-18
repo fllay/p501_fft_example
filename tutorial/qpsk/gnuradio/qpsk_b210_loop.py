@@ -20,7 +20,10 @@ from gnuradio.digital import mod_codes
 SYMBOLS_PER_PERIOD = 4096                      # the bit pattern repeats every 8192 bits
 
 
-def tx_bits(seed=1):
+def tx_bits(seed=1, pattern="random"):
+    if pattern == "prbs15":                       # the PRBS-15 of the FPGA (chapter 4c/4d): 8 periods = 262136 bits = 32767 whole bytes, so the repeat is seamless
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "p501_tx")); from qpsk_model import prbs15_bits
+        return np.tile(prbs15_bits(32767), 8)
     return np.random.RandomState(seed).randint(0, 2, 2 * SYMBOLS_PER_PERIOD).astype(np.uint8)
 
 
@@ -39,7 +42,7 @@ class Tx(gr.top_block):
             add = blocks.add_cc(); self.connect(t1, (add, 0)); self.connect(t2, (add, 1)); src, mod = add, blocks.multiply_const_cc(1.0)
             self.connect(src, mod)
         else:
-            src = blocks.vector_source_b(np.packbits(tx_bits()).tolist(), True)        # generic_mod takes PACKED bytes (8 bits per byte)
+            src = blocks.vector_source_b(np.packbits(tx_bits(pattern=getattr(a, "pattern", "random"))).tolist(), True)        # generic_mod takes PACKED bytes (8 bits per byte)
             mod = digital.generic_mod(const, differential=True, samples_per_symbol=sps, pre_diff_code=True, excess_bw=bw)
             self.connect(src, mod)
         amp = blocks.multiply_const_cc(a.tx_amp)
@@ -103,6 +106,7 @@ if __name__ == "__main__":
     p.add_argument("--max-rate-dev", type=float, default=0.05, help="limit of the timing loop (samples per symbol); the stock block uses 1.5")
     p.add_argument("--rx-delay", type=float, default=2.0, help="seconds the transmitter runs alone before the receiver starts")
     p.add_argument("--save-raw", action="store_true", help="also save the complete received I/Q stream (rx_full.c64)")
+    p.add_argument("--pattern", choices=["random", "prbs15"], default="random", help="prbs15: the pattern the FPGA receiver of chapter 4d checks")
     p.add_argument("--seconds", type=float, default=10); p.add_argument("--out", default="/tmp/qpsk_run")
     a = p.parse_args()
     os.makedirs(a.out, exist_ok=True)

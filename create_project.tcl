@@ -16,18 +16,19 @@
 #   FFT=1            add the FFT chain (bd/fft_chain.tcl). 0 = leave it out
 #   DDS=0            add the DAC DDS (bd/dds_chain.tcl). 1 = DDS drives TX1 instead of the DAC DMA
 #   QPSK=0           add the FPGA QPSK transmitter (bd/qpsk_chain.tcl, chapter 4c); it drives TX1 like the DDS, so DDS=1 and QPSK=1 exclude each other
+#   QPSKRX=0         add the FPGA QPSK receiver (bd/qpsk_rx_chain.tcl, chapter 4d); independent of the others (QPSK=1 QPSKRX=1: both ends of the link in one overlay)
 #   NAME=...         project name (created in ./build/<NAME>). Default: p501_fft (FFT only), p501_dds (DDS only),
 #                    p501_fft_dds (both), p501_fft_tut (neither: the starting point of the tutorials)
 # -----------------------------------------------------------------------------
 set script_dir [file dirname [file normalize [info script]]]
 
-array set opt {NFFT_LOG2 10 SCALE_SHIFT {} LIB {} RUN none JOBS 8 NAME {} FFT 1 DDS 0 QPSK 0 PART xczu5ev-sfvc784-2-i}
+array set opt {NFFT_LOG2 10 SCALE_SHIFT {} LIB {} RUN none JOBS 8 NAME {} FFT 1 DDS 0 QPSK 0 QPSKRX 0 PART xczu5ev-sfvc784-2-i}
 foreach a $argv {
   if {[regexp {^(\w+)=(.*)$} $a -> k v]} { set opt($k) $v }
 }
 
 if {$opt(NAME) eq {}} {
-  set opt(NAME) [expr {$opt(QPSK) ? ($opt(FFT) ? "p501_fft_qpsk" : "p501_qpsk") : ($opt(FFT) ? ($opt(DDS) ? "p501_fft_dds" : "p501_fft") : ($opt(DDS) ? "p501_dds" : "p501_fft_tut"))}]
+  set opt(NAME) [expr {$opt(QPSKRX) ? ($opt(QPSK) ? "p501_qpsk_trx" : "p501_qpsk_rx") : $opt(QPSK) ? ($opt(FFT) ? "p501_fft_qpsk" : "p501_qpsk") : ($opt(FFT) ? ($opt(DDS) ? "p501_fft_dds" : "p501_fft") : ($opt(DDS) ? "p501_dds" : "p501_fft_tut"))}]
 }
 
 if {$opt(LIB) eq {}} {
@@ -60,10 +61,12 @@ source [file join $script_dir bd p501_base_bd.tcl]
 source [file join $script_dir bd fft_chain.tcl]
 source [file join $script_dir bd dds_chain.tcl]
 source [file join $script_dir bd qpsk_chain.tcl]
+source [file join $script_dir bd qpsk_rx_chain.tcl]
 if {$opt(DDS) && $opt(QPSK)} { error "DDS=1 and QPSK=1 both drive TX1: choose one" }
 if {$opt(FFT)} { p501_add_fft_chain $opt(NFFT_LOG2) $opt(SCALE_SHIFT) }
 if {$opt(DDS)} { p501_add_dds_chain }
 if {$opt(QPSK)} { p501_add_qpsk_chain }
+if {$opt(QPSKRX)} { p501_add_qpsk_rx_chain }
 regenerate_bd_layout
 validate_bd_design
 save_bd_design

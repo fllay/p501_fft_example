@@ -198,7 +198,7 @@ module qpsk_rx (
   wire signed [16:0] ai = (mi2[15] ? -{mi2[15], mi2} : {mi2[15], mi2}), aq = (mq2[15] ? -{mq2[15], mq2} : {mq2[15], mq2});
   wire [16:0] amax = (ai > aq) ? ai : aq, amin = (ai > aq) ? aq : ai;
   wire signed [47:0] g_new = $signed({1'b0, g}) + (mu_prod >>> 16);
-  wire signed [47:0] rate_new_w = rate + (tb_prod >>> 21);
+  wire signed [47:0] rate_new_w = rate + ((tb_prod + 47'sd1048576) >>> 21);      // rounded: a plain shift floors, which is -0.5 LSB per symbol and runs a narrow timing loop's integrator into its limit
   wire signed [47:0] maxr_s = $signed({1'b0, r_maxr[30:0]});
   wire signed [47:0] ec_raw = (s_i ? $signed({{32{zq[15]}}, zq}) : -$signed({{32{zq[15]}}, zq})) - (s_q ? $signed({{32{zi[15]}}, zi}) : -$signed({{32{zi[15]}}, zi}));
   wire signed [47:0] omega_new_w = omega + (cb_prod >>> 8);

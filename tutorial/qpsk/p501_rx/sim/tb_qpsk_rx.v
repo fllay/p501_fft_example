@@ -23,12 +23,13 @@ module tb;
     $fwrite(f, "%0d %0d %0d %0d %0d %0d %0d %0d\n", dut.bits2, $signed(dut.zi), $signed(dut.zq), $signed(dut.omega), $signed(dut.rate), dut.g, $signed(dut.e_t), $signed(dut.e_c));
     nlog = nlog + 1;
   end
-  reg [31:0] v;
+  reg [31:0] v; integer tbv;
   initial begin
     $readmemh("samples.hex", samples);
     f = $fopen("rtl_rx_out.txt", "w");
     #200 aresetn = 1; #100;
     rd(14'h000, v); $display("ID = %h", v);
+    if ($value$plusargs("tb=%d", tbv)) wr(14'h00C, tbv);       // optional: another timing integral gain (the narrow-loop test)
     wr(14'h004, 32'h1);                           // run
     #1000;
     for (k = 0; k < NS; k = k + 1) begin
