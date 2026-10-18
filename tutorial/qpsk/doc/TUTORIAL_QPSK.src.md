@@ -664,6 +664,69 @@ Three things went wrong on the way, and the flowgraphs contain the fixes:
 
 And one hardware observation: **the B210 at 75 dB TX gain gave poor and irregular results through the air (several runs ended at 0 Hz carrier and 2 % errors), while 70 dB and 80 dB were fine**; the default is 80 dB (the highest value allowed so far).
 
+## E.14 Test procedure: the flowgraphs and the notebook, step by step
+
+What you need: the P501 with the overlay `p501_qpsk_trx` (copied to `/home/xilinx/jupyter_notebooks/p501_qpsk_trx/` together with `p501_qpsk.py` and `p501_qpsk_rx.py`) and the notebooks of `p501_fft_dds` (for `p501_radio.py`); the B210 on a USB 3 port; the PC with the radioconda environment;
+antennas on TX1 and RX1 of the P501 and on the TX/RX and RX2 ports of the B210, **a few centimetres apart**. Very low power; check the rules where you are before radiating. **Only one direction at a time**: both radios use 915.0 MHz, and only one program can hold the B210.
+
+<!-- FIGURE: the set-up: the two antenna pairs a few centimetres apart (photo) - tutorial/img/qpsk_setup_photo.png -->
+
+**0. Prepare**
+
+1. On the PC: `source tools/gnuradio_env.sh` (it puts `~/radioconda/bin` on the PATH and points UHD at the B210 images); `uhd_find_devices` must list the B210. Without sourcing the script, `gnuradio-companion` is not found.
+2. In Jupyter on the board open `P501_QPSK_Link_Live.ipynb` and run the cells down to **Self-test** (the digital loopback). Every line must say PASS: the overlay, the AD9361 bring-up, the FPGA transmitter into the FPGA receiver inside the chip, the live pictures. Then run the **Controls** cell.
+
+<!-- FIGURE: the notebook after the self-test (the PASS lines) and the Controls cell with the live picture in the loopback - tutorial/img/qpsk_nb_selftest.png -->
+
+**Direction A: the B210 transmits, the P501's FPGA receiver decodes**
+
+1. `gnuradio-companion tutorial/qpsk/gnuradio/qpsk_b210_tx.grc`, press the run button (the first time it asks to save the flowgraph). The controls: *Transmit* (starts **OFF**), *TX gain* (default 80 dB, maximum 80), *TX digital amplitude* (0.25); the plot shows the spectrum of what is sent.
+2. Set *Transmit* to **ON** (TX gain 80). In the notebook leave *P501 transmits* and *Digital loopback* **unticked**, *RX gain* at 70, *Acquisition N* at 100, *Tracking M* at 400, *Search for the carrier* ticked.
+3. Press **Start receiver**, then **Start display**. The status line says *locked after N try(ies), hint ... Hz*, taking about half a second to a second; the picture says **LOCKED** in green.
+
+<!-- FIGURE: qpsk_b210_tx.grc running (Companion window with the controls and the spectrum) - tutorial/img/qpsk_grc_tx.png -->
+
+What a good result looks like (numbers from our runs, B210 at 80 dB):
+
+| item | good | what it tells you |
+|---|---|---|
+| constellation | four tight clusters, angular spread 7 to 11 degrees | the loops are locked and the SNR is good |
+| carrier offset | +9.5 to +9.8 kHz, steady | the offset between the two radios (10.4 ppm of 915 MHz) |
+| clock offset | about +10 ppm (instantaneous values jitter by tens of ppm) | the sample-clock offset, from the timing loop |
+| mismatches per second | flat at 0 | no bit errors now (the counters keep the errors of the pull-in; **Start receiver** resets them) |
+| AGC gain | about 5 to 10 | the signal level; **about 100 means nothing arrives** (the AGC has turned the noise floor up as far as it goes) |
+
+<!-- FIGURE: the notebook locked on the B210: LOCKED, carrier +9.6 kHz, spread 7 degrees - tutorial/img/qpsk_nb_locked.png -->
+
+4. Experiments while it is locked: slide **Live loop N** (50 to 1600). Wide loops (small N) are noisy, narrow loops (1600) average the phase noise: in our run the arcs of the clusters at N = 400 (spread 15 degrees, with a weaker signal) turned into round clusters at N = 1600 (7 degrees, with a stronger signal). Lower the B210 *TX gain* in steps (80, 75, 70, 65): the AGC gain rises, the spread grows, and below about 65 dB the receiver stops locking.
+   Press **Start receiver** again after each big change of level: it re-runs the carrier search. The table in the **Experiment** cell shows why the search exists: cold starts with narrow loops end at 0 Hz carrier with about 2 % errors, `acquire()` locks every time.
+5. **Stop** the flowgraph (window closed or the stop button); the transmitter is switched off with it.
+
+**Direction B: the P501's FPGA transmitter, GNU Radio decodes**
+
+1. Close `qpsk_b210_tx.grc` (only one program can hold the B210) and run `qpsk_b210_rx.grc`. Set *B210 RX gain* to about 45 and leave the loop bandwidth at 400.
+2. In the notebook set **TX atten** to 40 dB, tick **P501 transmits (direction B)**, make sure *Digital loopback* is unticked, and lower the attenuation in steps (40, 35, 30 dB; 20 dB is the strongest the slider allows).
+3. In the flowgraph window: the **BER box** reads 0.17 while the receiver is not locked, and falls to about 0 (a few 1e-5 at worst) when it locks; the constellation shows four clusters; the received spectrum shows the 1.3 MHz wide bump about 25 dB above the noise, with a narrow spike at the centre (the P501's LO leakage, harmless).
+4. Untick **P501 transmits**: the BER box goes back to 0.17 within a second (and to 0.5 if the decoded stream is stuck).
+
+<!-- FIGURE: qpsk_b210_rx.grc running while the P501 transmits (BER box, constellation, spectrum) - tutorial/img/qpsk_grc_rx.png -->
+
+**If it does not lock**
+
+| what you see | what to do |
+|---|---|
+| A: AGC gain about 100, random bits (BER estimate 0.17, mismatches at half the bit rate) | nothing arrives: *Transmit* is still OFF in the B210 window, the TX gain is low, the antennas are on the wrong ports (the transmitter uses TX/RX, the receiver RX2) or too far apart, or *Digital loopback* is ticked in the notebook |
+| A: *NOT locked after 5 tries*, but the AGC gain is 5 to 10 | the carrier search did not find the offset: check that *Acquisition N* is 100 (a narrow acquisition only pulls in a few kHz), press **Start receiver** again; if it keeps failing, raise the B210 TX gain |
+| A: locked, but the display says *NOT LOCKED* in red | the constellation is too noisy or errors continue: narrow *Live loop N*, raise the signal, or press **Start receiver** |
+| A: the status line still says *NOT locked...* although the picture says LOCKED | the status line is only written when **Start receiver** is pressed; the picture is the truth |
+| B: BER box at 0.17 and the spectrum bump is hardly above the noise | lower the P501 *TX atten*, raise the B210 *RX gain* |
+| B: BER box at 0.5 | the decoded stream is stuck (all zeros or ones): there is no valid signal, or the P501 is not transmitting |
+| the flowgraph does not start: *No devices found* | another program holds the B210 (the other flowgraph, a script), or the USB 3 link reset: close the other one, replug if needed |
+
+<!-- FIGURE: the Experiment cell output table: cold starts failing, acquire() locking - tutorial/img/qpsk_nb_experiment.png -->
+
+**6. Finish: always.** In the notebook run the last cell, **Stop and silence**: it stops the display, the receiver and the transmitter, switches the digital loopback off and sets the TX attenuation back to 89.75 dB. Close the flowgraph. Both ends are then quiet.
+
 ---
 
 # Part F. Results, lessons, troubleshooting
