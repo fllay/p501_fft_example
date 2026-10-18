@@ -34,7 +34,7 @@ A receiver gets complex samples with unknown *when*, unknown *phase* and, betwee
 
 ### What the two-radio link needs of that
 
-* **Carrier frequency offset.** Each radio's LO comes from its own reference, typically a few ppm: at 915 MHz that is a couple of kHz per radio, so up to roughly +-4 kHz between them (0.4 % of the 960 ksym/s symbol rate). The FLL plus Costas loop must pull this in; or a **coarse estimate from a preamble tone with the FFT chain of tutorial 1** can pre-set the NCO. Measuring this offset is the first experiment (chapter 4.0).
+* **Carrier frequency offset.** Each radio's LO comes from its own reference, typically a few ppm: at 915 MHz that is a couple of kHz per radio, so up to roughly +-4 kHz between them (0.4 % of the 960 ksym/s symbol rate). The FLL plus Costas loop must pull this in; or a **coarse estimate from a preamble tone with the FFT chain of tutorial 1** can pre-set the NCO. Measuring this offset is the first experiment (chapter 4.0): **done, both directions agree on 10.4 ppm = about 9.5 kHz at 915 MHz** (`tutorial/qpsk/link_up/RESULTS.md`).
 * **Sample-clock offset.** A few ppm of 960 ksym/s is a few symbols of slip per second: the symbol-timing loop is not optional, a preamble alone only works for packets short enough that the drift stays well under a sample.
 * **Latency is not a synchronisation problem** once there is a preamble, the receiver finds the packet by correlation. We still measure it (round trip P501 -> B210 -> P501) because it sets the turnaround time of any acknowledgement protocol.
 

@@ -26,3 +26,32 @@ same ppm offset: about 10 symbols of slip per second at 960 ksym/s.
 
 A second line at 617.7 kHz (25 dB over the floor) is present without any P501 transmission: a spur of the B210 or an outside signal,
 not ours; the tone search band is therefore limited to 440 - 560 kHz.
+
+---
+
+# The other direction: B210 -> P501
+
+Setup: antenna on the B210's **TX/RX** port (transmit) and one on RX2, antennas of both radios a few centimetres apart; B210 TX gain 0/10/20/30 dB (6 s on, 3 s off,
+tone +500 kHz, amplitude 0.5), P501 receive only with **RX gain index 70**, TX fully attenuated and DDS off. Scripts: `b210_tx_tone.py`, `p501_listen_tone.py`.
+
+What had to be fixed before the P501 heard anything:
+
+| finding | consequence |
+|---|---|
+| the B210's TX/RX port had no antenna (it was on RX2, receive only) | nothing was radiated: the antenna must be on TX/RX to transmit |
+| the B210 does transmit the tone (checked on its own RX2 antenna: 57 dB over the floor at TX gain 0, +10 dB per 10 dB of gain) | the B210 side is fine |
+| with RX gain index 45 the FFT floor of the P501 is exactly 0 dB (noise below one ADC count): weak signals vanish in quantisation | use RX gain 70 for weak-signal tests (the floor is then noise-limited, 12.7 dB median) |
+| the P501 hears its own tone through its antennas at TX attenuation 80 / 70 / 60 / 50 dB with 3 / 13 / 24 / 33 dB over the floor | the P501 receive path works |
+| antennas far apart: nothing at B210 TX gain 30 dB; antennas a few cm apart: the tone appears | the antenna-to-antenna path loss decides |
+
+Result with the antennas close:
+
+| B210 TX gain | tone at the P501 | SNR |
+|---|---|---|
+| 0, 10 dB | not seen | - |
+| 20 dB | 509.48 kHz, in 44 of 62 readings | about 14.5 dB in a 58 Hz bin (marginal, noise peaks reach about 14 dB) |
+| 30 dB | **509.4725 kHz**, std 3.3 Hz (68 readings) | **24 dB** in the raw 64k-point FFT; the **FPGA FFT chain** shows it in the 510 kHz bin, 5 dB over its floor |
+
+Offset: the tone arrives 9.473 kHz above the 500 kHz that was sent: **B210 LO - P501 LO = +9473 Hz = +10.35 ppm at 915 MHz.**
+The first test (P501 -> B210) gave -9510 Hz = -10.39 ppm: the same offset with the opposite sign, as it must be when the roles swap; the two
+measurements, minutes apart, agree to 37 Hz (0.04 ppm), of the order of the warm-up drift. **Both directions confirm that the two radios are about 10.4 ppm apart.**
