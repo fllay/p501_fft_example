@@ -5,8 +5,14 @@ import numpy as np
 from qpsk_b210_loop import tx_bits
 
 d = sys.argv[1] if len(sys.argv) > 1 else "/tmp/qpsk_run"
+pattern = sys.argv[2] if len(sys.argv) > 2 else "repeat8192"          # repeat8192: chapters 4a/4b; prbs15: the FPGA transmitter of chapter 4c
 fs = 3.84e6
-tx = tx_bits().astype(np.int8); P = len(tx)
+if pattern == "prbs15":
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "p501_tx")); from qpsk_model import prbs15_bits
+    tx = prbs15_bits(32767).astype(np.int8)
+else:
+    tx = tx_bits().astype(np.int8)
+P = len(tx)
 rx = np.fromfile(os.path.join(d, "rx_bits.u8"), dtype=np.uint8).astype(np.int8)
 print(f"received {len(rx)} bits ({len(rx)/1.92e6:.1f} s of the link)")
 raw = np.fromfile(os.path.join(d, "rx_raw.c64"), dtype=np.complex64)
@@ -25,12 +31,14 @@ ref_full = ref[(np.arange(len(rx)) - start) % P]
 err = (rx != ref_full).astype(np.int8)
 nerr = int(err.sum()); where = np.where(err)[0]
 print(f"alignment shift {shift} bits{' (inverted)' if inv else ''}; {nerr} bit errors in {len(err)} bits")
+blk = 20000; nb = len(err) // blk; per = err[:nb * blk].reshape(nb, blk).sum(axis=1)
+good = np.where(per <= blk // 1000)[0]                                           # blocks with at most 0.1 % errors
 if len(where) == 0:
     print("RESULT: error-free from the first bit; BER < %.1e" % (1.0 / len(err)))
-elif where[-1] < len(err) // 20:
-    print(f"RESULT: pull-in: the last error is at bit {int(where[-1])} ({where[-1] / 1.92e3:.2f} ms after the receiver start); then {len(err) - int(where[-1]) - 1} bits without any error (BER < {1.0 / (len(err) - where[-1]):.1e})")
+elif len(good) and good[0] * blk < len(err) // 5:
+    lb = int(good[0]) * blk; after = err[lb:]
+    print(f"RESULT: locked after {lb / 1.92e3:.0f} ms ({lb} bits, {int(err[:lb].sum())} errors during the pull-in); after lock: {int(after.sum())} errors in {len(after)} bits  ->  BER {after.sum() / len(after):.1e}" + ("" if after.sum() else f" (< {1.0 / len(after):.1e})"))
 else:
-    blk = 100000; nb = len(err) // blk; per = err[:nb * blk].reshape(nb, blk).sum(axis=1)
     print(f"RESULT: NOT LOCKED or slipping: BER over the whole recording {err.mean():.2e}; errors per {blk} bits: {per[:20].tolist()}")
 # block-by-block alignment: separates "never locked" (match about 0.5-0.75 at every block) from slips (match 1.0 with a changing alignment)
 nper = 24; B = nper * P; tl = []

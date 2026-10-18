@@ -1,0 +1,7 @@
+0.7
+2020.2
+May 22 2024
+18:54:44
+/home/pi/projects/p501_fft_example/rtl/qpsk_rrc_coef.v,1792316876,verilog,,/home/pi/projects/p501_fft_example/rtl/qpsk_tx.v,,qpsk_rrc_coef,,,,,,,,
+/home/pi/projects/p501_fft_example/rtl/qpsk_tx.v,1792316876,verilog,,/home/pi/projects/p501_fft_example/tutorial/qpsk/p501_tx/sim/tb_qpsk_tx.v,,qpsk_tx,,,,,,,,
+/home/pi/projects/p501_fft_example/tutorial/qpsk/p501_tx/sim/tb_qpsk_tx.v,1792316889,verilog,,,,tb,,,,,,,,
