@@ -1,6 +1,7 @@
 """P501 side of the B210 -> P501 test (run on the board as root, combined FFT+DDS overlay): brings the AD9361 up at 915 MHz with
 TX fully attenuated and the DDS off (receive only, RX gain index 70 for weak signals), waits for /tmp/go, then prints one JSON line
-per reading for 42 s: the strongest line 300-700 kHz from the LO, in the FPGA FFT chain (3.75 kHz bins) and in a 64k-point FFT of a raw capture.
+per reading for 42 s: the strongest line 300-700 kHz from the LO, in the FPGA FFT chain (3.75 kHz bins) and in a 64k-point FFT of a raw
+capture, plus the ADC peak value (the B210 script stops raising its gain when this nears 1500 of 2047).
 """
 import sys, time, os, json
 import numpy as np
@@ -34,5 +35,5 @@ while time.time() - tg < 42:
     m = 20 * np.log10(np.abs(np.fft.fftshift(np.fft.fft(x * win))) + 1e-9)
     j = int(np.argmax(np.where(band, m, -999))); p, q, r = m[j-1], m[j], m[j+1]; d = p - 2*q + r
     f = fr[j] + (0.5 * (p - r) / d if d else 0) * (FS / N)
-    print(json.dumps({"t": round(t, 3), "hw_khz": hw[0] / 1e3, "hw_snr": hw[1], "raw_khz": f / 1e3, "raw_snr": float(q - np.median(m))}), flush=True)
+    print(json.dumps({"t": round(t, 3), "hw_khz": hw[0] / 1e3, "hw_snr": hw[1], "raw_khz": f / 1e3, "raw_snr": float(q - np.median(m)), "adc_peak": int(np.max(np.abs(a)))}), flush=True)
 print("DONE", flush=True)

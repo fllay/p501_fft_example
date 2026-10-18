@@ -55,3 +55,18 @@ Result with the antennas close:
 Offset: the tone arrives 9.473 kHz above the 500 kHz that was sent: **B210 LO - P501 LO = +9473 Hz = +10.35 ppm at 915 MHz.**
 The first test (P501 -> B210) gave -9510 Hz = -10.39 ppm: the same offset with the opposite sign, as it must be when the roles swap; the two
 measurements, minutes apart, agree to 37 Hz (0.04 ppm), of the order of the warm-up drift. **Both directions confirm that the two radios are about 10.4 ppm apart.**
+
+## B210 TX gain up to 60 dB (antennas a few centimetres apart)
+
+Steps of 5 s with 3 s of silence, P501 RX gain index 70, the P501 ADC peak monitored (full scale 2047; the script stops raising the gain above 1500).
+
+| B210 TX gain | FPGA FFT chain (bin / SNR) | raw 64k FFT: tone (kHz) | std (Hz) | SNR (dB) | P501 ADC peak |
+|---|---|---|---|---|---|
+| 30 dB | 510.0 kHz / 6.2 dB | 509.4684 | 3.3 | 24.7 | 37 |
+| 40 dB | 510.0 kHz / 15.2 dB | 509.4683 | 1.0 | 34.6 | 37 |
+| 50 dB | 510.0 kHz / 25.2 dB | 509.4680 | 0.4 | 44.9 | 41 |
+| 60 dB | 510.0 kHz / 35.1 dB | 509.4676 | 0.3 | 54.9 | 53 |
+
+The level rises by exactly 10 dB per 10 dB of gain in both receivers (the FPGA chain and the raw capture), the receiver is nowhere near clipping (peak 53 of 2047
+at 60 dB), and the frequency estimate gets better with the SNR (std 0.3 Hz). Offset: **B210 LO - P501 LO = +9468 Hz = +10.35 ppm** at 915 MHz, the same as at 30 dB and
+as the P501 -> B210 measurement (-9510 Hz). Between the first and the last step, 24 s apart, the tone moved by 0.8 Hz.
