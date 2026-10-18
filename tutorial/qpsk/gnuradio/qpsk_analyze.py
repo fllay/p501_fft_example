@@ -10,8 +10,9 @@ tx = tx_bits().astype(np.int8); P = len(tx)
 rx = np.fromfile(os.path.join(d, "rx_bits.u8"), dtype=np.uint8).astype(np.int8)
 print(f"received {len(rx)} bits ({len(rx)/1.92e6:.1f} s of the link)")
 raw = np.fromfile(os.path.join(d, "rx_raw.c64"), dtype=np.complex64)
-txr = np.fromfile(os.path.join(d, "tx_raw.c64"), dtype=np.complex64)
-print(f"TX samples: rms {np.sqrt(np.mean(np.abs(txr)**2)):.3f}, peak {np.max(np.abs(txr)):.3f} (full scale 1.0) | RX samples: rms {np.sqrt(np.mean(np.abs(raw)**2)):.3f}, peak {np.max(np.abs(raw)):.3f} (clipping at 1.0)")
+txf = os.path.join(d, "tx_raw.c64")
+txr = np.fromfile(txf, dtype=np.complex64) if os.path.exists(txf) else None
+print((f"TX samples: rms {np.sqrt(np.mean(np.abs(txr)**2)):.3f}, peak {np.max(np.abs(txr)):.3f} (full scale 1.0) | " if txr is not None else "") + f"RX samples: rms {np.sqrt(np.mean(np.abs(raw)**2)):.4f}, peak {np.max(np.abs(raw)):.4f} (clipping at 1.0)")
 # bit error rate: align with the repeating pattern by circular cross-correlation (on a stretch after the loops have locked), then count over the whole recording
 start = int(0.35 * len(rx)) if len(rx) > 4_000_000 else 40000
 seg = rx[start:start + (min(len(rx) - start, 2_000_000) // P) * P]

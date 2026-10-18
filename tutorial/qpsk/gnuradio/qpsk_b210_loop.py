@@ -34,47 +34,62 @@ class Tx(gr.top_block):
         f = lambda n: os.path.join(a.out, n)
 
         # ---- transmitter ----
-        src = blocks.vector_source_b(np.packbits(tx_bits()).tolist(), True)        # generic_mod takes PACKED bytes (8 bits per byte)
-        mod = digital.generic_mod(const, differential=True, samples_per_symbol=sps, pre_diff_code=True, excess_bw=bw)
+        if getattr(a, "signal", "qpsk") == "twotone":                          # two pure tones at +-1.5 MHz: measures the sample-clock offset between two radios
+            t1 = analog.sig_source_c(fs, analog.GR_COS_WAVE, 1.5e6, 1.0, 0); t2 = analog.sig_source_c(fs, analog.GR_COS_WAVE, -1.5e6, 1.0, 0)
+            add = blocks.add_cc(); self.connect(t1, (add, 0)); self.connect(t2, (add, 1)); src, mod = add, blocks.multiply_const_cc(1.0)
+            self.connect(src, mod)
+        else:
+            src = blocks.vector_source_b(np.packbits(tx_bits()).tolist(), True)        # generic_mod takes PACKED bytes (8 bits per byte)
+            mod = digital.generic_mod(const, differential=True, samples_per_symbol=sps, pre_diff_code=True, excess_bw=bw)
+            self.connect(src, mod)
         amp = blocks.multiply_const_cc(a.tx_amp)
         sink = uhd.usrp_sink(a.dev_args, uhd.stream_args(cpu_format="fc32", args="", channels=[0]), "")
         sink.set_samp_rate(fs); sink.set_center_freq(uhd.tune_request(a.freq), 0); sink.set_gain(a.tx_gain, 0); sink.set_antenna("TX/RX", 0)
-        self.connect(src, mod, amp, sink)
+        self.connect(mod, amp, sink)
         # taps for the analysis use keep_m_in_n (a block that never finishes: a finished `head` on a branch would stall the whole stream)
         self.connect(amp, blocks.keep_m_in_n(gr.sizeof_gr_complex, 65536, int(fs), 0), blocks.file_sink(gr.sizeof_gr_complex, f("tx_raw.c64")))
 
 
 
+def connect_rx_chain(tb, src, a):
+    """The receiver chain of chapter 4a on any complex source block (the B210 live, or a file): AGC -> FLL band-edge -> polyphase clock sync
+    -> Costas loop (order 4) -> constellation decoder -> differential decoder -> symbol map -> unpack to bits, plus the taps for the analysis
+    (all of them in a.out). Returns nothing."""
+    fs, sps, bw = a.samp_rate, a.sps, a.excess_bw
+    const = digital.constellation_dqpsk().base(); arity, nfilts = 4, 32
+    f = lambda n: os.path.join(a.out, n)
+    per = float(getattr(a, 'tap_every_s', 1.0))                              # the analysis taps keep a short piece every `per` seconds
+    agc = analog.agc2_cc(0.6e-1, 1e-3, 1, 1)
+    fll = digital.fll_band_edge_cc(sps, bw, 55, a.freq_bw)
+    taps = filter.firdes.root_raised_cosine(nfilts, nfilts * sps, 1.0, bw, 11 * int(sps * nfilts))
+    clk = digital.pfb_clock_sync_ccf(sps, a.timing_bw, taps, nfilts, nfilts // 2, a.max_rate_dev)
+    costas = digital.costas_loop_cc(a.phase_bw, 4, False)             # carrier phase / fine frequency loop (order 4 for QPSK)
+    dec = digital.constellation_decoder_cb(const)                       # nearest constellation point
+    dif = digital.diff_decoder_bb(arity)
+    mapper = digital.map_bb(mod_codes.invert_code(const.pre_diff_code()))        # undoes the pre-differential (Gray-like) code of the DQPSK constellation
+    unp = blocks.unpack_k_bits_bb(2)
+    bits = blocks.file_sink(gr.sizeof_char, f("rx_bits.u8"))
+    tb.connect(src, agc, fll, clk, costas, dec, dif, mapper, unp, bits)
+    # taps for the analysis (keep_m_in_n / keep_one_in_n never finish: a finished `head` on a branch would stall the whole stream)
+    tb.connect(src, blocks.keep_m_in_n(gr.sizeof_gr_complex, 65536, int(fs * per), 0), blocks.file_sink(gr.sizeof_gr_complex, f("rx_raw.c64")))
+    # the FLL writes its outputs 1..3 (frequency, phase, error) only if all four outputs are connected; the clock sync likewise (rate, phase, error)
+    tb.connect((fll, 1), blocks.keep_one_in_n(gr.sizeof_float, 1000), blocks.file_sink(gr.sizeof_float, f("fll_freq.f32")))            # every 1000th sample
+    tb.connect((fll, 2), blocks.null_sink(gr.sizeof_float)); tb.connect((fll, 3), blocks.null_sink(gr.sizeof_float))
+    tb.connect((clk, 1), blocks.keep_one_in_n(gr.sizeof_float, 100), blocks.file_sink(gr.sizeof_float, f("clk_rate.f32")))             # every 100th symbol
+    tb.connect((clk, 2), blocks.keep_one_in_n(gr.sizeof_float, 100), blocks.file_sink(gr.sizeof_float, f("clk_phase.f32")))
+    tb.connect((clk, 3), blocks.null_sink(gr.sizeof_float))
+    tb.connect((clk, 0), blocks.keep_m_in_n(gr.sizeof_gr_complex, 4000, int(fs / sps * per), 0), blocks.file_sink(gr.sizeof_gr_complex, f("sym_after_clock.c64")))
+    tb.connect(costas, blocks.keep_m_in_n(gr.sizeof_gr_complex, 4000, int(fs / sps * per), 0), blocks.file_sink(gr.sizeof_gr_complex, f("sym_after_costas.c64")))
+
+
 class Rx(gr.top_block):
     def __init__(self, a):
         gr.top_block.__init__(self, "qpsk_rx")
-        fs, sps, bw = a.samp_rate, a.sps, a.excess_bw
-        const = digital.constellation_dqpsk().base(); arity, nfilts = 4, 32
-        f = lambda n: os.path.join(a.out, n)
         usrp = uhd.usrp_source(a.dev_args, uhd.stream_args(cpu_format="fc32", args="", channels=[0]))
-        usrp.set_samp_rate(fs); usrp.set_center_freq(uhd.tune_request(a.freq + a.rx_offset_hz), 0); usrp.set_gain(a.rx_gain, 0); usrp.set_antenna("RX2", 0)
-        agc = analog.agc2_cc(0.6e-1, 1e-3, 1, 1)
-        fll = digital.fll_band_edge_cc(sps, bw, 55, a.freq_bw)
-        taps = filter.firdes.root_raised_cosine(nfilts, nfilts * sps, 1.0, bw, 11 * int(sps * nfilts))
-        clk = digital.pfb_clock_sync_ccf(sps, a.timing_bw, taps, nfilts, nfilts // 2, a.max_rate_dev)
-        costas = digital.costas_loop_cc(a.phase_bw, 4, False)             # carrier phase / fine frequency loop (order 4 for QPSK)
-        dec = digital.constellation_decoder_cb(const)                       # nearest constellation point
-        dif = digital.diff_decoder_bb(arity)
-        mapper = digital.map_bb(mod_codes.invert_code(const.pre_diff_code()))        # undoes the pre-differential (Gray-like) code of the DQPSK constellation
-        unp = blocks.unpack_k_bits_bb(2)
-        bits = blocks.file_sink(gr.sizeof_char, f("rx_bits.u8"))
-        self.connect(usrp, agc, fll, clk, costas, dec, dif, mapper, unp, bits)
+        usrp.set_samp_rate(a.samp_rate); usrp.set_center_freq(uhd.tune_request(a.freq + a.rx_offset_hz), 0); usrp.set_gain(a.rx_gain, 0); usrp.set_antenna("RX2", 0)
+        connect_rx_chain(self, usrp, a)
         if a.save_raw:                                                                    # the whole received stream (about 31 MB per second): for offline replays
-            self.connect(usrp, blocks.file_sink(gr.sizeof_gr_complex, f("rx_full.c64")))
-        # taps for the analysis
-        if a.save_raw:                                                                    # the whole received stream (about 31 MB per second): for offline replays
-            self.connect(usrp, blocks.file_sink(gr.sizeof_gr_complex, f("rx_full.c64")))
-        self.connect(usrp, blocks.keep_m_in_n(gr.sizeof_gr_complex, 65536, int(fs), 0), blocks.file_sink(gr.sizeof_gr_complex, f("rx_raw.c64")))
-        # the FLL writes its outputs 1..3 (frequency, phase, error) only if all four outputs are connected
-        self.connect((fll, 1), blocks.keep_one_in_n(gr.sizeof_float, 1000), blocks.file_sink(gr.sizeof_float, f("fll_freq.f32")))            # every 1000th sample
-        self.connect((fll, 2), blocks.null_sink(gr.sizeof_float)); self.connect((fll, 3), blocks.null_sink(gr.sizeof_float))
-        self.connect(clk, blocks.keep_m_in_n(gr.sizeof_gr_complex, 4000, int(fs / sps), 0), blocks.file_sink(gr.sizeof_gr_complex, f("sym_after_clock.c64")))
-        self.connect(costas, blocks.keep_m_in_n(gr.sizeof_gr_complex, 4000, int(fs / sps), 0), blocks.file_sink(gr.sizeof_gr_complex, f("sym_after_costas.c64")))
+            self.connect(usrp, blocks.file_sink(gr.sizeof_gr_complex, os.path.join(a.out, "rx_full.c64")))
 
 
 if __name__ == "__main__":
