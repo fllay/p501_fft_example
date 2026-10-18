@@ -11,8 +11,9 @@ Status: **plan only**, nothing of this is built yet. Same method as tutorials 1-
 
 * **GNU Radio is the golden reference on the other end.** The B210 is an AD9361 radio too (70 MHz - 6 GHz), driven by GNU Radio's standard blocks. We do not have to trust our own receiver to test our own transmitter, and the other way round.
 * **Two radios, two independent clocks.** This is the real situation, and it changes the synchronisation problem (next section): there *is* a carrier frequency offset and a sample-clock drift, and the receivers need their loops.
+* **Host setup (done):** GNU Radio 3.10.12 and UHD 4.8.0 from **radioconda** in `~/radioconda` (use `source tools/gnuradio_env.sh`), the B210 (serial 3275461, "MyB210") on the USB 3 root port `Bus 04`. UHD uses the images of the system UHD in `/usr/local/share/uhd/images`; it reports *Operating over USB 3*, FPGA 16.0, and streams 3.84 MSPS (master clock 61.44 MHz) without overruns. The clock source is the internal TCXO (no GPSDO), so the offset to the P501 will be a real, uncorrected one.
 * **Cable, not antennas**, with at least 30-40 dB of attenuators and the lowest TX gain first: check the maximum output of one radio against the maximum input of the other before connecting anything. A cable also keeps the link clean for measuring.
-* Common settings: LO e.g. 915 MHz (tested on the P501), sample rate 3.84 MSPS on both (B210: master clock 30.72 MHz and decimation/interpolation 8), 4 samples per symbol, RRC roll-off 0.35.
+* Common settings: LO e.g. 915 MHz (tested on the P501), sample rate 3.84 MSPS on both (B210: UHD picks the master clock, 61.44 MHz with decimation 16 was measured), 4 samples per symbol, RRC roll-off 0.35.
 * Connection to the host for data: first **files** (a capture from the P501 as `complex64`, a bit file for its transmitter), later a **stream** over the P501's Ethernet (15 MB/s for 3.84 MSPS of 16-bit I/Q is small for gigabit; ZeroMQ or UDP).
 
 ## What has to be synchronised
