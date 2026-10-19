@@ -11,7 +11,7 @@ frequency and phase). Python only starts and stops it, sets the loop gains, and 
 
 | part | content |
 |---|---|
-| **A** | the concepts: what is sent, what the receiver has to recover, and why the FPGA design looks the way it does |
+| **A** | the concepts: what is sent, what the receiver has to recover, and why the FPGA design looks the way it does; **A.5: functional block diagrams** (what every block does and why it is needed) |
 | **B** | the transmitter: block diagram, and every block with its Verilog |
 | **C** | the receiver: block diagram, and every block with its Verilog |
 | **D** | integration into the block design, the register interface, and the verification method (model, simulation, hardware) |
@@ -116,11 +116,101 @@ The loop gains are proportional to the *square of the symbol amplitude* (the det
 | **A capture RAM of 1024 soft symbols.** | the constellation can be looked at without a DMA: one read of 1024 words. |
 | **The loops report what they measured** (`OMEGA`, `RATE` registers). | the receiver is also a measuring instrument for the carrier offset and sample-clock offset. |
 
+## A.5 Functional block diagrams: what every block does, and why it is needed
+
+Parts B and C show the *implementation*: the Verilog, state by state. This section shows the *function*: the same blocks drawn as a communications engineer thinks of them, each with the reason it exists. Every block is there because of one thing that goes wrong on a real link.
+
+### A.5.1 The link, and what goes wrong in it
+
+![The link and the problems in it](img/qpsk_func_link.png)
+
+| what goes wrong | size in our link | the block that fixes it |
+|---|---|---|
+| the ADC has a finite step (12 bit) | the received signal is a few tens of counts rms: the RX gain must put it well above one step | RF/ADC gain setting (RX gain index) |
+| the level is unknown | changes by tens of dB with distance and gains | **AGC** |
+| noise, and an unknown sampling instant that also drifts | the transmitter's sample clock differs from ours by **10.4 ppm**: the best instant moves by one sample in about 24,000 symbols | **matched filter** (best SNR) and **timing loop** |
+| the carrier is not at the frequency we expect, and its phase is unknown | the two crystals differ by **10.4 ppm of 915 MHz = +9.7 kHz** = 3.6 degrees of rotation per symbol | **Costas loop** |
+| after the loop has locked, the constellation may sit rotated by 0, 90, 180 or 270 degrees | the loop cannot tell | **differential encoding** at the transmitter, **differential decoding** at the receiver |
+
+The rest of the design follows from this table. A transmitter has little to do (it knows everything); the receiver is a chain of loops, each removing one unknown, in an order that matters (A.5.3).
+
+### A.5.2 The transmitter, block by block
+
+![Transmitter, functional blocks](img/qpsk_func_tx.png)
+
+The rates along the chain: **1.92 Mbit/s** of data -> **960 ksym/s** (two bits per symbol) -> **3.84 MSPS** (four samples per symbol after the pulse shaping) -> a 3.84 MSPS complex stream to the AD9361, which converts it to a signal around 915.0 MHz about **1.3 MHz wide** (960 kHz x 1.35).
+Blocks 1 to 4 work at the symbol rate and need only a handful of gates: they are *bookkeeping*. Block 5 is the only one that works at the sample rate, and because the symbols are +-1 it needs additions, not multiplications (B.5).
+
+### A.5.3 The receiver, block by block
+
+![Receiver, functional blocks](img/qpsk_func_rx.png)
+
+**Why this order.**
+* **AGC first**, because the gains of both loops depend on the signal amplitude (the detectors multiply amplitudes: the gain goes with the square).
+* **The matched filter before everything else at the symbol rate**: it gives the best SNR, and the timing and phase detectors work on its output.
+* **Timing before carrier**: the timing detector `e = Re{ y x conj(y') }` is a product of the filter output and its own derivative, so a rotation of the constellation cancels out of it (both rotate together; even a steady rotation only adds a term `j x omega x |y|^2` whose real part is zero). It works while the carrier loop has not locked yet.
+  The Costas loop, on the other hand, needs one sample per symbol at the *right instant*, which only the timing loop delivers.
+* **Carrier recovery before the decision**, and the **differential decoder after it**: the decision needs an un-rotated constellation; the decoder turns the 4-fold ambiguity into nothing.
+* The **checker** sits at the end because it only looks at bits.
+
+### A.5.4 Symbol timing in pictures
+
+![Timing recovery: eye diagram and S-curve](img/qpsk_func_timing.png)
+
+*Left, the eye diagram.* If the received pulses are laid on top of each other, a gap opens where every trace passes through +1 or -1: that is the instant to sample, and the matched filter was designed to leave no inter-symbol interference there. Early or late, the traces scatter: noise and neighbouring symbols leak into the decision.
+The transmitter and the receiver have independent crystals, so *that instant moves*: by 10.4 ppm, one symbol of drift every 100,000 symbols, which is why the sampling instant cannot be fixed once and for all.
+
+*Right, how the loop knows.* A **derivative filter** (a second FIR next to the matched filter) gives the slope y' of the output. Before the peak y and y' have the same sign, after the peak opposite signs, at the peak y' = 0.
+The product `e = y x y'` is therefore positive when we sample **early** and negative when we sample **late**, whatever the sign of the symbol (a negative symbol has a negative peak and a negative rising slope: the same product). Averaged over the data, `e` is the S-curve of the plot: **zero exactly at the right instant**, with the sign that pushes towards it on both sides: negative feedback.
+The loop filter turns `e` into the position: the *integral* path learns the clock offset (the `RATE` register: +10 ppm here), the *proportional* path follows the jitter. The position has a fractional part, which is why the filter exists in 16 versions ("arms") of 1/16 sample.
+
+### A.5.5 The Costas loop in pictures
+
+![The Costas loop](img/qpsk_func_costas.png)
+
+*Left, the loop.* The matched-filter output `m` is rotated back by the NCO's angle `theta` (**derotate**: `z = m x e^(-j theta)`); the **slicer** takes the nearest of the four points; the **phase detector** measures the angle left between `z` and that point, `e = sgn(zi) zq - sgn(zq) zi`
+(about `|z| x sqrt(2) x sin(error)`, positive for a positive error); the **loop filter** adds a proportional term (`alpha x e`, follows the phase) and an integral term (`beta x e` accumulated into `omega`, learns the frequency); the **NCO** produces the next `theta`. A rotation of 3.6 degrees per symbol (9.7 kHz) is a constant frequency error:
+the integrator settles on it, and `omega` *is* the carrier offset that the receiver reports.
+
+*Right, the detector.* The curve shows `e` against the rotation of the constellation: it is zero at 0, 90, 180 and 270 degrees, and each is a stable point (the slope pushes back). **The loop cannot tell them apart**: any of the four is a perfect lock. That is the 4-fold ambiguity, and the reason for the differential code. An example (chunks c = 1, 3, 0, 2):
+
+| step | 1 | 2 | 3 | 4 | how it was obtained |
+|---|---|---|---|---|---|
+| data chunk c | 1 | 3 | 0 | 2 | the data |
+| pre-differential map p | 1 | 2 | 0 | 3 | `[0,1,3,2]` |
+| transmitted point d | 1 | 3 | 3 | 2 | `d = d + p (mod 4)` |
+| received point, constellation locked **+90 degrees off** | 2 | 0 | 0 | 3 | every point moves by +1 |
+| receiver: `dd = d' - d'(previous)` | - | 2 | 0 | 3 | the +1 cancels in the difference |
+| after the map `[0,1,3,2]` again | - | 3 | 0 | 2 | **the data again** (chunks 2 to 4) |
+
+The only price: one symbol error disturbs two differences, so errors come in pairs (about 2 dB at the same BER).
+
+**Pull-in.** The loop can only pull in a frequency error of about `960 kHz / N` for a loop bandwidth of `2 pi / N` (9.6 kHz for N = 100): the B210's +9.7 kHz is at the edge, which is why the notebook's `acquire()` tries frequency hints (E.3) and why GNU Radio's receiver has a separate FLL in front of its Costas loop.
+
+### A.5.6 From the functional blocks to the Verilog
+
+| functional block | why (short) | Verilog | what the Verilog looks like |
+|---|---|---|---|
+| TX 1 test bits | countable errors | B.2 | 15-bit LFSR, two steps per symbol |
+| TX 2 to 4 pairs, map, differential encoder, mapper | 2 bits/symbol, Gray-like, rotation-proof | B.2 | a 2-bit adder and two sign bits |
+| TX 5 pulse shaping | 1.3 MHz band, no ISI | B.4, B.5 | ROM of 12 taps per phase + 12 adders/subtractors |
+| TX 6 scale and DAC | level | B.6 | one multiplier per axis, pipeline register |
+| RX 1 samples and RAM | two clocks | C.3 | dual-clock RAM + Gray-coded counter |
+| RX 2 AGC | known amplitude | C.5 (S0 to S3) | multiply by `g`, a level estimate, `g += MU x error` |
+| RX 3 matched filter + timing loop | best SNR, right instant | C.4, C.6 (MAC, S2 to S4) | 4 DSP multiplies reused 44 times, rate and position update |
+| RX 4 Costas loop | carrier offset and phase | C.7, C.8 (S5 to S8) | 1024-entry sine/cosine table, 4 multiplies, two accumulators |
+| RX 5 decision + differential decoder | bits | C.9 (S6) | signs, a 2-bit subtraction, the map |
+| RX 6 checker, counters, capture RAM | measure without software | C.10, C.11 | 15-bit predictor, counters, 1024-word RAM |
+
+The Verilog diagrams in B and C show the same blocks as hardware: registers, ROMs, DSP slices, the state machine.
+
 ---
 
 # Part B. The transmitter (`rtl/qpsk_tx.v`)
 
 ![Transmitter block diagram](img/qpsk_block_tx.png)
+
+*This is the implementation view; what each block does and why it is needed is in A.5.2.*
 
 The transmitter replaces the DAC DMA path for TX1, exactly as the DDS of tutorial 2 does: its outputs go to `dac_data_i0` / `dac_data_q0` of `axi_ad9361`, and its sample clock enable is `dac_valid_i0`.
 Everything below happens only on a `ce`; between the `ce`s the module holds its state.
@@ -210,6 +300,8 @@ software waits for `STATUS` bit 0 (`applied`). If the AD9361 clock is not runnin
 # Part C. The receiver (`rtl/qpsk_rx.v`)
 
 ![Receiver block diagram](img/qpsk_block_rx.png)
+
+*This is the implementation view; what each block does and why it is needed is in A.5.3 to A.5.5.*
 
 The receiver is a **small processor with a fixed program**: one *engine* that, for every symbol, runs a sequence of states (`ST_WAIT`, `ST_MAC`, `S0`..`S9`). Each state is one clock cycle at 100 MHz; the DSP products are
 formed combinationally in a state and registered at its end. The numbers in every line come from the integer model `qpsk_rx_fixed.py`, which is why that file is the best way to read this one.
