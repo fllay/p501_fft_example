@@ -11,7 +11,7 @@ frequency and phase). Python only starts and stops it, sets the loop gains, and 
 
 | part | content |
 |---|---|
-| **A** | the concepts: what is sent, what the receiver has to recover, and why the FPGA design looks the way it does; **A.5: functional block diagrams** (what every block does and why it is needed) |
+| **A** | the concepts: what is sent, what the receiver has to recover, and why the FPGA design looks the way it does; **A.5: functional block diagrams** (what every block does and why it is needed); **A.6: the GNU Radio flowgraph blocks side by side with the Verilog** |
 | **B** | the transmitter: block diagram, and every block with its Verilog |
 | **C** | the receiver: block diagram, and every block with its Verilog |
 | **D** | integration into the block design, the register interface, and the verification method (model, simulation, hardware) |
@@ -203,6 +203,47 @@ The only price: one symbol error disturbs two differences, so errors come in pai
 | RX 6 checker, counters, capture RAM | measure without software | C.10, C.11 | 15-bit predictor, counters, 1024-word RAM |
 
 The Verilog diagrams in B and C show the same blocks as hardware: registers, ROMs, DSP slices, the state machine.
+
+## A.6 The GNU Radio flowgraphs and the Verilog, side by side
+
+The B210 side of the tests is two GNU Radio flowgraphs (`qpsk_b210_tx.grc`, `qpsk_b210_rx.grc`, E.13). They contain the same functions as the FPGA, built from GNU Radio's stock blocks. If you know one side, the other follows: each row below pairs a block **as it is named in Companion** with the Verilog that does the same job.
+(Blue = a stock GNU Radio block, yellow = an embedded Python block, orange = the B210 radio, grey = a viewer. On the right: the colours of the Verilog diagrams in B and C.)
+
+![Transmitter: GNU Radio blocks and Verilog](img/qpsk_func_vs_grc_tx.png)
+
+The transmitter's `digital_constellation_modulator` is one block in Companion, but it is a *hierarchical* block (`generic_mod`) made of the five blocks inside the frame: bits to chunks, the pre-differential map, the differential encoder, the symbol mapper and the RRC pulse shaper.
+In `qpsk_tx.v` the same five steps are a few lines each (B.2), and the pulse shaper is the ROM plus twelve adders (B.4, B.5).
+
+![Receiver, front half: GNU Radio blocks and Verilog](img/qpsk_func_vs_grc_rx1.png)
+
+![Receiver, back half: GNU Radio blocks and Verilog](img/qpsk_func_vs_grc_rx2.png)
+
+**The knobs, side by side.** The same experiment can be done on either end; this is how the controls correspond:
+
+| GNU Radio flowgraph | what it sets | the P501 notebook | what it sets |
+|---|---|---|---|
+| `tx_on` (Transmit ON/OFF) | `multiply_const` = `tx_amp x tx_on` | *P501 transmits* | `enable` of `qpsk_regs` |
+| `tx_amp` | `multiply_const` | *TX amplitude* | `amp` of `qpsk_regs` (Q15) |
+| `tx_gain` (UHD gain, 0 to 80 dB) | the B210's TX gain | *TX atten* (89.75 to 20 dB) | the AD9361's TX attenuation (`p501_radio`) |
+| `rx_gain` (UHD gain) | the B210's RX gain | *RX gain* (index 0 to 76) | the AD9361's RX gain index |
+| `bw_div` = N: `w = 2 pi / N` into the FLL, `pfb_clock_sync` (`loop_bw`) and `costas_loop_cc` | the three loop bandwidths | *Live loop N* | the four gain registers TA, TB, CA, CB (the same formulas, `regs_from_bw`) |
+| BER box (`epy_block` + `qtgui_number_sink`) | bit errors / bits | the picture's *BER estimate*, `MISMATCH / 3 / BITS` | the FPGA's checker counters |
+| `qtgui_const_sink_x` | 1024 symbols after the Costas loop | the live constellation | the capture RAM (`rx.capture()`) |
+
+**What is different, and why.**
+
+| | GNU Radio | FPGA | why |
+|---|---|---|---|
+| structure | one block per function, each running continuously on the PC | one engine that runs a short program once per symbol (S0 to S9), sharing 4 multipliers | the symbol rate is 100 times slower than the clock |
+| arithmetic | 32-bit floating point | integers with chosen widths, shifts and clips (C.1), rounded integrators (F.3) | DSP slices, and bit-exact checking against the model |
+| polyphase arms | 32 (`filter_size`), the derivative bank included | 16 arms of 44 taps, only the arm selected by the timing loop is computed per symbol | 1/16 of a sample is enough resolution; 4 multipliers instead of 32 filters |
+| coarse frequency | `digital_fll_band_edge_cc` in front of the clock sync | none: the Costas loop pulls in, helped by `W0` and `acquire()` | an FLL costs a band-edge filter pair; `acquire()` costs a few lines of Python |
+| protection against bursts | the limiter (`rail_ff`) | saturating arithmetic (`clip16`, `clip24`) | fixed-point saturates by itself |
+| loop gains | `loop_bw`, `w` (floating point) | registers TA, TB, CA, CB, written from Python | live adjustable, no re-synthesis |
+| bit error counting | Python block (`epy_block`) on the PC | 15-bit predictor and counters in the FPGA | no bit leaves the FPGA, at 1.92 Mbit/s |
+| signal level after the AGC | reference 1.0: the symbols come out with |z| of about 1.03 | reference `REF` = 16384, a level estimate of 2.0 (8192 = 1.0): the decision points sit near 1.24 on each axis, |z| about 1.75 | the loop-gain registers are scaled for this level, which is why `REF` matters (A.3, C.1) |
+
+One flowgraph detail worth knowing: GNU Radio's `pfb_clock_sync_ccf` is the same *kind* of block as the FPGA's timing section, and the two behave alike on the same signals; the difference that bit us was not in the algorithm but in the surroundings: the GNU Radio block stalls the whole flowgraph if a burst reaches it, which the limiter prevents (E.13), where the fixed-point FPGA just saturates.
 
 ---
 

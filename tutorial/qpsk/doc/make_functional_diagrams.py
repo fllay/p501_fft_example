@@ -190,5 +190,82 @@ def costas():
     fig.savefig(os.path.join(OUT, "qpsk_func_costas.png"), dpi=130, bbox_inches="tight"); plt.close(fig)
 
 
+# ------------------------------------------------------------------ 6. GNU Radio blocks side by side with the Verilog
+GRC_C, GRC_PY, GRC_UHD, V_LOGIC, V_DSP, V_MEM, V_CTL = "#d6e4ff", "#fff2c2", "#ffe0b3", "#dbe9f7", "#d9f0d3", "#fde9c9", "#f6d9e4"
+
+
+def pair(ax, y, h, gname, gsub, gcol, mid, vtext, vcol, gx=2, gw=70, vx=96, vw=67):
+    """One row: the GNU Radio block (as it is named in Companion) on the left, the Verilog that does the same job on the right."""
+    rbox(ax, gx, y, gw, h, gcol, r=1.2); rbox(ax, vx, y, vw, h, vcol, r=1.2)
+    ax.text(gx + 1.4, y + h - 1.5, gname, fontsize=8.3, fontweight="bold", va="top", zorder=3)
+    ax.text(gx + 1.4, y + h - 5.0 - 3.4 * gname.count("\n"), gsub, fontsize=6.9, va="top", color="#333", family="monospace", zorder=3, linespacing=1.35)
+    ax.text((gx + gw + vx) / 2, y + h / 2, mid, fontsize=7.2, ha="center", va="center", color=WHY_C, zorder=4, linespacing=1.25, bbox=dict(fc="white", ec="none", pad=1.5))
+    ax.annotate("", xy=(vx, y + h / 2), xytext=(gx + gw, y + h / 2), arrowprops=dict(arrowstyle="<->", color="#8a97a6", lw=1.0), zorder=1)
+    ax.text(vx + 1.4, y + h / 2, vtext, fontsize=7.1, va="center", family="monospace", zorder=3, linespacing=1.4)
+
+
+def grc_header(ax, ytop, left, right):
+    ax.text(2 + 35, ytop, left, fontsize=9.5, fontweight="bold", ha="center", color="#27456f")
+    ax.text(96 + 33.5, ytop, right, fontsize=9.5, fontweight="bold", ha="center", color="#27456f")
+
+
+def grc_tx():
+    h = 12.0; gap = 2.4; band = 8.0; H = 14 + 8 * (h + gap) + band + 3
+    fig, ax = canvas(165, H)
+    ax.text(82.5, H - 3, "Transmitter: the blocks of qpsk_b210_tx.grc (GNU Radio) and the Verilog of qpsk_tx.v that does the same job", fontsize=10.5, fontweight="bold", ha="center")
+    grc_header(ax, H - 8.5, "GNU Radio Companion block (qpsk_b210_tx.grc)", "FPGA: Verilog (qpsk_tx.v, p501_qpsk.py)")
+    rows = [
+        ("epy_block  \"PRBS-15 bytes\"", "embedded Python source block\n32767 packed bytes (8 periods), repeating", GRC_PY, "test bits", "lfsr, l1, l2  (15-bit LFSR,\nx^15 + x^14 + 1, two steps per symbol)", V_LOGIC),
+        ("digital_constellation_modulator", "= generic_mod, a hierarchical block of the 5 below", GRC_C, "", "", None),
+        ("  blocks.packed_to_unpacked_bb", "bits_per_symbol = 2, MSB first", GRC_C, "2 bits\nper symbol", "c = {lfsr[14], l1[14]}   (first bit = MSB)", V_LOGIC),
+        ("  digital.map_bb  [0, 1, 3, 2]", "the pre-differential code", GRC_C, "pre-diff map", "p = (c == 2) ? 3 : (c == 3) ? 2 : c", V_LOGIC),
+        ("  digital.diff_encoder_bb  (4)", "differential encoder, modulus 4", GRC_C, "differential\nencoder", "dn = d + p;   d <= dn   (2-bit adder: the\nwrap-around of 2 bits is the modulo 4)", V_LOGIC),
+        ("  digital.chunks_to_symbols_bc", "constellation_dqpsk points", GRC_C, "symbol\nmapper", "ni = dn[1] ^ dn[0],  nq = dn[1]  -> hist_i, hist_q\n(sign of the last 12 symbols)", V_MEM),
+        ("  filter.pfb_arb_resampler_ccf", "sps = 4, RRC 0.35, 32 arms, 11 symbols", GRC_C, "pulse shaping\nx4 samples", "qpsk_rrc_coef ROM: 4 phases x 12 taps (ph);\nsum_i, sum_q = 12 adders / subtractors", V_DSP),
+        ("blocks_multiply_const_vxx", "const = tx_amp * tx_on", GRC_C, "level,\non / off", "prod = ysum x amp >> 15;  enable, amp from\nqpsk_regs  (tx_on -> enable, tx_amp -> amp)", V_DSP),
+        ("uhd_usrp_sink  (B210)", "3.84 MSPS, 915 MHz, gain = tx_gain, TX/RX", GRC_UHD, "DAC + RF", "dac_i, dac_q -> axi_ad9361 dac_data_i0/q0 ->\nAD9361;  TX attenuation: p501_radio.py", V_LOGIC),
+    ]
+    y = H - 14 - h
+    for g, sub, gc, mid, vt, vc in rows:
+        if vc is None:                                             # the label of the hierarchical block, in a band of its own
+            ymid = y + h + (gap - band) / 2
+            ax.text(2, ymid + 2.4, g, fontsize=8.3, fontweight="bold", va="center"); ax.text(2, ymid - 1.8, sub, fontsize=6.9, va="center", family="monospace", color="#333")
+            y -= band; continue
+        pair(ax, y, h, g, sub, gc, mid, vt, vc); y -= h + gap
+    fig.savefig(os.path.join(OUT, "qpsk_func_vs_grc_tx.png"), dpi=130, bbox_inches="tight"); plt.close(fig)
+
+
+def rx_rows_figure(rows, title, name):
+    h = 12.0; gap = 2.4; H = 14 + len(rows) * (h + gap) + 2
+    fig, ax = canvas(165, H)
+    ax.text(82.5, H - 3, title, fontsize=10.5, fontweight="bold", ha="center")
+    grc_header(ax, H - 8.5, "GNU Radio Companion block (qpsk_b210_rx.grc)", "FPGA: Verilog (qpsk_rx.v, p501_qpsk_rx.py)")
+    y = H - 14 - h
+    for g, sub, gc, mid, vt, vc in rows:
+        pair(ax, y, h, g, sub, gc, mid, vt, vc); y -= h + gap
+    fig.savefig(os.path.join(OUT, name), dpi=130, bbox_inches="tight"); plt.close(fig)
+
+
+def grc_rx():
+    a = [
+        ("uhd_usrp_source  (B210)", "3.84 MSPS, 915 MHz, gain = rx_gain, RX2", GRC_UHD, "RF + ADC", "adc_i, adc_q, adc_valid -> sram[256] (wr_cnt),\nGray-coded counter to the 100 MHz clock", V_MEM),
+        ("analog_agc2_xx", "attack 0.06, decay 1e-3, reference 1, max gain 200", GRC_C, "AGC", "S1: m' = m x g >> 10;  S2: level a;  S3: g += MU x (REF - a) >> 16\n(registers MU, REF, G0)", V_DSP),
+        ("blocks_complex_to_float + analog_rail_ff x2\n+ blocks_float_to_complex", "the limiter: each component clipped to +-1.5", GRC_C, "keep the\nloops safe", "clip16(), clip24() in S0, S1: the fixed-point\nsaturation does it, no extra block", V_LOGIC),
+        ("digital_fll_band_edge_cc", "sps 4, roll-off 0.35, 55 taps, w = 2 pi / N", GRC_C, "coarse\nfrequency", "NONE in the FPGA. The Costas loop does the pull-in:\nregister W0 + rx.acquire() (hints 0, +-6, +-12 kHz)", V_CTL),
+        ("digital_pfb_clock_sync_xxx  (ccf)", "sps 4, loop_bw 2 pi / N, taps = rrc_taps,\nfilter_size 32, max_dev 0.05", GRC_C, "matched filter\n+ timing loop", "qpsk_rx_rom: 16 arms x 44 taps (cm, cd), MAC in ST_MAC;\nS2: e_t;  S3: rate (TB);  S4: p (TA);  MAXR = max_dev\n(only the arm chosen by p is computed)", V_DSP),
+        ("digital_costas_loop_cc", "order 4, w = 2 pi / N", GRC_C, "carrier\nrecovery", "S5: z = m' x exp(-j theta)  (qpsk_rx_trig table)\nS6: e_c;  S7: omega += CB x e_c;  S8: theta += omega + CA x e_c", V_DSP),
+    ]
+    rx_rows_figure(a, "Receiver, front half: from the antenna to the symbols", "qpsk_func_vs_grc_rx1.png")
+    b = [
+        ("digital_constellation_decoder_cb", "constellation_dqpsk: nearest of the 4 points", GRC_C, "slicer", "s_i = zi > 0;  s_q = zq > 0;  pt = point 0..3   (S6)", V_LOGIC),
+        ("digital_diff_decoder_bb  (4)", "modulus 4", GRC_C, "differential\ndecode", "dd = pt - prev      (2-bit subtraction)", V_LOGIC),
+        ("digital_map_bb  [0, 1, 3, 2]", "the inverse of the pre-differential code (the same map)", GRC_C, "inverse map", "cc = (dd == 2) ? 3 : (dd == 3) ? 2 : dd", V_LOGIC),
+        ("blocks_unpack_k_bits_bb  (2)", "2 bits per byte, MSB first", GRC_C, "the bits", "bits2 = {b0, b1};  b0 = cc[1], b1 = cc[0]", V_LOGIC),
+        ("epy_block  \"PRBS-15 BER\"\n+ blocks_keep_one_in_n + qtgui_number_sink", "a[n] = a[n-15] ^ a[n-14]; 3 mismatches per error;\nflags a stuck stream (0.5)", GRC_PY, "bit error\ncounter", "prbs_sr, pred0, pred1;  n_bits, n_mism  (3 per error)\nBER = mism / 3 / bits  in P501QpskRx.stats()", V_LOGIC),
+        ("qtgui_const_sink_x  /  qtgui_freq_sink_x", "constellation after the Costas loop; spectrum", "#e6e6e6", "viewers", "cap_mem[1024] = {zq, zi}, read by rx.capture();\nthe notebook draws the picture (the spectrum: tutorial 1)", V_MEM),
+    ]
+    rx_rows_figure(b, "Receiver, back half: from the symbols to the bit error rate", "qpsk_func_vs_grc_rx2.png")
+
+
 if __name__ == "__main__":
-    link(); transmitter(); receiver(); timing(); costas(); print("wrote the functional diagrams to", os.path.normpath(OUT))
+    link(); transmitter(); receiver(); timing(); costas(); grc_tx(); grc_rx(); print("wrote the functional diagrams to", os.path.normpath(OUT))
