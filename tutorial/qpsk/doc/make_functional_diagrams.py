@@ -190,6 +190,59 @@ def costas():
     fig.savefig(os.path.join(OUT, "qpsk_func_costas.png"), dpi=130, bbox_inches="tight"); plt.close(fig)
 
 
+# ------------------------------------------------------------------ 5b. the FLL band-edge block
+def fll():
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "p501_tx"))
+    from qpsk_model import rrc_taps
+    from scipy.signal import lfilter
+    sps, alpha, fs = 4, 0.35, 3.84e6
+    rs = fs / sps
+    rng = np.random.RandomState(5)
+    nsym = 30000
+    sym = (rng.choice([-1, 1], nsym) + 1j * rng.choice([-1, 1], nsym)) / np.sqrt(2)
+    x = np.zeros(nsym * sps, complex); x[::sps] = sym
+    y = np.convolve(x, rrc_taps(), mode="same")
+    ntaps = 55
+    nn = np.arange(ntaps) - (ntaps - 1) / 2
+    fc = alpha * rs / 2 / fs                                        # half width of the low-pass prototype: about half the roll-off
+    base = np.sinc(2 * fc * nn) * np.hamming(ntaps); base /= base.sum()
+    edge = (1 + alpha) / 2 * rs / fs                                # the band edge, cycles per sample
+    up = base * np.exp(2j * np.pi * edge * nn); lo = base * np.exp(-2j * np.pi * edge * nn)
+
+    def psd(z, nfft=2048):
+        segs = z[:len(z) // nfft * nfft].reshape(-1, nfft) * np.hanning(nfft)
+        p = np.mean(np.abs(np.fft.fftshift(np.fft.fft(segs, axis=1), axes=1)) ** 2, axis=0)
+        return np.fft.fftshift(np.fft.fftfreq(nfft, 1 / fs)), p
+
+    def powers(f_off):
+        z = y * np.exp(2j * np.pi * f_off / fs * np.arange(len(y)))
+        return np.mean(np.abs(lfilter(up, 1, z)) ** 2), np.mean(np.abs(lfilter(lo, 1, z)) ** 2), z
+    fig = plt.figure(figsize=(15.5, 5.2))
+    axs = [fig.add_axes([0.04 + i * 0.245, 0.14, 0.215, 0.70]) for i in range(2)]
+    ax3 = fig.add_axes([0.58, 0.14, 0.40, 0.70])
+    fr = np.fft.fftshift(np.fft.fftfreq(4096, 1 / fs))
+    Hu = np.abs(np.fft.fftshift(np.fft.fft(up, 4096))); Hl = np.abs(np.fft.fftshift(np.fft.fft(lo, 4096)))
+    for ax, f_off, title in [(axs[0], 0.0, "no offset: equal power in both edges"), (axs[1], 150e3, "signal 150 kHz too high: the upper edge sees more")]:
+        pu, pl, z = powers(f_off)
+        f, p = psd(z)
+        ax.plot(f / 1e3, 10 * np.log10(p / p.max() + 1e-9), color="#33475b", lw=1.1)
+        ax.fill_between(fr / 1e3, -60, -60 + 55 * Hu / Hu.max(), color="#2a9d4f", alpha=0.35, label="upper edge filter")
+        ax.fill_between(fr / 1e3, -60, -60 + 55 * Hl / Hl.max(), color="#c0392b", alpha=0.35, label="lower edge filter")
+        ax.set_ylim(-60, 5); ax.set_xlim(-1200, 1200); ax.grid(alpha=0.25); ax.set_xlabel("frequency (kHz)"); ax.set_title(title, fontsize=9.5)
+        ax.text(0.5, 0.06, "power  upper %.2f   lower %.2f" % (pu / (pu + pl), pl / (pu + pl)), transform=ax.transAxes, ha="center", fontsize=8.5, bbox=dict(fc="white", ec="#999", pad=2))
+    axs[0].set_ylabel("spectrum (dB)"); axs[0].legend(loc="upper right", fontsize=7.5)
+    f_offs = np.linspace(-200e3, 200e3, 41)
+    e = np.array([(lambda a: (a[0] - a[1]) / (a[0] + a[1]))(powers(f)) for f in f_offs])
+    ax3.plot(f_offs / 1e3, e, "o-", color="#33475b", ms=4)
+    ax3.axhline(0, color="#999", lw=0.8); ax3.axvline(0, color="#999", lw=0.8)
+    ax3.axvline(9.7, color="#2a9d4f", lw=1.5, ls="--"); ax3.text(12, e.min() * 0.85, "the B210 / P501\noffset, +9.7 kHz", color="#2a9d4f", fontsize=8.5)
+    ax3.set_xlabel("carrier offset of the received signal (kHz)"); ax3.set_ylabel("error  (P_upper - P_lower) / (P_upper + P_lower)")
+    ax3.set_title("the FLL's error signal: zero when the signal is centred, a sign and a size otherwise", fontsize=9.5); ax3.grid(alpha=0.25)
+    fig.suptitle("The FLL band-edge idea: compare the power in the two edges of the signal's spectrum (a simulated QPSK signal, roll-off 0.35, 4 samples per symbol)", fontsize=10.5, fontweight="bold")
+    fig.savefig(os.path.join(OUT, "qpsk_func_fll.png"), dpi=130); plt.close(fig)
+
+
 # ------------------------------------------------------------------ 6. GNU Radio blocks side by side with the Verilog
 GRC_C, GRC_PY, GRC_UHD, V_LOGIC, V_DSP, V_MEM, V_CTL = "#d6e4ff", "#fff2c2", "#ffe0b3", "#dbe9f7", "#d9f0d3", "#fde9c9", "#f6d9e4"
 
@@ -268,4 +321,4 @@ def grc_rx():
 
 
 if __name__ == "__main__":
-    link(); transmitter(); receiver(); timing(); costas(); grc_tx(); grc_rx(); print("wrote the functional diagrams to", os.path.normpath(OUT))
+    link(); transmitter(); receiver(); timing(); costas(); fll(); grc_tx(); grc_rx(); print("wrote the functional diagrams to", os.path.normpath(OUT))

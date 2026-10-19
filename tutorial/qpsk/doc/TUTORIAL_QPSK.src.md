@@ -187,7 +187,30 @@ The only price: one symbol error disturbs two differences, so errors come in pai
 
 **Pull-in.** The loop can only pull in a frequency error of about `960 kHz / N` for a loop bandwidth of `2 pi / N` (9.6 kHz for N = 100): the B210's +9.7 kHz is at the edge, which is why the notebook's `acquire()` tries frequency hints (E.3) and why GNU Radio's receiver has a separate FLL in front of its Costas loop.
 
-### A.5.6 From the functional blocks to the Verilog
+### A.5.6 Coarse frequency: the FLL band-edge block of GNU Radio
+
+![The FLL band-edge idea](img/qpsk_func_fll.png)
+
+The GNU Radio receiver (`qpsk_b210_rx.grc`) has one block that the FPGA does not: **`digital_fll_band_edge_cc`**, the *frequency-locked loop with band-edge filters*. Its job is the coarse part of the carrier recovery: bring a frequency offset of several kHz down to a few hundred Hz, so that the Costas loop only has a small error to pull in.
+
+**The idea.** A root-raised-cosine signal with roll-off 0.35 has sloping edges at about +-(1 + 0.35)/2 x 960 kHz = +-650 kHz. If the signal is centred, the power in the two edges is equal (left plot). If the carrier is off, the whole spectrum slides, and one edge gains power while the other loses it (middle plot). So:
+
+1. two band-pass filters sit on the two band edges (a low-pass about as wide as the roll-off, shifted up and down to the edges; in our flowgraph `filter_size = 55` taps, `samps_per_sym = 4`, `rolloff = 0.35`);
+2. the error is the **difference of the two output powers**, normalised (right plot: an S-shaped curve, zero when centred, linear for tens of kHz, saturating beyond; our +9.7 kHz is on the linear part, at about 0.16);
+3. a loop filter (the same kind of second-order loop as in the Costas loop, set by one bandwidth `w = 2 pi / N`) integrates the error into a frequency;
+4. an NCO rotates the signal by minus that frequency.
+
+(The plot was computed from a simulated signal with an equivalent filter pair; the exact taps of the GNU Radio block differ in detail, the principle and the S-curve are the same.)
+
+**Why it is nice, and what it needs.**
+* It needs **no symbol timing and no decisions**: it works on the raw samples, *before* the clock sync, which is why it is the first loop in the GNU Radio chain.
+* It needs **excess bandwidth**: with roll-off 0 there are no edges to compare.
+* It is **coarse**: in chapter 4a it took the +9.97 kHz offset down to about +450 Hz (it tracks a changing offset with a bandwidth of 2 pi / N); the Costas loop removes the rest. Offsets of 0, +-9.5 kHz and +-20 kHz were all pulled in within a millisecond.
+
+**Why the FPGA receiver has no FLL.** The two edge filters work at the sample rate (two complex filters of 55 taps, 3.84 million times a second), which does not fit the design of one small engine that runs once per symbol (A.4). The offset between our two radios is constant, so a different solution is cheaper:
+the Costas loop has the initial-frequency register `W0`, and the Python driver's `rx.acquire()` tries `W0` hints of 0, +-6 and +-12 kHz until the loop locks (E.3). A receiver that has to find an unknown offset on its own would add a frequency estimator in front: an FLL like this one, a preamble tone with the FFT chain of tutorial 1, or a correlator.
+
+### A.5.7 From the functional blocks to the Verilog
 
 | functional block | why (short) | Verilog | what the Verilog looks like |
 |---|---|---|---|
@@ -198,6 +221,7 @@ The only price: one symbol error disturbs two differences, so errors come in pai
 | RX 1 samples and RAM | two clocks | C.3 | dual-clock RAM + Gray-coded counter |
 | RX 2 AGC | known amplitude | C.5 (S0 to S3) | multiply by `g`, a level estimate, `g += MU x error` |
 | RX 3 matched filter + timing loop | best SNR, right instant | C.4, C.6 (MAC, S2 to S4) | 4 DSP multiplies reused 44 times, rate and position update |
+| (GNU Radio only) FLL band-edge | coarse frequency | A.5.6 | none: `W0` and `rx.acquire()` replace it |
 | RX 4 Costas loop | carrier offset and phase | C.7, C.8 (S5 to S8) | 1024-entry sine/cosine table, 4 multiplies, two accumulators |
 | RX 5 decision + differential decoder | bits | C.9 (S6) | signs, a 2-bit subtraction, the map |
 | RX 6 checker, counters, capture RAM | measure without software | C.10, C.11 | 15-bit predictor, counters, 1024-word RAM |
@@ -237,7 +261,7 @@ In `qpsk_tx.v` the same five steps are a few lines each (B.2), and the pulse sha
 | structure | one block per function, each running continuously on the PC | one engine that runs a short program once per symbol (S0 to S9), sharing 4 multipliers | the symbol rate is 100 times slower than the clock |
 | arithmetic | 32-bit floating point | integers with chosen widths, shifts and clips (C.1), rounded integrators (F.3) | DSP slices, and bit-exact checking against the model |
 | polyphase arms | 32 (`filter_size`), the derivative bank included | 16 arms of 44 taps, only the arm selected by the timing loop is computed per symbol | 1/16 of a sample is enough resolution; 4 multipliers instead of 32 filters |
-| coarse frequency | `digital_fll_band_edge_cc` in front of the clock sync | none: the Costas loop pulls in, helped by `W0` and `acquire()` | an FLL costs a band-edge filter pair; `acquire()` costs a few lines of Python |
+| coarse frequency | `digital_fll_band_edge_cc` in front of the clock sync (A.5.6) | none: the Costas loop pulls in, helped by `W0` and `acquire()` | an FLL costs two 55-tap filters at the sample rate; `acquire()` costs a few lines of Python |
 | protection against bursts | the limiter (`rail_ff`) | saturating arithmetic (`clip16`, `clip24`) | fixed-point saturates by itself |
 | loop gains | `loop_bw`, `w` (floating point) | registers TA, TB, CA, CB, written from Python | live adjustable, no re-synthesis |
 | bit error counting | Python block (`epy_block`) on the PC | 15-bit predictor and counters in the FPGA | no bit leaves the FPGA, at 1.92 Mbit/s |
