@@ -30,6 +30,7 @@ options:
     bus_source: false
     bus_structure: null
     coordinate: [8, 8]
+    rotation: 0
     state: enabled
 
 blocks:
@@ -42,7 +43,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 280]
+    coordinate: [0, 404.0]
+    rotation: 0
     state: enabled
 - name: excess_bw
   id: variable
@@ -53,7 +55,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 180]
+    coordinate: [8, 228.0]
+    rotation: 0
     state: enabled
 - name: freq
   id: variable
@@ -64,7 +67,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 230]
+    coordinate: [16, 308.0]
+    rotation: 0
     state: enabled
 - name: samp_rate
   id: variable
@@ -75,7 +79,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 80]
+    coordinate: [16, 124.0]
+    rotation: 0
     state: enabled
 - name: sps
   id: variable
@@ -86,7 +91,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 130]
+    coordinate: [144, 180.0]
+    rotation: 0
     state: enabled
 - name: tx_amp
   id: variable_qtgui_range
@@ -106,7 +112,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [240, 180]
+    coordinate: [608, 20.0]
+    rotation: 0
     state: enabled
 - name: tx_gain
   id: variable_qtgui_range
@@ -120,14 +127,15 @@ blocks:
     rangeType: float
     start: '0'
     step: '1'
-    stop: '80'
-    value: '80'
+    stop: '89'
+    value: '83'
     widget: counter_slider
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [240, 100]
+    coordinate: [864, 28.0]
+    rotation: 0
     state: enabled
 - name: tx_on
   id: variable_qtgui_chooser
@@ -150,13 +158,14 @@ blocks:
     options: '[0, 1, 2]'
     orient: Qt.QVBoxLayout
     type: int
-    value: '0'
+    value: '1'
     widget: radio_buttons
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
     coordinate: [240, 20]
+    rotation: 0
     state: enabled
 - name: blocks_multiply_const_vxx_0
   id: blocks_multiply_const_vxx
@@ -173,7 +182,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [800, 300]
+    coordinate: [936, 484.0]
+    rotation: 0
     state: enabled
 - name: digital_constellation_modulator_0
   id: digital_constellation_modulator
@@ -194,7 +204,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [520, 290]
+    coordinate: [632, 412.0]
+    rotation: 0
     state: enabled
 - name: epy_block_0
   id: epy_block
@@ -226,7 +237,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [240, 300]
+    coordinate: [216, 544.0]
+    rotation: 0
     state: enabled
 - name: qtgui_freq_sink_x_0
   id: qtgui_freq_sink_x
@@ -306,7 +318,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1040, 440]
+    coordinate: [1216, 580.0]
+    rotation: 0
     state: enabled
 - name: uhd_usrp_sink_0
   id: uhd_usrp_sink
@@ -582,7 +595,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1040, 280]
+    coordinate: [1320, 284.0]
+    rotation: 0
     state: enabled
 
 connections:
