@@ -55,6 +55,31 @@ class P501QpskRxFll(P501QpskRx):
             fl.append(_signed(self.ip.read(REG["FLL_FREQ"])) / 2 ** 32 * FS); co.append(_signed(self.ip.read(REG["OMEGA"])) / 2 ** 32 * SYMBOL_RATE); time.sleep(dt)
         return float(np.mean(co) - np.mean(fl))
 
+    def offsets(self, n=100, period_s=0.005):
+        """Total carrier offset (Hz: Costas frequency minus FLL frequency) and clock offset (ppm), averaged over n readings."""
+        fl, co, ra = [], [], []
+        for _ in range(n):
+            fl.append(_signed(self.ip.read(REG["FLL_FREQ"]))); co.append(_signed(self.ip.read(REG["OMEGA"]))); ra.append(_signed(self.ip.read(REG["RATE"]))); time.sleep(period_s)
+        return ((np.mean(co) / 2 ** 32 * SYMBOL_RATE) - np.mean(fl) / 2 ** 32 * FS, -np.mean(ra) / 2 ** 16 / 16 / 4 * 1e6)
+
+    def freeze_fll(self, n=100, period_s=0.003):
+        """Handover: load the FLL with the mean of its frequency over n readings and stop its loop. The FLL then removes a constant offset (no more jitter) and the Costas loop tracks the rest.
+        Returns the frequency loaded (Hz)."""
+        f = self.fll_hz(n=n, dt=period_s)
+        self.fll_load(f); self.fll_enable(False)
+        return f
+
+    def pullin_time(self, use_fll=True, wide_fll=0.002, acq_div=100, window_s=0.3):
+        """Start the receiver cold (wide loops, with or without the FLL loop) and poll the mismatch counter without a pause: returns (ms of the last change, mismatches until then, locked afterwards)."""
+        self.stop(); time.sleep(0.05)
+        self.configure(timing_bw=2 * np.pi / acq_div, phase_bw=2 * np.pi / acq_div, init_freq_hz=0.0)
+        self.ip.write(REG["FLL_F0"], 0); self.set_fll(wide_fll); self.fll_enable(use_fll)
+        self.start(); t0 = time.time(); last_m, last_t = 0, 0.0
+        while time.time() - t0 < window_s:
+            m = self.ip.read(REG["MISMATCH"])
+            if m != last_m: last_m, last_t = m, time.time() - t0
+        return last_t * 1e3, last_m, self.locked(0.05)
+
     def fll_status(self):
         r = lambda k: self.ip.read(REG[k])
         return dict(fll_hz=_signed(r("FLL_FREQ")) / 2 ** 32 * FS, err=_signed(r("FLL_ERR"), 16) / 32768.0, blocks=r("FLL_NBLK"), late=r("FLL_LATE"),

@@ -21,6 +21,7 @@ raw ADC samples (RAM, adc_clk) -> derotator  y = x e^{j phi}, phi += fr   (7 of 
 | `steps/`, `bd/qpsk_rx_fll_chain.tcl`, `src/qpsk_rx_fll_cdc.xdc` | the block-design steps and the clock-crossing constraints |
 | `notebook/p501_qpsk_rx_fll.py` | driver: `P501QpskRxFll` (everything of `P501QpskRx`, plus `set_fll`, `fll_status`, `total_offset_hz`, `fll_load`, `acquire_fll`) |
 | `p501_fll_link.py`, `run_fll_test.py` | board side and host side of the over-the-air tests |
+| `make_notebook_fll.py` -> `notebook/P501_QPSK_FLL_Live.ipynb` | the interactive notebook (like `P501_QPSK_Link_Live.ipynb`): self-test in digital loopback, live picture with FLL / Costas / total-offset strips, controls (Start receiver = `acquire_fll()`, Freeze FLL, loop and FLL gains, TX), experiment 1 (pull-in with and without the FLL), experiment 2 (jitter and handover) |
 | `qpsk_fe_fixed.py`, `make_signal.py`, `fe_study.py` | the open-loop 4th-power frequency estimator (CORDIC), kept as an offline comparison only (see below) |
 
 New registers (after those of the receiver): `0x54 FLL_CTRL` (bit 0 loop enable, a rising edge of bit 1 loads the frequency from `FLL_F0`), `0x58 FLL_GI`, `0x5C FLL_GP`, `0x60 FLL_F0`,
@@ -56,7 +57,11 @@ What the hardware tests say, honestly:
   So the FLL does not make a lock possible that was impossible; it makes it **faster at large offsets** (3 to 7 times at 80 kHz; no clear difference up to 40 kHz) and does not depend on the settling time of the Python procedure.
 * The FLL is **noisy**: its frequency scatters by about +-0.5 to 1 kHz around the mean, even with the narrow gain (the band-edge power is data dependent), and the Costas loop follows with the opposite sign
   (totals are steady, the two parts are not). This is the known behaviour of this FLL type; the constellation spread is a little larger than without it at the large offsets (6.8 degrees at -30 kHz).
-  The cure is a handover: after the lock, `rx.fll_load(-total_offset)` and `rx.fll_enable(False)` freeze the FLL at the mean (not done on the hardware yet).
+  The cure is a handover: after the lock, `rx.freeze_fll()` loads the FLL with its mean frequency and stops its loop. Measured with the notebook (experiment 2, 400 readings, 3.4 Mbit, weak signal, AGC gain about 9):
+  running: FLL std 2.0 kHz, Costas std 3.9 kHz, total offset std 4.3 kHz, 26,411 bit errors; frozen: FLL std 0, Costas std 0.3 kHz, total std 0.3 kHz, 36 bit errors. In a cleaner moment (`dbg` runs, AGC gain about 7)
+  the Costas scatter fell from about +-1 kHz to +-0.25 kHz and nothing was lost at the freeze, with the loop on or off.
+* The FLL is sensitive to the signal level. The B210's output drifted during the tests (AGC gain 6.3 to 14); at the weaker end the FLL scatter grew to several kHz, and the pull-in of both receivers (FLL + Costas and Costas alone)
+  sometimes took 100 to 300 ms or failed within the 0.3 s window (in one notebook run 5/6 and 2/6 locked, in another 6/6 and 6/6). The first test series above (clean signal) is the better case; compare the two before drawing conclusions about the speed.
 * The pull-in numbers are from 3 to 4 trials per cell, enough to see the order of magnitude, not a statistic.
 
 ## The open-loop 4th-power estimator (not used)
