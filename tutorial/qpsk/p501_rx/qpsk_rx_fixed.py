@@ -41,14 +41,14 @@ def clip(v, lo, hi):
 
 
 def receive_fixed(xi, xq, regs=None, max_symbols=None):
-    """xi, xq: int arrays (ADC counts). Returns dict of arrays: bits, zi, zq, omega (turns*2^32), rate (Q16 arms), g, e_t, e_c."""
+    """xi, xq: int arrays (ADC counts). Returns dict of arrays: bits, zi, zq, omega (turns*2^32), rate (Q16 arms), g, e_t, e_c, and mi2, mq2 (the symbols after the AGC, before the derotation: the input of the frequency estimator)."""
     R = regs_from_bw() if regs is None else regs
     cm, cd = coefs(); cos_l, sin_l = cos_sin_lut()
     xi = np.asarray(xi, dtype=np.int64); xq = np.asarray(xq, dtype=np.int64)
     g = R["G0"]; rate = 0; omega = R["W0"]; theta = 0
     p = (NTAPS * NF + NF // 2) << 16
     prev = 0
-    out = {k: [] for k in ("bits", "zi", "zq", "omega", "rate", "g", "e_t", "e_c")}
+    out = {k: [] for k in ("bits", "zi", "zq", "omega", "rate", "g", "e_t", "e_c", "mi2", "mq2")}
     n = 0
     while True:
         t = p >> 20; k = (p >> 16) & (NF - 1)
@@ -76,6 +76,6 @@ def receive_fixed(xi, xq, regs=None, max_symbols=None):
         pt = {(1, 1): 0, (-1, 1): 1, (-1, -1): 2, (1, -1): 3}[(si, sq)]
         cc = [0, 1, 3, 2][(pt - prev) % 4]; prev = pt
         out["bits"] += [(cc >> 1) & 1, cc & 1]
-        for key, val in (("zi", zi), ("zq", zq), ("omega", omega), ("rate", rate), ("g", g), ("e_t", e_t), ("e_c", e_c)): out[key].append(val)
+        for key, val in (("zi", zi), ("zq", zq), ("omega", omega), ("rate", rate), ("g", g), ("e_t", e_t), ("e_c", e_c), ("mi2", mi2), ("mq2", mq2)): out[key].append(val)
         n += 1
     return {k: np.array(v, dtype=(np.uint8 if k == "bits" else np.int64)) for k, v in out.items()}

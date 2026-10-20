@@ -54,9 +54,11 @@ def _signed(v, bits=32):
 
 
 class P501QpskRx:
+    EXPECTED_ID = 0xDD520001                          # the receiver of this file; the variant with the FLL (p501_qpsk_rx_fll.py) has 0xDD520002
+
     def __init__(self, ip):
         self.ip = ip
-        if self.ip.read(REG["ID"]) != 0xDD520001:
+        if self.ip.read(REG["ID"]) != self.EXPECTED_ID:
             raise RuntimeError("not the QPSK receiver (ID 0x%08X)" % self.ip.read(REG["ID"]))
 
     def configure(self, timing_bw=2 * np.pi / 400, phase_bw=2 * np.pi / 400, **kw):

@@ -207,8 +207,10 @@ The GNU Radio receiver (`qpsk_b210_rx.grc`) has one block that the FPGA does not
 * It needs **excess bandwidth**: with roll-off 0 there are no edges to compare.
 * It is **coarse**: in chapter 4a it took the +9.97 kHz offset down to about +450 Hz (it tracks a changing offset with a bandwidth of 2 pi / N); the Costas loop removes the rest. Offsets of 0, +-9.5 kHz and +-20 kHz were all pulled in within a millisecond.
 
-**Why the FPGA receiver has no FLL.** The two edge filters work at the sample rate (two complex filters of 55 taps, 3.84 million times a second), which does not fit the design of one small engine that runs once per symbol (A.4). The offset between our two radios is constant, so a different solution is cheaper:
+**Why the main FPGA receiver has no FLL (and the variant that has one).** The two edge filters work at the sample rate (two complex filters of 55 taps, 3.84 million times a second), which does not fit the design of one small engine that runs once per symbol (A.4). The offset between our two radios is constant, so a different solution is cheaper:
 the Costas loop has the initial-frequency register `W0`, and the Python driver's `rx.acquire()` tries `W0` hints of 0, +-6 and +-12 kHz until the loop locks (E.3). A receiver that has to find an unknown offset on its own would add a frequency estimator in front: an FLL like this one, a preamble tone with the FFT chain of tutorial 1, or a correlator.
+
+We did build the FLL as a separate overlay, `p501_qpsk_trx_fll` (`rtl/qpsk_fll.v`, `rtl/qpsk_rx_fll.v`, README in `tutorial/qpsk/p501_rx_fll/`): the same chain as GNU Radio's flowgraph, FLL -> polyphase matched filter and timing loop -> Costas loop. The FLL is a derotator on the sample RAM (7 of the 26 clock cycles per sample) and one error engine per symbol with four multipliers (the two band-edge filters share them), integer model and RTL bit-exact. On the air it locks without any hint, and pulls in about 3 to 7 times faster than the Costas loop alone at an offset of 80 kHz (no clear difference up to 40 kHz, where the Costas loop alone also locks without hints) (details in the README). The main receiver of this chapter is unchanged.
 
 ### A.5.7 From the functional blocks to the Verilog
 
@@ -221,7 +223,7 @@ the Costas loop has the initial-frequency register `W0`, and the Python driver's
 | RX 1 samples and RAM | two clocks | C.3 | dual-clock RAM + Gray-coded counter |
 | RX 2 AGC | known amplitude | C.5 (S0 to S3) | multiply by `g`, a level estimate, `g += MU x error` |
 | RX 3 matched filter + timing loop | best SNR, right instant | C.4, C.6 (MAC, S2 to S4) | 4 DSP multiplies reused 44 times, rate and position update |
-| (GNU Radio only) FLL band-edge | coarse frequency | A.5.6 | none: `W0` and `rx.acquire()` replace it |
+| (GNU Radio only) FLL band-edge | coarse frequency | A.5.6 | none in `p501_qpsk_trx`: `W0` and `rx.acquire()` replace it; `qpsk_fll.v` in the separate overlay `p501_qpsk_trx_fll` |
 | RX 4 Costas loop | carrier offset and phase | C.7, C.8 (S5 to S8) | 1024-entry sine/cosine table, 4 multiplies, two accumulators |
 | RX 5 decision + differential decoder | bits | C.9 (S6) | signs, a 2-bit subtraction, the map |
 | RX 6 checker, counters, capture RAM | measure without software | C.10, C.11 | 15-bit predictor, counters, 1024-word RAM |
@@ -891,7 +893,7 @@ theta = (theta + omega + ((R["CA"] * e_c) >> 8)) & 0xFFFFFFFF
 pt = {(1, 1): 0, (-1, 1): 1, (-1, -1): 2, (1, -1): 3}[(si, sq)]
 cc = [0, 1, 3, 2][(pt - prev) % 4]; prev = pt
 out["bits"] += [(cc >> 1) & 1, cc & 1]
-for key, val in (("zi", zi), ("zq", zq), ("omega", omega), ("rate", rate), ("g", g), ("e_t", e_t), ("e_c", e_c)): out[key].append(val)
+for key, val in (("zi", zi), ("zq", zq), ("omega", omega), ("rate", rate), ("g", g), ("e_t", e_t), ("e_c", e_c), ("mi2", mi2), ("mq2", mq2)): out[key].append(val)
 n += 1
 ```
 *`tutorial/qpsk/p501_rx/qpsk_rx_fixed.py`, lines 68-80 - the integer model of S5..S8 and the decision*
@@ -1313,9 +1315,11 @@ UNIT = 8192.0                                       # soft symbols: the AGC make
 
 ```python
 class P501QpskRx:
+    EXPECTED_ID = 0xDD520001                          # the receiver of this file; the variant with the FLL (p501_qpsk_rx_fll.py) has 0xDD520002
+
     def __init__(self, ip):
         self.ip = ip
-        if self.ip.read(REG["ID"]) != 0xDD520001:
+        if self.ip.read(REG["ID"]) != self.EXPECTED_ID:
             raise RuntimeError("not the QPSK receiver (ID 0x%08X)" % self.ip.read(REG["ID"]))
 
     def configure(self, timing_bw=2 * np.pi / 400, phase_bw=2 * np.pi / 400, **kw):
@@ -1333,7 +1337,7 @@ class P501QpskRx:
         self.ip.write(REG["CTRL"], 1)
 
 ```
-*`notebook/p501_qpsk_rx.py`, lines 56-75 - configure() writes everything; set_loops() writes only the four loop gains (while running); start() = CTRL bit 0*
+*`notebook/p501_qpsk_rx.py`, lines 56-77 - configure() writes everything; set_loops() writes only the four loop gains (while running); start() = CTRL bit 0*
 
 
 * `configure()` before `start()`: the start values (`G0`, `W0`) are loaded when `run` rises.
@@ -1402,7 +1406,7 @@ def acquire(self, track_div=400, acq_div=100, hints_hz=(0.0, 6000.0, -6000.0, 12
     return dict(locked=False, hint_hz=None, tries=len(hints_hz), seconds=time.time() - t0)
 
 ```
-*`notebook/p501_qpsk_rx.py`, lines 76-111 - locked() and acquire()*
+*`notebook/p501_qpsk_rx.py`, lines 78-113 - locked() and acquire()*
 
 
 On the hardware (B210 at 80 dB TX gain): **20 of 20 acquisitions locked at +9.7 kHz** (first try in 14 of 19 logged cases, otherwise the +6 kHz or -6 kHz hint), taking 0.45 to 1.3 s; three of them had 2 to 57 isolated bit errors in the next 1.5 s, the rest none.
@@ -1427,7 +1431,7 @@ def offsets(self, n=100, period_s=0.005):
     return (np.mean(om) / 2 ** 32 * SYMBOL_RATE, -np.mean(ra) / 2 ** 16 / NF / SPS * 1e6)
 
 ```
-*`notebook/p501_qpsk_rx.py`, lines 115-130 - stats() and offsets(): conversion of the raw register values to engineering units*
+*`notebook/p501_qpsk_rx.py`, lines 117-132 - stats() and offsets(): conversion of the raw register values to engineering units*
 
 
 * `OMEGA` is a signed 32-bit number: `omega / 2^32 x 960000` = the **carrier offset in Hz** (the frequency the Costas loop had to add).
@@ -1450,7 +1454,7 @@ def capture(self, timeout_s=2.0):
     zi = (w & 0xFFFF).astype(np.uint16).view(np.int16).astype(float); zq = (w >> 16).astype(np.uint16).view(np.int16).astype(float)
     return zi + 1j * zq
 ```
-*`notebook/p501_qpsk_rx.py`, lines 131-141 - capture(): arm, wait, read 1024 words, split {zq, zi}*
+*`notebook/p501_qpsk_rx.py`, lines 133-143 - capture(): arm, wait, read 1024 words, split {zq, zi}*
 
 
 Arming needs `CTRL` bit 1 to **rise**, hence the two writes (1, then 3); then `STATUS[1]`; then 1024 reads at `0x1000 + 4 i`. The 32-bit word holds `zq` in the top half and `zi` in the bottom half, both signed 16-bit
@@ -1691,7 +1695,7 @@ def connect_rx_chain(tb, src, a):
 | `constellation_decoder_cb`, `diff_decoder_bb`, `map_bb(invert_code)` | slicer, differential decoder, map (S6) |
 | `unpack_k_bits_bb(2)` | `{b0, b1}` MSB first |
 
-(The FLL is the main structural difference: the FPGA receiver relies on the Costas loop's pull-in, supported by a wider loop at the start or by the `W0` initial frequency.)
+(The FLL is the main structural difference: this receiver relies on the Costas loop's pull-in, supported by a wider loop at the start or by the `W0` initial frequency. The overlay `p501_qpsk_trx_fll` adds the FLL stage in front of this engine, see `tutorial/qpsk/p501_rx_fll/README.md`.)
 
 ## E.8 `qpsk_analyze.py`: bit errors against a known pattern (GNU Radio side)
 
