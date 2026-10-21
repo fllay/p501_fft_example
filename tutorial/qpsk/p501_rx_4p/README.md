@@ -20,6 +20,7 @@ The FPGA does everything: Python only writes `FE_AUTO` (enable) and reads counte
 | `sim/tb_qpsk_rx_4p.v`, `sim/compare_4p.py` | RTL testbench (auto mode, N, q_min as plusargs) and the comparison with the model |
 | `steps/`, `bd/qpsk_rx_4p_chain.tcl`, `QPSKRX4P=1` in `create_project.tcl` | the project (the clock-crossing constraints of `src/qpsk_rx_cdc.xdc`) |
 | `notebook/p501_qpsk_rx_4p.py` | driver `P501QpskRx4p`: `acquire_4p()`, `set_auto()`, `enable_auto(continuous)`, `auto_status()`, `measure(n)` (a manual window), `timed_lock(mode)` |
+| `make_notebook_4p.py` -> `notebook/P501_QPSK_4P_Live.ipynb` | the interactive notebook (like the other two): loopback self-tests, live picture (Costas and estimator frequency, constellation spread, mismatches), methods once / continuous / Costas only, Estimate again, Stop estimator, experiment 1 (accuracy and first loaded value), experiment 2 (lock from cold) |
 | `p501_4p_link.py`, `run_4p_test.py` | board side and host side of the tests (`--what acquire\|stats\|sweep\|both`) |
 
 Registers (added to those of the receiver): `0x74 FE_CTRL` (rising edge of bit 0 arms ONE manual window), `0x78 FE_N` (window, symbols, 1..65535, default 1024), `0x7C FE_STATUS`, `0x80 FE_CNT`, `0x84 ACC_RE`, `0x88 ACC_IM`, `0x8C ACC_ABS`, `0x90 FE_FIRST`,
