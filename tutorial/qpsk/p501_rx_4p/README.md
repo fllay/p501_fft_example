@@ -11,6 +11,17 @@ ADC -> polyphase matched filter + timing loop + AGC -> m (one symbol every 104 c
 ```
 The FPGA does everything: Python only writes `FE_AUTO` (enable) and reads counters. There is no FLL in this overlay (it is the receiver of chapter 4d, `qpsk_rx.v`, plus the estimator).
 
+![The three chains](../../img/qpsk_chains_compare.png)
+
+The three chains side by side: only chain 2 puts something (the FLL derotator) in front of the polyphase filter. Chain 3 adds nothing to the signal path: the estimator reads the symbols and its only output is a load into the Costas frequency.
+
+![Chain 3 in the FPGA](../../img/qpsk_chain3_block.png)
+
+The implementation: the engine of the receiver (blue), the estimator with its controller (green) and the **one mux** (red): at state S7 the omega register takes `load ? ld_w : omega + CB x e_c >> 8`.
+The select is a one-shot load request from the estimator (`ld_pend`), not a mode level; with `FE_AUTO` = 0 the request never comes and the Costas loop runs as in chapter 4d, with the estimator's arithmetic idling beside it.
+
+![What FE_AUTO does](../../img/qpsk_chain3_modes.png)
+
 | file | what |
 |---|---|
 | `rtl/qpsk_fe.v` | the accumulators of the estimator (shared with the overlay `p501_qpsk_trx_fe`) |
@@ -20,6 +31,7 @@ The FPGA does everything: Python only writes `FE_AUTO` (enable) and reads counte
 | `sim/tb_qpsk_rx_4p.v`, `sim/compare_4p.py` | RTL testbench (auto mode, N, q_min as plusargs) and the comparison with the model |
 | `steps/`, `bd/qpsk_rx_4p_chain.tcl`, `QPSKRX4P=1` in `create_project.tcl` | the project (the clock-crossing constraints of `src/qpsk_rx_cdc.xdc`) |
 | `notebook/p501_qpsk_rx_4p.py` | driver `P501QpskRx4p`: `acquire_4p()`, `set_auto()`, `enable_auto(continuous)`, `auto_status()`, `measure(n)` (a manual window), `timed_lock(mode)` |
+| `make_diagrams_4p.py` | draws the three figures above into `tutorial/img/` |
 | `make_notebook_4p.py` -> `notebook/P501_QPSK_4P_Live.ipynb` | the interactive notebook (like the other two): loopback self-tests, live picture (Costas and estimator frequency, constellation spread, mismatches), methods once / continuous / Costas only, Estimate again, Stop estimator, experiment 1 (accuracy and first loaded value), experiment 2 (lock from cold) |
 | `p501_4p_link.py`, `run_4p_test.py` | board side and host side of the tests (`--what acquire\|stats\|sweep\|both`) |
 

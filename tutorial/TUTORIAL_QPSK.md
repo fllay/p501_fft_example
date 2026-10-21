@@ -212,6 +212,18 @@ the Costas loop has the initial-frequency register `W0`, and the Python driver's
 
 We did build the FLL as a separate overlay, `p501_qpsk_trx_fll` (`rtl/qpsk_fll.v`, `rtl/qpsk_rx_fll.v`, README in `tutorial/qpsk/p501_rx_fll/`): the same chain as GNU Radio's flowgraph, FLL -> polyphase matched filter and timing loop -> Costas loop. The FLL is a derotator on the sample RAM (7 of the 26 clock cycles per sample) and one error engine per symbol with four multipliers (the two band-edge filters share them), integer model and RTL bit-exact. On the air it locks without any hint, and pulls in about 3 to 7 times faster than the Costas loop alone at an offset of 80 kHz (no clear difference up to 40 kHz, where the Costas loop alone also locks without hints) (details in the README). The main receiver of this chapter is unchanged. A third overlay, `p501_qpsk_trx_fe` (`rtl/qpsk_fe.v`, README in `tutorial/qpsk/p501_rx_fe/`), adds the open-loop differential 4th-power estimator next to the FLL (angle of `m x conj(m_prev)` by CORDIC, times 4, exponential from the sine table, summed over a window): its measurement is 10 to 50 times quieter than the FLL's frequency (58 Hz against about 1 kHz at 2048 symbols), unbiased to within 70 Hz, correct to 110 kHz, and takes 3.5 ms including the settling of the AGC and the timing loop.
 
+![The three carrier-frequency chains](img/qpsk_chains_compare.png)
+
+A fourth overlay, `p501_qpsk_trx_4p`, is chain 3 with no FLL and no software in the loop: the estimator takes the symbols after the polyphase filter, the timing loop and the AGC, runs a window of N symbols, takes the `atan2` with a CORDIC, and the hardware writes the result into the Costas loop's frequency register when the window passes a quality gate.
+It is a side path: nothing is added to the signal path, and its only effect on the receiver is one mux at the input of the Costas frequency register.
+
+![Chain 3 in the FPGA](img/qpsk_chain3_block.png)
+
+The mux is `omega <= load ? ld_w : omega + (CB x e_c >> 8)`, evaluated at state S7 of every symbol. The select is a one-shot request (`ld_pend`) from the estimator, not a mode level: with the enable register `FE_AUTO` = 0 the request never comes and the Costas loop is the receiver of chapter 4d, with the estimator's arithmetic idling beside it.
+In *once* mode the load sets the integrator's starting value and the Costas loop goes on from there; in *continuous* mode every window that passes loads again, and between the loads the integrator keeps updating, which is why that mode fights the loop at large offsets.
+
+![What FE_AUTO does](img/qpsk_chain3_modes.png)
+
 ### A.5.7 From the functional blocks to the Verilog
 
 | functional block | why (short) | Verilog | what the Verilog looks like |
@@ -887,7 +899,7 @@ idx = (theta >> 22) & 1023; c, s = cos_l[idx], sin_l[idx]
 zi = clip((mi2 * c + mq2 * s) >> 15, -32768, 32767); zq = clip((mq2 * c - mi2 * s) >> 15, -32768, 32767)
 si = 1 if zi > 0 else -1; sq = 1 if zq > 0 else -1
 e_c = clip(si * zq - sq * zi, -8191, 8191)
-omega = clip(omega + ((R["CB"] * e_c) >> 8), -2 ** 31, 2 ** 31 - 1)
+omega = omega_loads[n] if (omega_loads and n in omega_loads) else clip(omega + ((R["CB"] * e_c) >> 8), -2 ** 31, 2 ** 31 - 1)
 theta = (theta + omega + ((R["CA"] * e_c) >> 8)) & 0xFFFFFFFF
 # decision and decoding
 pt = {(1, 1): 0, (-1, 1): 1, (-1, -1): 2, (1, -1): 3}[(si, sq)]
