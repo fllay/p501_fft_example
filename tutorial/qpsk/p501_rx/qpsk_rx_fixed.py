@@ -40,8 +40,8 @@ def clip(v, lo, hi):
     return lo if v < lo else hi if v > hi else v
 
 
-def receive_fixed(xi, xq, regs=None, max_symbols=None):
-    """xi, xq: int arrays (ADC counts). Returns dict of arrays: bits, zi, zq, omega (turns*2^32), rate (Q16 arms), g, e_t, e_c, and mi2, mq2 (the symbols after the AGC, before the derotation: the input of the frequency estimator)."""
+def receive_fixed(xi, xq, regs=None, max_symbols=None, omega_loads=None):
+    """omega_loads: optional {symbol index: value}: the Costas frequency is LOADED with the value at that symbol instead of the integrator update (the frequency estimator of rtl/qpsk_rx_all.v). xi, xq: int arrays (ADC counts). Returns dict of arrays: bits, zi, zq, omega (turns*2^32), rate (Q16 arms), g, e_t, e_c, and mi2, mq2 (the symbols after the AGC, before the derotation: the input of the frequency estimator)."""
     R = regs_from_bw() if regs is None else regs
     cm, cd = coefs(); cos_l, sin_l = cos_sin_lut()
     xi = np.asarray(xi, dtype=np.int64); xq = np.asarray(xq, dtype=np.int64)
@@ -70,7 +70,7 @@ def receive_fixed(xi, xq, regs=None, max_symbols=None):
         zi = clip((mi2 * c + mq2 * s) >> 15, -32768, 32767); zq = clip((mq2 * c - mi2 * s) >> 15, -32768, 32767)
         si = 1 if zi > 0 else -1; sq = 1 if zq > 0 else -1
         e_c = clip(si * zq - sq * zi, -8191, 8191)
-        omega = clip(omega + ((R["CB"] * e_c) >> 8), -2 ** 31, 2 ** 31 - 1)
+        omega = omega_loads[n] if (omega_loads and n in omega_loads) else clip(omega + ((R["CB"] * e_c) >> 8), -2 ** 31, 2 ** 31 - 1)
         theta = (theta + omega + ((R["CA"] * e_c) >> 8)) & 0xFFFFFFFF
         # decision and decoding
         pt = {(1, 1): 0, (-1, 1): 1, (-1, -1): 2, (1, -1): 3}[(si, sq)]
