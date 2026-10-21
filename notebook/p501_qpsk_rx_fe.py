@@ -69,3 +69,48 @@ class P501QpskRxFe(P501QpskRxFll):
             fl, co = self.fll_hz(), self._omega_hz()
             return dict(locked=True, tries=i + 1, seconds=time.time() - t0, f_hz=e["f_hz"], quality=e["quality"], costas_hz=co, fll_hz=fl, total_hz=co - fl)
         return dict(locked=False, tries=tries, seconds=time.time() - t0, f_hz=e["f_hz"], quality=e["quality"], costas_hz=self._omega_hz(), fll_hz=self.fll_hz(), total_hz=float("nan"))
+
+    def timed_lock(self, method, acq_div=100, settle_symbols=2000, n=1024, window_s=0.3):
+        """Cold start with the mismatch counter polled without a pause; the time of its last change is the time to lock. method: "costas" (wide Costas loop only, FLL held at 0), "fll" (FLL + Costas,
+        gain 0.002), "fe-fll" (settle, one window, derotator loaded with minus the estimate, Costas held at 0 until then), "fe-w0" (the same, then a restart with W0 = the estimate).
+        Returns {ms, mismatches, locked, estimate_hz, fll_hz, costas_hz}."""
+        self.stop(); time.sleep(0.05)
+        self.configure(timing_bw=2 * np.pi / acq_div, phase_bw=2 * np.pi / acq_div, init_freq_hz=0.0)
+        self.ip.write(REG["FLL_F0"], 0); self.set_fll(0.002); self.fll_enable(method == "fll")
+        if method == "fe-fll":
+            self.ip.write(REG["CA"], 0); self.ip.write(REG["CB"], 0)
+        st = [0, 0.0, 0.0]
+
+        def poll(seconds):
+            end = time.time() + seconds
+            while time.time() < end:
+                m = self.ip.read(REG["MISMATCH"])
+                if m != st[0]: st[0], st[1] = m, time.time() - st[2]
+        self.start(); st[2] = time.time(); est = None
+        if method in ("fe-fll", "fe-w0"):
+            poll(settle_symbols / SYMBOL_RATE)
+            self.ip.write(REG["FE_N"], int(n)); self.ip.write(REG["FE_CTRL"], 0); self.ip.write(REG["FE_CTRL"], 1)
+            t0 = time.time()
+            while not (self.ip.read(REG["FE_STATUS"]) & 2) and time.time() - t0 < 1.0:
+                m = self.ip.read(REG["MISMATCH"])
+                if m != st[0]: st[0], st[1] = m, time.time() - st[2]
+            re, im = _signed(self.ip.read(REG["ACC_RE"])), _signed(self.ip.read(REG["ACC_IM"]))
+            est = float(np.arctan2(im, re) / (8 * np.pi) * SYMBOL_RATE)
+            if method == "fe-fll":
+                self.fll_load(-est); self.set_loops(2 * np.pi / acq_div, 2 * np.pi / acq_div)
+            else:
+                self.stop(); self.configure(timing_bw=2 * np.pi / acq_div, phase_bw=2 * np.pi / acq_div, init_freq_hz=est); self.start()
+        poll(window_s)
+        ok = self.locked(0.05)
+        return dict(ms=st[1] * 1e3, mismatches=st[0], locked=bool(ok), estimate_hz=est, fll_hz=self.fll_hz(), costas_hz=self._omega_hz())
+
+    def handover(self, n=4096, windows=3):
+        """Take the residual offset the estimator sees (after the derotator) out of the derotator: new FLL frequency = current - residual, loop off. The Costas loop, which has been following the residual,
+        then has about nothing left to do. Returns {residual_hz, new_fll_hz, quality}."""
+        es = [self.measure(n) for _ in range(windows)]
+        th = np.array([e["f_hz"] for e in es]) / SYMBOL_RATE * 8 * np.pi
+        f = float(np.angle(np.mean(np.exp(1j * th))) / (8 * np.pi) * SYMBOL_RATE)
+        cur = _signed(self.ip.read(REG["FLL_FREQ"])) / 2 ** 32 * FS
+        self.fll_load(cur - f); self.fll_enable(False)
+        return dict(residual_hz=f, new_fll_hz=cur - f, quality=float(np.mean([e["quality"] for e in es])))
+

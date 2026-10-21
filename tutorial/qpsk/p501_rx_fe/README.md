@@ -25,7 +25,8 @@ the offset at the antenna is `f - FLL frequency`.
 | `tutorial/qpsk/p501_rx_fll/qpsk_fe_fixed.py` | the bit-exact integer model (and `fe_study.py`, the offline study) |
 | `sim/tb_qpsk_rx_fe.v`, `sim/compare_fe.py` | RTL testbench (two windows) and the comparison with the model |
 | `steps/`, `bd/qpsk_rx_fe_chain.tcl`, `QPSKRXFE=1` in `create_project.tcl` | the project; the clock-crossing constraints are those of the FLL receiver (`src/qpsk_rx_fll_cdc.xdc`) |
-| `notebook/p501_qpsk_rx_fe.py` | driver `P501QpskRxFe`: `measure(n)`, `estimate_freq(n, windows)`, `acquire_fe(apply="fll"\|"w0")` (+ everything of the FLL driver) |
+| `notebook/p501_qpsk_rx_fe.py` | driver `P501QpskRxFe`: `measure(n)`, `estimate_freq(n, windows)`, `acquire_fe(apply="fll"\|"w0")`, `timed_lock(method)`, `handover()` (+ everything of the FLL driver) |
+| `make_notebook_fe.py` -> `notebook/P501_QPSK_FE_Live.ipynb` | the interactive notebook (like the FLL one): self-tests in digital loopback, live picture with the offset seen by Costas / FLL / estimator, four start methods (FLL, estimator -> derotator, estimator -> W0, Costas only), Freeze FLL, Handover now, Auto-handover (estimator -> derotator once a second), experiment 1 (accuracy against N and the FLL's scatter), experiment 2 (lock from cold with the four methods) |
 | `p501_fe_link.py`, `run_fe_test.py` | board side and host side of the over-the-air tests (`--what stats\|acquire\|settle`) |
 
 ## Verification
