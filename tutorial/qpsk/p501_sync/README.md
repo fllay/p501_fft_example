@@ -134,14 +134,16 @@ that biased the 4th-power estimator); a unit-magnitude correlator would need a C
 
 | B210 TX gain | hits | misses | false peaks | lock lost | payload bit errors (gated) | Costas loop |
 |---|---|---|---|---|---|---|
-| 80 dB | 2815 | 0 | 0 | 0 | 16 mismatches in 5.35 Mbit (BER 1e-6) | locked |
-| 76 dB | 2816 | 0 | 0 | 0 | BER 2e-3 | not locked by the search |
-| 72 dB | 2816 | 0 | 0 | 0 | BER 0.12 (not decodable) | not locked |
-| 68 dB | 2612 | 116 | 39 | 28 | not decodable | not locked |
-| 64 dB | 72 | 187 | 12 | 51 | - | - |
-| 60 dB | 0 | - | - | - | - | - |
+| 80 dB | 2816 | 0 | 0 | 0 | 0 mismatches in 5.35 Mbit (BER < 2e-7) | locked |
+| 76 dB | 2816 | 0 | 0 | 0 | BER 2e-4 | not locked by the search |
+| 72 dB | 2816 | 0 | 0 | 0 | BER 1.6e-2 | not locked |
+| 68 dB | 2795 | 15 | 9 | 4 | BER 0.17 (not decodable) | not locked |
+| 64 dB | 1015 | 679 | 44 | 133 | not decodable | not locked |
+| 60 dB | 0 | 3 | 0 | 1 | - | - |
 
-The synchroniser finds **every frame down to 72 dB**, 8 dB below the level at which the data decode cleanly and where the demodulator itself is lost; it degrades at 68 dB and fails at 64 dB.
+(Measured again on 2026-10-22, B210 TX gain 80 dB first and then stepped down, as in the first run; the B210/P501 signal level drifts between sessions: the first run had 2815 hits / BER 1e-6 at 80 dB, BER 2e-3 at 76 dB, 2612 hits at 68 dB and 72 hits at 64 dB.)
+
+The synchroniser finds **every frame down to 72 dB**, 8 dB below the level at which the data decode cleanly and where the demodulator itself is lost; it degrades at 68 dB (2795 of 2816 frames) and mostly fails at 64 dB (1015 of 2816); at 60 dB nothing is found.
 Over the whole run `late` was 0: the synchroniser kept up with every symbol.
 
 **False alarms** (the same threshold, 19.2 million symbols each, 20 s): receiver noise only: 29 peaks, no lock; PRBS-15 data at 80 dB without a preamble: **0 peaks**, no lock. A lock needs two peaks one frame apart.
