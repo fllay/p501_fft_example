@@ -224,6 +224,14 @@ In *once* mode the load sets the integrator's starting value and the Costas loop
 
 ![What FE_AUTO does](img/qpsk_chain3_modes.png)
 
+**Frame synchronisation with an m-sequence (chapter 4e, part 1).** `p501_qpsk_trx_sync` (`rtl/qpsk_sync.v`, README in `tutorial/qpsk/p501_sync/`) adds a block beside the engine that correlates the phase steps of the symbols with a known 63-chip m-sequence preamble.
+It finds the frame start before any loop has locked, tracks the frame period, measures the frequency offset from `arg(C)` (data aided, +-480 kHz) and opens a payload gate for the bit error counter. The B210 transmits the frames from a GNU Radio flowgraph (`qpsk_b210_frame_tx.grc`) or from Python;
+the synchroniser found every frame down to a TX gain 8 dB below the level at which the data can be decoded.
+
+![The frame, the correlation, the tracker](img/qpsk_sync_frame.png)
+
+![The synchroniser in the FPGA](img/qpsk_sync_block.png)
+
 ### A.5.7 From the functional blocks to the Verilog
 
 | functional block | why (short) | Verilog | what the Verilog looks like |
