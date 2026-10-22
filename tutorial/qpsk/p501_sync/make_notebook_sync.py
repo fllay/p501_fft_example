@@ -57,8 +57,10 @@ sys.path.insert(0, '/home/xilinx/jupyter_notebooks/p501_qpsk_trx_sync')      # p
 import p501_radio
 from p501_qpsk import P501QpskTx
 from p501_qpsk_rx import soft_quality, constellation_ok, UNIT, REG, _signed, SYMBOL_RATE
+import importlib, p501_qpsk_rx, p501_qpsk_rx_sync
+for _m in (p501_qpsk_rx, p501_qpsk_rx_sync): importlib.reload(_m)                   # a module that is already imported is not re-read: reload, so that a newer file is used without restarting the kernel
 from p501_qpsk_rx_sync import P501QpskRxSync
-import inspect
+print('driver:', p501_qpsk_rx_sync.__file__)
 _need = [m for m in ("configure_sync", "configure_acquisition", "acquire_hw", "gate_enable", "sync_status", "wait_lock", "corr_freq_hz") if not hasattr(P501QpskRxSync, m)]
 assert not _need, f"p501_qpsk_rx_sync.py is older than this notebook (missing {_need}): copy notebook/p501_qpsk_rx_sync.py again to /home/xilinx/jupyter_notebooks/p501_qpsk_trx_sync/ and RESTART THE KERNEL (a module that is already imported is not re-read)"
 
@@ -273,14 +275,18 @@ b_apply = widgets.Button(description="Apply", button_style="primary")
 b_rxoff = widgets.Button(description="Stop receiver", button_style="warning")
 b_start = widgets.Button(description="Start display", button_style="info")
 b_stop  = widgets.Button(description="Stop display")
-status  = widgets.Label(value="idle")
+status  = widgets.Label(value="idle", layout=widgets.Layout(width="auto"))
+errout  = widgets.Output(layout=widgets.Layout(border="1px solid #c0392b", max_height="200px", overflow="auto"))
 image   = widgets.Image(format="png", width=840)
 live    = Live(image, status)
 
+import traceback
 def guard(fn):
     def h(change=None):
         try: fn(change)
-        except Exception as e: status.value = f"{type(e).__name__}: {e}"
+        except Exception as e:
+            status.value = f"{type(e).__name__}: {e}"
+            with errout: print(traceback.format_exc())                          # the whole error, with the line, below the controls
     return h
 
 def apply_sync(_=None):
@@ -332,7 +338,7 @@ w_loop.observe(guard(lambda c: p501_radio.loopback(ad, c["new"])), names="value"
 w_tx.observe(guard(do_tx), names="value")
 
 display(widgets.VBox([widgets.HBox([b_rx, b_apply, b_rxoff, b_start, b_stop, status]), widgets.HBox([w_mode, w_pl, w_fl]), widgets.HBox([w_ld, w_nld, w_nsw, w_acqd]), widgets.HBox([w_thr, w_tol]), widgets.HBox([w_mm, w_gd]), w_gate, w_rxg,
-                      widgets.HBox([w_loop, w_tx]), image]))
+                      widgets.HBox([w_loop, w_tx]), errout, image]))
 ''')
 
 md("""
