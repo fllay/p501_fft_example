@@ -226,7 +226,7 @@ In *once* mode the load sets the integrator's starting value and the Costas loop
 
 **Frame synchronisation with an m-sequence (chapter 4e, part 1).** `p501_qpsk_trx_sync` (`rtl/qpsk_sync.v`, README in `tutorial/qpsk/p501_sync/`) adds a block beside the engine that correlates the phase steps of the symbols with a known 63-chip m-sequence preamble.
 It finds the frame start before any loop has locked, tracks the frame period, measures the frequency offset from `arg(C)` (data aided, +-480 kHz) and opens a payload gate for the bit error counter. The B210 transmits the frames from a GNU Radio flowgraph (`qpsk_b210_frame_tx.grc`) or from Python;
-the synchroniser found every frame down to a TX gain 8 dB below the level at which the data can be decoded.
+the synchroniser found every frame down to a TX gain 8 dB below the level at which the data can be decoded. With the hardware acquisition it also loads the Costas loop's frequency from `arg(C)` and switches the loop gains from acquisition to tracking by itself, so the receiver locks from a cold start at any offset up to +-110 kHz with no hint and no search loop in software (the carrier search of chapter 4d fails above about 40 kHz).
 
 ![The frame, the correlation, the tracker](img/qpsk_sync_frame.png)
 
@@ -907,14 +907,14 @@ idx = (theta >> 22) & 1023; c, s = cos_l[idx], sin_l[idx]
 zi = clip((mi2 * c + mq2 * s) >> 15, -32768, 32767); zq = clip((mq2 * c - mi2 * s) >> 15, -32768, 32767)
 si = 1 if zi > 0 else -1; sq = 1 if zq > 0 else -1
 e_c = clip(si * zq - sq * zi, -8191, 8191)
-omega = omega_loads[n] if (omega_loads and n in omega_loads) else clip(omega + ((R["CB"] * e_c) >> 8), -2 ** 31, 2 ** 31 - 1)
-theta = (theta + omega + ((R["CA"] * e_c) >> 8)) & 0xFFFFFFFF
+ca_n, cb_n = (R["CA"], R["CB"]) if gains is None else (int(gains[0][n]), int(gains[1][n]))
+omega = omega_loads[n] if (omega_loads and n in omega_loads) else clip(omega + ((cb_n * e_c) >> 8), -2 ** 31, 2 ** 31 - 1)
+theta = (theta + omega + ((ca_n * e_c) >> 8)) & 0xFFFFFFFF
 # decision and decoding
 pt = {(1, 1): 0, (-1, 1): 1, (-1, -1): 2, (1, -1): 3}[(si, sq)]
 cc = [0, 1, 3, 2][(pt - prev) % 4]; prev = pt
 out["bits"] += [(cc >> 1) & 1, cc & 1]
 for key, val in (("zi", zi), ("zq", zq), ("omega", omega), ("rate", rate), ("g", g), ("e_t", e_t), ("e_c", e_c), ("mi2", mi2), ("mq2", mq2)): out[key].append(val)
-n += 1
 ```
 *`tutorial/qpsk/p501_rx/qpsk_rx_fixed.py`, lines 68-80 - the integer model of S5..S8 and the decision*
 

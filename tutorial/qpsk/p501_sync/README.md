@@ -1,6 +1,6 @@
 # Chapter 4e, part 1: synchronisation with a known m-sequence (overlay `p501_qpsk_trx_sync`)
 
-Status: **done and tested**: frame format, integer model, RTL bit-exact in simulation (four scenarios), own overlay built (timing met), a GNU Radio flowgraph and a Python transmitter for the B210,
+Status: **done and tested**, with the **hardware acquisition** (the synchroniser loads the Costas loop, all in the FPGA, see below): frame format, integer model, RTL bit-exact in simulation (four scenarios), own overlay built (timing met), a GNU Radio flowgraph and a Python transmitter for the B210,
 tested over the air against the B210 (frames found at every carrier offset from -91 to +110 kHz, with the Costas loop unlocked, and at TX gains where the data can no longer be decoded).
 
 ![The frame, the correlation, the tracker](../../img/qpsk_sync_frame.png)
@@ -33,11 +33,44 @@ The receiver correlates the **phase steps** `d = m_n conj(m_n-1)` of the symbols
 | `qpsk_b210_frame_tx.grc` (`make_flowgraph_frame.py`) | **the GNU Radio flowgraph** for the B210: frames -> differential QPSK -> TX/RX port, with Transmit ON/OFF, TX gain, amplitude, `payload_syms`, spectrum and envelope displays |
 | `qpsk_frame_tx.py` | the same transmitter in Python (`FrameTx`, command line or module): the one the tests use |
 | `make_notebook_sync.py` -> `notebook/P501_QPSK_SYNC_Live.ipynb` | the interactive notebook: loopback self-tests, live picture (constellation, the correlation vectors C at the peaks, frequency from the preamble and from the Costas loop, frames found per second, payload mismatches), start modes (carrier search + sync / sync only with the Costas loop unlocked), live threshold / tolerance / misses / guard / gate, experiments (frequency from the preamble, detection against the RX gain, lock time) |
+| `study_acq.py`, `p501_sync_acq.py`, `run_acq_test.py` | the hardware acquisition: offline study, board and host side of the six-offset comparison with the Python search |
 | `p501_sync_link.py`, `run_sync_test.py`, `p501_sync_false.py`, `run_false_alarm.py` | board side and host side of the over-the-air tests |
 | `make_diagrams_sync.py` | draws the two figures |
 
 Registers (added to those of the receiver): `0x54 SY_CTRL` (bit 0: gate the checker), `0x58 SY_FL`, `0x5C SY_PL`, `0x60 SY_THR` (Q8; 140 = 0.55: a clean preamble gives 0.9, random data 0.13), `0x64 SY_TOL` (1), `0x68 SY_MISSMAX` (3), `0x6C SY_GUARD` (2),
-`0x70 SY_STATUS` (bit 0 locked, bit 1 gate), `0x74 NDET` (peaks), `0x78 NHIT`, `0x7C NMISS`, `0x80 NFALSE`, `0x84 NLOCK`, `0x88 NLOST`, `0x8C REF`, `0x90 CRE`, `0x94 CIM` (the correlation at the last peak), `0x98 MET`, `0x9C EN`, `0xA0 PEAKIDX`, `0xA4 LATE`.
+`0xA8 SY_NSW`, `0xAC SY_CAW`, `0xB0 SY_CBW`, `0xB4 SY_LOAD`, `0xB8 SY_NLOAD`, `0xBC SY_NLD`, `0xC0 SY_WLAST` (the hardware acquisition), `0x70 SY_STATUS` (bit 0 locked, bit 1 gate), `0x74 NDET` (peaks), `0x78 NHIT`, `0x7C NMISS`, `0x80 NFALSE`, `0x84 NLOCK`, `0x88 NLOST`, `0x8C REF`, `0x90 CRE`, `0x94 CIM` (the correlation at the last peak), `0x98 MET`, `0x9C EN`, `0xA0 PEAKIDX`, `0xA4 LATE`.
+
+## Hardware acquisition: the synchroniser and the Costas loop cooperate, all in the FPGA
+
+The known sequence also **starts the carrier loop**; no Python carrier search is needed:
+
+1. **LOAD.** At every lock or hit (mode 2), or at the first `SY_NLOAD` of them (mode 1, default 8), an atan2 CORDIC (18 iterations) turns the correlation `C` of that peak into the frequency `w = signed(angle in turns x 2^20) << 12`
+   (`arg(C) = 2 pi f T`, so `f T` is the angle in turns per symbol and `w` has the OMEGA unit, turns per symbol x 2^32; +-480 kHz) and the engine **writes it into the Costas frequency** at the S7 state of symbol `n + 2` (the peak symbol is `n - 1`;
+   the NCO phase continues).
+2. **GAINS.** The Costas loop runs with the **acquisition gains** `SY_CAW`, `SY_CBW` (bandwidth 2 pi/100) until the tracker is locked and `SY_NSW` hits (4) have followed; then with the **tracking gains** `CA`, `CB` (2 pi/400). With `SY_NSW = 0` it always uses `CA`, `CB`.
+   The timing loop is simply set to its tracking bandwidth from the start (it locks without help).
+
+Driver: `rx.acquire_hw(fl, pl)` writes the registers, starts the receiver and waits until the constellation is sane and the Costas frequency has settled; `configure_acquisition(load, nload, nsw, acq_div)`.
+Defaults keep the old behaviour (`SY_LOAD = 0`, `SY_NSW = 0`): the earlier tests and notebooks are unchanged. New registers: `0xA8 SY_NSW`, `0xAC SY_CAW`, `0xB0 SY_CBW`, `0xB4 SY_LOAD` (0 off, 1 first N, 2 every one), `0xB8 SY_NLOAD`, `0xBC SY_NLD` (loads done), `0xC0 SY_WLAST` (last value loaded).
+
+* **Offline** (`study_acq.py`, synthetic signals, W0 = 0, no hint): with the load and the gain switch the payload has **0 bit errors at every offset from -90 to +110 kHz**; the Costas loop alone with its tracking gains (2 pi/400) fails above about 5 kHz (35 mismatches at +9.7 kHz, thousands at 60 kHz and more).
+* **RTL vs model**: bit-exact (0 mismatches in all columns, the loads, the gain-flag of every symbol) for the load at the first 8 hits, at -60 kHz, the load at every hit at +110 kHz, with the gap (lock lost and found again) and without the load (regression).
+* **Build**: WNS +0.417 ns, WHS +0.010 ns; 16227 LUTs, 58 DSPs (+870 LUTs over the synchroniser alone).
+* **On the air** (B210 frames, TX gain 80 dB; `run_acq_test.py`): the hardware acquisition against the Python search (`rx.acquire()`), cold starts at six B210 carriers from -90 to +110 kHz around the natural +9.5 kHz offset
+  (the Costas frequencies read +9.5, +39.5, -50.5, +89.5, -80.5 and +119.5 kHz):
+
+| session | way | locked | payload BER (median of the starts) |
+|---|---|---|---|
+| 1 (signal better: spread 11 degrees) | hardware | 24 of 24 | 1e-6 to 1e-4 (e.g. 1e-5 at +9.5 kHz, 3e-6 at +89.5 kHz) |
+| | Python search | 7 of 24 by its strict criterion; wrong or noisy at 40 kHz and more | 1e-4 to 2e-1 (+119.5 kHz: it ended at -121 kHz) |
+| 2 (signal weaker: spread 13 to 17 degrees) | hardware | 30 of 30 (a sane constellation and a settled frequency) | 6e-5 to 3e-4 |
+| | Python search | 0 of 29 by its strict criterion (no mismatch in 50 ms, which a BER of 1e-3 never satisfies); the Costas frequency was right except at +119.5 kHz (ended at -120.7 kHz, BER 0.18) | 7e-4 to 2e-3 |
+
+  The two sessions were hours apart and the received signal had changed between them (the BER of both ways rose by a factor of 10); the comparison inside a session is the fair one. The reason why the Python search leaves more bit errors than the hardware start was not found.
+* **How fast** (12 cold starts each, the registers polled without a pause): the frame tracker locks after **1.7 to 1.8 ms** (min 1.1, max 2.2) and the Costas frequency is within 1.5 kHz of its final value from **8.2 ms** at the natural offset (median; 5.8 to 9.5) and from **8.8 ms** at -90.5 kHz;
+  the driver's `acquire_hw` checks every 20 ms and returns after about 0.1 s.
+* **Limit**: the frequency from the preamble is 1 to 3.5 kHz low (see above): the acquisition gains (2 pi/100, pull-in about 10 kHz) take up the error; with `Load = every lock/hit` the loop's own integrator is replaced every frame, so the 1 kHz noise of the preamble's estimate goes into the Costas frequency
+  (the payload BER is a little worse than with the first-8 loads, as with chain 3's continuous mode): use *first N* for acquisition.
 
 ## Verification
 
@@ -87,7 +120,6 @@ Over the whole run `late` was 0: the synchroniser kept up with every symbol.
 ## Notes and what is left
 
 * The transmitter is the B210 (GNU Radio flowgraph or `FrameTx`); the FPGA transmitter of chapter 4c does not send frames yet, so there is no all-FPGA loopback test of this overlay.
-* The synchroniser does not feed the Costas loop; with the frequency from `arg(C)` it could load the Costas frequency like chain 3 does (`qpsk_fe_auto.v`).
 * Part 2 of chapter 4e (a header with a length, a CRC, packets, the round trip) builds on this: the gate gives the position of the payload.
 * The frame format has no spare symbols for the very first frame after a long silence: the AGC and the timing loop must have settled (a few ms) before the first preamble is seen.
 

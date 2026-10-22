@@ -25,7 +25,9 @@ The receiver of the overlay **`p501_qpsk_trx_sync`** finds the start of each fra
 * `C = sum chip[k] d[n-62+k]` over the last 63 steps (and `E = sum |d|`): at the last step of the preamble `|C|` is almost `E` (a quality of about 0.9); on random data it is about `E / 8` (0.13); the threshold is 0.55 by default;
 * a **peak** (candidate, larger than its neighbours) is one frame; **two peaks one frame apart (+-1 symbol) lock** the tracker; it predicts the next peak, counts **hits** and **misses**, and after 3 misses in a row searches again;
 * `arg(C) = 2 pi f T`: the **frequency offset** from the preamble (data aided, |f| < 480 kHz);
-* the **payload gate** (locked, and the symbol is inside the payload): the PRBS-15 checker counts bit errors only there.
+* the **payload gate** (locked, and the symbol is inside the payload): the PRBS-15 checker counts bit errors only there;
+* **hardware acquisition** (the synchroniser and the Costas loop cooperate, all in the FPGA): at every lock/hit an atan2 CORDIC turns `C` into the frequency and the hardware **writes it into the Costas loop's frequency** (the first 8 times, or at every frame);
+  the Costas loop starts with wide **acquisition gains** and the tracker switches it to the narrow **tracking gains** four frames after the lock. No hint, no search loop in Python: the receiver locks at any offset up to +-110 kHz.
 
 **Before you start**
 * Overlay `p501_qpsk_trx_sync` copied to `/home/xilinx/jupyter_notebooks/p501_qpsk_trx_sync/` (with `p501_qpsk.py`, `p501_qpsk_rx.py`, `p501_qpsk_rx_sync.py`), and the notebooks of `p501_fft_dds` (for `p501_radio.py`).
@@ -237,7 +239,9 @@ md("""
 
 **Receiver**
 * **Payload** and **Frame**: the payload symbols per frame (the same as `payload_syms` in the flowgraph; a multiple of 4); the frame is 64 + payload symbols. They are written to the synchroniser (`SY_PL`, `SY_FL`) when you press *Start receiver* or *Apply*.
-* **Start mode**: *Carrier search + sync* starts the receiver with `rx.acquire()` (wide loops with initial-frequency hints, then narrow): the Costas loop locks and the payload bit errors are meaningful.
+* **Start mode**: *Hardware acquisition* (the default) starts the receiver cold with the tracking loops (`2 pi / 400`) and lets the frame synchroniser do the rest in the FPGA: it finds the preamble, **loads the Costas frequency** from `arg(C)` and, *Hits to narrow* frames after the lock, switches the Costas loop from the acquisition gains (*Acq. 2pi/N*) to the tracking gains.
+  *Load*: *first N locks/hits* (N = 8: the acquisition), *every lock/hit* (the frequency is renewed every frame: it follows a drifting offset, but the loop's own integrator is replaced every frame, so the loop noise of the preamble's estimate, about 1 kHz, goes into the Costas frequency), or *off*.
+  *Python carrier search + sync* is the old way (`rx.acquire()`: wide loops with initial-frequency hints, then narrow; the synchroniser only gates the checker).
   *Sync only (Costas unlocked)* starts with loops of `2 pi / 1600`, which cannot pull in the +9.7 kHz offset: the constellation spins, the bit errors are meaningless, **but the synchroniser finds the frames and measures the frequency just the same.**
 * **Threshold** (`SY_THR`, 256 x |C| / E: 140 = 0.55), **Tolerance** (symbols), **Misses to lose the lock**, **Guard** (the first payload symbol that counts: 2 by default): written live (*Apply*).
 * **Gate**: ticked, the bit error counters (`BITS`, `MISMATCH`) count only inside the payload of locked frames (and restart at its start); unticked, they count everything.
@@ -246,13 +250,17 @@ md("""
 **Start display / Stop display**: the live picture; stopping it does not stop the receiver.
 """)
 code('''
-w_mode  = widgets.Dropdown(options=[("Carrier search + sync", "search"), ("Sync only (Costas unlocked)", "nocostas")], value="search", description="Start mode", layout=widgets.Layout(width="330px"))
+w_mode  = widgets.Dropdown(options=[("Hardware acquisition (the sync loads the Costas loop)", "hw"), ("Python carrier search + sync", "search"), ("Sync only (Costas unlocked)", "nocostas")], value="hw", description="Start mode", layout=widgets.Layout(width="520px"))
 w_pl    = widgets.IntText(value=PAYLOAD, step=4, description="Payload", layout=widgets.Layout(width="180px"))
 w_fl    = widgets.Label(value=f"Frame {PAYLOAD + 64}")
 w_thr   = widgets.IntSlider(value=140, min=40, max=250, step=5, description="Threshold", continuous_update=False, layout=widgets.Layout(width="420px"))
 w_tol   = widgets.IntSlider(value=1, min=0, max=4, description="Tolerance", continuous_update=False, layout=widgets.Layout(width="320px"))
 w_mm    = widgets.IntSlider(value=3, min=1, max=10, description="Misses", continuous_update=False, layout=widgets.Layout(width="320px"))
 w_gd    = widgets.IntSlider(value=2, min=0, max=8, description="Guard", continuous_update=False, layout=widgets.Layout(width="320px"))
+w_ld    = widgets.Dropdown(options=[("first N locks/hits", 1), ("every lock/hit", 2), ("off", 0)], value=1, description="Load", layout=widgets.Layout(width="260px"))
+w_nld   = widgets.IntText(value=8, description="N", layout=widgets.Layout(width="140px"))
+w_nsw   = widgets.IntSlider(value=4, min=0, max=32, description="Hits to narrow", continuous_update=False, layout=widgets.Layout(width="380px"))
+w_acqd  = widgets.Dropdown(options=[50, 100, 200], value=100, description="Acq. 2pi/N", layout=widgets.Layout(width="200px"))
 w_gate  = widgets.Checkbox(value=True, description="Gate the bit error counters to the payload", layout=widgets.Layout(width="380px"))
 w_rxg   = widgets.IntSlider(value=RX_GAIN, min=0, max=76, description="RX gain", continuous_update=False, layout=widgets.Layout(width="520px"))
 w_loop  = widgets.Checkbox(value=False, description="Digital loopback")
@@ -276,7 +284,9 @@ def apply_sync(_=None):
     pl = max(4, (int(w_pl.value) // 4) * 4); w_pl.value = pl; fl = pl + 64
     w_fl.value = f"Frame {fl}"; live.fl = fl
     rx.configure_sync(fl=fl, pl=pl, thr=w_thr.value, tol=w_tol.value, missmax=w_mm.value, guard=w_gd.value); rx.gate_enable(w_gate.value)
-    status.value = f"synchroniser set: frame {fl}, payload {pl}, threshold {w_thr.value}, tolerance {w_tol.value}, misses {w_mm.value}, guard {w_gd.value}, gate {'on' if w_gate.value else 'off'}"
+    if w_mode.value == "hw": rx.configure_acquisition(load=w_ld.value, nload=w_nld.value, nsw=w_nsw.value, acq_div=w_acqd.value)
+    else: rx.configure_acquisition(load=0, nsw=0)                                    # the hardware acquisition is only used by its own start mode
+    status.value = f"synchroniser set: frame {fl}, payload {pl}, threshold {w_thr.value}, tolerance {w_tol.value}, misses {w_mm.value}, guard {w_gd.value}, gate {'on' if w_gate.value else 'off'}; acquisition {'load ' + str(w_ld.value) + ', N ' + str(w_nld.value) + ', narrow after ' + str(w_nsw.value) + ' hits' if w_mode.value == 'hw' else 'off'}"
 
 def do_start_receiver(_=None):
     live.paused = True; time.sleep(0.15)                      # the live thread must not touch the registers meanwhile
@@ -284,7 +294,16 @@ def do_start_receiver(_=None):
         live.last = None
         for h in (hist_f, hist_c, hist_h, hist_m): h[:] = [np.nan] * HIST
         vec.clear()
-        if w_mode.value == "search":
+        if w_mode.value == "hw":
+            rx.stop(); time.sleep(0.05); rx.configure(timing_bw=2 * np.pi / 400, phase_bw=2 * np.pi / 400, init_freq_hz=0.0); apply_sync(); rx.start()
+            t0 = time.time(); sync = rx.wait_lock(1.0); t_sync = (time.time() - t0) * 1e3; ok = False
+            while sync and time.time() - t0 < 1.5:
+                time.sleep(0.02)
+                if rx.locked(0.02): ok = True; break
+            y = rx.sync_status()
+            status.value = (f"hardware acquisition: frame sync {'LOCKED after %.1f ms' % t_sync if sync else 'not locked'}; {rx.ip.read(REG['SY_NLD'])} loads, Costas {rx._omega_hz():+.0f} Hz; receiver {'LOCKED' if ok else 'not locked'} after {time.time() - t0:.2f} s"
+                            + ("" if sync else " (is the flowgraph transmitting? same payload?)"))
+        elif w_mode.value == "search":
             rx.stop(); apply_sync()
             r = rx.acquire(track_div=400)
             apply_sync()
@@ -305,10 +324,11 @@ b_rx.on_click(guard(do_start_receiver)); b_apply.on_click(guard(apply_sync)); b_
 b_start.on_click(guard(lambda b: live.start())); b_stop.on_click(guard(lambda b: live.stop()))
 w_gate.observe(guard(lambda c: rx.gate_enable(c["new"])), names="value")
 w_rxg.observe(guard(lambda c: ad.set_rx_manual_gain(c["new"])), names="value")
+w_mode.observe(guard(lambda c: None), names="value")
 w_loop.observe(guard(lambda c: p501_radio.loopback(ad, c["new"])), names="value")
 w_tx.observe(guard(do_tx), names="value")
 
-display(widgets.VBox([widgets.HBox([b_rx, b_apply, b_rxoff, b_start, b_stop, status]), widgets.HBox([w_mode, w_pl, w_fl]), widgets.HBox([w_thr, w_tol]), widgets.HBox([w_mm, w_gd]), w_gate, w_rxg,
+display(widgets.VBox([widgets.HBox([b_rx, b_apply, b_rxoff, b_start, b_stop, status]), widgets.HBox([w_mode, w_pl, w_fl]), widgets.HBox([w_ld, w_nld, w_nsw, w_acqd]), widgets.HBox([w_thr, w_tol]), widgets.HBox([w_mm, w_gd]), w_gate, w_rxg,
                       widgets.HBox([w_loop, w_tx]), image]))
 ''')
 
@@ -322,7 +342,10 @@ w_loop.value = True; w_tx.value = True; time.sleep(0.5)
 w_pl.value = 192; w_thr.value = 120; w_tol.value = 2; w_mm.value = 5; w_gd.value = 3; w_gate.value = True
 b_apply.click(); time.sleep(0.2)
 check("apply writes the registers", [rx.ip.read(REG[k]) for k in ("SY_FL", "SY_PL", "SY_THR", "SY_TOL", "SY_MISSMAX", "SY_GUARD")] == [256, 192, 120, 2, 5, 3], f"{[rx.ip.read(REG[k]) for k in ('SY_FL', 'SY_PL', 'SY_THR', 'SY_TOL', 'SY_MISSMAX', 'SY_GUARD')]}")
+w_mode.value = "hw"; b_apply.click(); time.sleep(0.2)
+check("hardware acquisition registers follow the controls", [rx.ip.read(REG[k]) for k in ("SY_LOAD", "SY_NLOAD", "SY_NSW")] == [1, 8, 4], f"{[rx.ip.read(REG[k]) for k in ('SY_LOAD', 'SY_NLOAD', 'SY_NSW')]}")
 w_mode.value = "nocostas"; b_start.click(); b_rx.click(); time.sleep(1.0)
+check("the other modes switch the hardware acquisition off", [rx.ip.read(REG[k]) for k in ("SY_LOAD", "SY_NSW")] == [0, 0], f"{[rx.ip.read(REG[k]) for k in ('SY_LOAD', 'SY_NSW')]}")
 check("sync-only start runs, PRBS-only data: not locked", rx.ip.read(REG["SY_STATUS"]) & 1 == 0 and "not locked" in status.value, status.value)
 check("gate closed: the checker does not count", rx.ip.read(REG["BITS"]) == 0, f"bits {rx.ip.read(REG['BITS'])}")
 w_gate.value = False; time.sleep(0.5)
@@ -338,8 +361,8 @@ md("""
 ## Try it: the B210 frames
 
 1. Start the B210 flowgraph `qpsk_b210_frame_tx.grc` (`payload_syms` = the *Payload* control, TX gain 80), switch **Transmit** ON.
-2. Press **Start receiver** (*Carrier search + sync*), then **Start display**: the display should say *FRAME SYNC LOCKED*, the frames found per second ~937 (for 960), misses 0, and the payload mismatches near 0.
-3. Try *Sync only (Costas unlocked)*: the constellation spins but the sync still locks; the purple frequency is the offset from the preamble.
+2. Press **Start receiver** (*Hardware acquisition*), then **Start display**: the display should say *FRAME SYNC LOCKED*, the frames found per second ~937 (for 960), misses 0, and the payload mismatches near 0.
+3. Move the B210 carrier in the flowgraph (`freq` 915.03e6, 914.94e6, 915.1e6) and press *Start receiver* again: the hardware acquisition locks at every offset up to +-110 kHz, where the Python search often fails. Try *Sync only (Costas unlocked)*: the constellation spins but the sync still locks; the purple frequency is the offset from the preamble.
 4. Lower the **B210 TX gain** in the flowgraph (80 -> 76 -> 72 -> 68): the data stop decoding first, the frames are still found down to about 72 dB. Or lower the **RX gain** here.
 5. Change *Payload* in the flowgraph and here, and see the lock follow. Stop the flowgraph: after 3 missed frames the lock is lost.
 
@@ -353,7 +376,7 @@ The frequency from `arg(C)` over 300 frames, with the Costas loop locked (`rx.ac
 """)
 code('''
 def freq_experiment(n=300):
-    live.stop(); live.paused = True
+    live.stop(); live.paused = True; rx.configure_acquisition(load=0, nsw=0)
     out = {}
     for mode in ("Costas locked", "Costas unlocked"):
         rx.stop(); time.sleep(0.05); rx.configure_sync(fl=PAYLOAD + 64, pl=PAYLOAD); rx.gate_enable(True)
@@ -381,7 +404,7 @@ frames found against the expected number, misses, false peaks, losses. Earlier r
 """)
 code('''
 def gain_experiment(gains=(70, 60, 55, 50, 45, 40), seconds=2.0):
-    live.stop(); live.paused = True
+    live.stop(); live.paused = True; rx.configure_acquisition(load=0, nsw=0)
     fl = PAYLOAD + 64; print(f"{'RX gain':>8}{'locked after':>14}{'frames expected':>17}{'hits':>8}{'misses':>8}{'false':>7}{'lost':>6}{'quality':>9}")
     rows = []
     for g in gains:
@@ -404,7 +427,7 @@ md("""
 """)
 code('''
 def lock_time_experiment(n=10, div=100):
-    live.stop(); live.paused = True
+    live.stop(); live.paused = True; rx.configure_acquisition(load=0, nsw=0)
     ts = []
     for _ in range(n):
         rx.stop(); time.sleep(0.05); rx.configure(timing_bw=2 * np.pi / div, phase_bw=2 * np.pi / div); rx.configure_sync(fl=PAYLOAD + 64, pl=PAYLOAD); rx.gate_enable(True)
@@ -418,6 +441,33 @@ def lock_time_experiment(n=10, div=100):
     return ts
 
 lts = lock_time_experiment()
+''')
+md("""
+## Experiment 4: hardware acquisition against the Python carrier search (B210 frames)
+
+`trials` cold starts each way, at the offset of the B210 carrier as it is now (change `freq` in the flowgraph and run the cell again: 915.03e6, 914.94e6, 915.07e6, 915.1e6). *H* = hardware acquisition (`rx.acquire_hw()`), *P* = the Python search (`rx.acquire()`); after each start the cell counts
+1 s of payload (gated): bits, mismatches, the constellation spread and the Costas frequency. Earlier results (24 starts at six offsets from -91 to +110 kHz): hardware 24 of 24 locked, payload BER 1e-6 to 1e-4; Python search locked in about a third.
+""")
+code('''
+def acq_experiment(trials=5):
+    live.stop(); live.paused = True
+    print(f"{'way':<4}{'locked':>8}{'seconds':>9}{'payload bits':>14}{'mismatches':>12}{'BER':>10}{'spread':>8}{'Costas':>12}")
+    out = {"H": [], "P": []}
+    for t in range(trials):
+        for way in ("P", "H"):
+            if way == "P":
+                rx.configure_acquisition(load=0, nsw=0); rx.stop(); rx.configure(timing_bw=2 * np.pi / 100, phase_bw=2 * np.pi / 100); rx.configure_sync(fl=PAYLOAD + 64, pl=PAYLOAD); rx.gate_enable(True)
+                t0 = time.time(); r = rx.acquire(track_div=400); sec = time.time() - t0; ok = r["locked"]
+            else:
+                r = rx.acquire_hw(fl=PAYLOAD + 64, pl=PAYLOAD); sec = r["seconds"]; ok = r["locked"]
+            time.sleep(0.2); s0 = rx.stats(); time.sleep(1.0); s1 = rx.stats(); z = rx.capture()
+            nb, nm = s1["bits"] - s0["bits"], s1["mismatches"] - s0["mismatches"]; out[way].append((ok, nm / 3.0 / max(nb, 1)))
+            print(f"{way:<4}{str(ok):>8}{sec:>9.2f}{nb:>14,}{nm:>12,}{nm / 3.0 / max(nb, 1):>10.1e}{soft_quality(z)[1]:>7.1f}d{rx._omega_hz():>+10.0f}Hz")
+    rx.configure_acquisition(load=0, nsw=0); rx.stop(); live.paused = False
+    for way in ("H", "P"): print(f"{way}: locked {sum(o for o, _ in out[way])}/{trials}, median BER {np.median([b for _, b in out[way]]):.1e}")
+    return out
+
+acq = acq_experiment()
 ''')
 
 md("""

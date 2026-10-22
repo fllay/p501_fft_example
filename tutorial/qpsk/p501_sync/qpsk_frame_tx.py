@@ -33,6 +33,10 @@ class FrameTx(gr.top_block):
         self.sink = sink
         self.connect(src, mod, amp, sink)
 
+    def set_freq(self, f):
+        """B210 carrier in Hz, live."""
+        self.sink.set_center_freq(uhd.tune_request(f), 0)
+
     def set_gain(self, g):
         """B210 TX gain in dB, live (limited to 80)."""
         assert g <= 80

@@ -5,6 +5,8 @@
 //   0x64 SY_TOL tolerance of the frame period (symbols, 1)   0x68 SY_MISSMAX misses in a row that lose the lock (3)   0x6C SY_GUARD first payload symbol inside the gate (2)
 //   0x70 SY_STATUS (R) bit0 locked, bit1 gate now   0x74 NDET (peaks)   0x78 NHIT   0x7C NMISS   0x80 NFALSE   0x84 NLOCK   0x88 NLOST   0x8C REF (symbol index of the last frame reference)
 //   0x90 CRE, 0x94 CIM (signed, the correlation C at the last peak: arg(C) = 2 pi f T)   0x98 MET (|C|)   0x9C EN (sum |d|)   0xA0 PEAKIDX   0xA4 LATE (symbols the synchroniser was too slow for: 0)
+//   HARDWARE ACQUISITION: 0xA8 SY_NSW (hits after the lock before the tracking gains CA/CB replace the acquisition gains; 0 = always CA/CB)   0xAC SY_CAW, 0xB0 SY_CBW (acquisition Costas gains)
+//   0xB4 SY_LOAD (0 off, 1 load the Costas frequency from arg(C) at the first SY_NLOAD locks/hits, 2 at every one)   0xB8 SY_NLOAD (8)   0xBC SY_NLD (R, loads done)   0xC0 SY_WLAST (R, last value loaded)
 // Model: tutorial/qpsk/p501_sync/qpsk_sync_fixed.py (bit-exact).
 //
 // (the header of qpsk_rx.v follows)
@@ -62,14 +64,14 @@ module qpsk_rx_sync (
 );
   // ======================= registers =======================
   reg [31:0] r_ctrl, r_ta, r_tb, r_ca, r_cb, r_mu, r_ref, r_g0, r_w0, r_maxr;
-  reg [31:0] r_sy_ctrl, r_sy_fl, r_sy_pl, r_sy_thr, r_sy_tol, r_sy_missmax, r_sy_guard;
+  reg [31:0] r_sy_ctrl, r_sy_fl, r_sy_pl, r_sy_thr, r_sy_tol, r_sy_missmax, r_sy_guard, r_sy_nsw, r_sy_caw, r_sy_cbw, r_sy_load, r_sy_nload;
   wire do_write = s_axi_awvalid & s_axi_wvalid & ~s_axi_bvalid;
   assign s_axi_awready = do_write;
   assign s_axi_wready  = do_write;
   always @(posedge aclk) begin
     if (!aresetn) begin
       r_ctrl <= 32'd0; r_ta <= 32'd729017; r_tb <= 32'd16195; r_ca <= 32'd928214; r_cb <= 32'd20620;
-      r_mu <= 32'd40; r_ref <= 32'd16384; r_g0 <= 32'd1024; r_w0 <= 32'd0; r_maxr <= 32'd52429; r_sy_ctrl <= 32'd0; r_sy_fl <= 32'd1024; r_sy_pl <= 32'd960; r_sy_thr <= 32'd140; r_sy_tol <= 32'd1; r_sy_missmax <= 32'd3; r_sy_guard <= 32'd2;
+      r_mu <= 32'd40; r_ref <= 32'd16384; r_g0 <= 32'd1024; r_w0 <= 32'd0; r_maxr <= 32'd52429; r_sy_ctrl <= 32'd0; r_sy_fl <= 32'd1024; r_sy_pl <= 32'd960; r_sy_thr <= 32'd140; r_sy_tol <= 32'd1; r_sy_missmax <= 32'd3; r_sy_guard <= 32'd2; r_sy_nsw <= 32'd0; r_sy_caw <= 32'd3473858; r_sy_cbw <= 32'd308679; r_sy_load <= 32'd0; r_sy_nload <= 32'd8;
       s_axi_bvalid <= 1'b0; s_axi_bresp <= 2'b00;
     end else begin
       if (do_write) begin
@@ -91,6 +93,11 @@ module qpsk_rx_sync (
           6'h19: r_sy_tol <= s_axi_wdata;
           6'h1A: r_sy_missmax <= s_axi_wdata;
           6'h1B: r_sy_guard <= s_axi_wdata;
+          6'h2A: r_sy_nsw <= s_axi_wdata;
+          6'h2B: r_sy_caw <= s_axi_wdata;
+          6'h2C: r_sy_cbw <= s_axi_wdata;
+          6'h2D: r_sy_load <= s_axi_wdata;
+          6'h2E: r_sy_nload <= s_axi_wdata;
           default: ;
         endcase
         s_axi_bvalid <= 1'b1;
@@ -187,9 +194,10 @@ module qpsk_rx_sync (
 
   // ---- the frame synchroniser: one pulse per symbol when mi2, mq2 are valid (state S2)
   wire [31:0] sy_n_det, sy_n_hit, sy_n_miss, sy_n_false, sy_n_lock, sy_n_lost, sy_late, sy_ref, sy_pk;
-  wire signed [23:0] sy_cre, sy_cim; wire [23:0] sy_met, sy_en; wire sy_gate, sy_locked;
+  wire signed [23:0] sy_cre, sy_cim; wire [23:0] sy_met, sy_en; wire sy_gate, sy_locked, sy_narrow, sy_ld_pend; wire [31:0] sy_ld_w, sy_w_last, sy_n_ld; reg sy_ld_ack;
   qpsk_sync u_sy (.aclk(aclk), .run(r_ctrl[0] & aresetn), .go(st == S2), .mi(mi2), .mq(mq2), .sym_idx(n_sym), .eng_n(n_sym),
-                  .r_fl(r_sy_fl), .r_pl(r_sy_pl), .r_thr(r_sy_thr), .r_tol(r_sy_tol), .r_missmax(r_sy_missmax), .r_guard(r_sy_guard),
+                  .r_fl(r_sy_fl), .r_pl(r_sy_pl), .r_thr(r_sy_thr), .r_tol(r_sy_tol), .r_missmax(r_sy_missmax), .r_guard(r_sy_guard), .r_load(r_sy_load), .r_nload(r_sy_nload), .r_nsw(r_sy_nsw),
+                  .narrow(sy_narrow), .ld_pend(sy_ld_pend), .ld_w(sy_ld_w), .w_last(sy_w_last), .n_ld(sy_n_ld), .ld_ack(sy_ld_ack),
                   .gate(sy_gate), .locked(sy_locked), .ref_idx(sy_ref), .pk_idx(sy_pk), .n_det(sy_n_det), .n_hit(sy_n_hit), .n_miss(sy_n_miss), .n_false(sy_n_false), .n_lock(sy_n_lock), .n_lost(sy_n_lost),
                   .late(sy_late), .snap_re(sy_cre), .snap_im(sy_cim), .snap_met(sy_met), .snap_en(sy_en));
 
@@ -222,8 +230,9 @@ module qpsk_rx_sync (
   wire signed [46:0] ta_prod = $signed({1'b0, r_ta[30:0]}) * e_t;
   wire signed [46:0] ta_sh = ta_prod >>> 21;
   wire        [51:0] ta_ext = {{5{ta_sh[46]}}, ta_sh};
-  wire signed [47:0] cb_prod = $signed({1'b0, r_cb[30:0]}) * e_c;
-  wire signed [47:0] ca_prod = $signed({1'b0, r_ca[30:0]}) * e_c;
+  wire [31:0] ca_eff = sy_narrow ? r_ca : r_sy_caw, cb_eff = sy_narrow ? r_cb : r_sy_cbw;      // the tracking gains once the frame tracker has locked (and r_sy_nsw hits have followed), else the acquisition gains
+  wire signed [47:0] cb_prod = $signed({1'b0, cb_eff[30:0]}) * e_c;
+  wire signed [47:0] ca_prod = $signed({1'b0, ca_eff[30:0]}) * e_c;
   wire signed [47:0] ca_sh = ca_prod >>> 8;
   wire signed [32:0] zi_full = mi2 * trig_c + mq2 * trig_s;
   wire signed [32:0] zq_full = mq2 * trig_c - mi2 * trig_s;
@@ -236,7 +245,7 @@ module qpsk_rx_sync (
   wire signed [47:0] omega_new_w = omega + (cb_prod >>> 8);
 
   always @(posedge aclk) begin
-    run_q <= run; sym_pulse <= 1'b0;
+    run_q <= run; sym_pulse <= 1'b0; sy_ld_ack <= 1'b0;
     cap_arm_q <= r_ctrl[1];
     if (!aresetn || !run) begin
       st <= ST_IDLE; ic <= 7'd0;
@@ -301,7 +310,8 @@ module qpsk_rx_sync (
               st <= S7;
             end
         S7: begin
-              omega <= (omega_new_w > 48'sd2147483647) ? 32'sh7FFFFFFF : (omega_new_w < -48'sd2147483648) ? 32'sh80000000 : omega_new_w[31:0];
+              omega <= sy_ld_pend ? $signed(sy_ld_w) : (omega_new_w > 48'sd2147483647) ? 32'sh7FFFFFFF : (omega_new_w < -48'sd2147483648) ? 32'sh80000000 : omega_new_w[31:0];   // the frequency from the preamble replaces the update
+              if (sy_ld_pend) sy_ld_ack <= 1'b1;
               st <= S8;
             end
         S8: begin
@@ -346,6 +356,8 @@ module qpsk_rx_sync (
           6'h21: s_axi_rdata <= sy_n_lock;  6'h22: s_axi_rdata <= sy_n_lost;  6'h23: s_axi_rdata <= sy_ref;
           6'h24: s_axi_rdata <= {{8{sy_cre[23]}}, sy_cre};  6'h25: s_axi_rdata <= {{8{sy_cim[23]}}, sy_cim};  6'h26: s_axi_rdata <= {8'd0, sy_met};  6'h27: s_axi_rdata <= {8'd0, sy_en};
           6'h28: s_axi_rdata <= sy_pk;      6'h29: s_axi_rdata <= sy_late;
+          6'h2A: s_axi_rdata <= r_sy_nsw;   6'h2B: s_axi_rdata <= r_sy_caw;   6'h2C: s_axi_rdata <= r_sy_cbw;  6'h2D: s_axi_rdata <= r_sy_load;  6'h2E: s_axi_rdata <= r_sy_nload;
+          6'h2F: s_axi_rdata <= sy_n_ld;    6'h30: s_axi_rdata <= sy_w_last;
           default: s_axi_rdata <= 32'd0;
         endcase
       end else if (s_axi_rvalid & s_axi_rready) s_axi_rvalid <= 1'b0;

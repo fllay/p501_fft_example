@@ -9,10 +9,16 @@ import qpsk_rx_fixed as F, qpsk_sync_fixed as S
 FL = int(sys.argv[1]) if len(sys.argv) > 1 else 256
 PL = int(sys.argv[2]) if len(sys.argv) > 2 else 192
 THR = int(sys.argv[3]) if len(sys.argv) > 3 else 140
+LOAD = int(sys.argv[4]) if len(sys.argv) > 4 else 0
+NLOAD = int(sys.argv[5]) if len(sys.argv) > 5 else 8
+NSW = int(sys.argv[6]) if len(sys.argv) > 6 else 0
 SIG = os.environ.get("SIGNAL", "a")
 xi, xq = np.load(os.path.join(HERE, "xi_%s.npy" % SIG)), np.load(os.path.join(HERE, "xq_%s.npy" % SIG))
-r = F.receive_fixed(xi, xq); r["bits_flat"] = r["bits"]; r["bits"] = r["bits"].reshape(-1, 2) @ np.array([2, 1])
-s = S.run_sync(r["mi2"], r["mq2"], FL, PL, thr=THR)
+r = F.receive_fixed(xi, xq)
+s = S.run_sync(r["mi2"], r["mq2"], FL, PL, thr=THR, load=LOAD, nload=NLOAD, nsw=NSW)
+R = F.regs_from_bw(); W = F.regs_from_bw(phase_bw=2 * np.pi / 100); assert (W["CA"], W["CB"]) == (3473858, 308679)
+ca = np.where(s["narrow"], R["CA"], W["CA"]); cb = np.where(s["narrow"], R["CB"], W["CB"])
+r = F.receive_fixed(xi, xq, omega_loads=s["loads"], gains=(ca, cb)); r["bits_flat"] = r["bits"]; r["bits"] = r["bits"].reshape(-1, 2) @ np.array([2, 1])
 bad = 0
 c = np.loadtxt(os.path.join(HERE, "rtl_sy_corr.txt"), dtype=np.int64).reshape(-1, 6); k = min(len(c), len(s["cre"]))
 for j, name in ((1, "cre"), (2, "cim"), (3, "en"), (4, "met")):
@@ -21,12 +27,16 @@ mm = int(np.sum(c[:k, 5] != s["cand"][:k].astype(int))); bad += mm; print("  cor
 pk = np.loadtxt(os.path.join(HERE, "rtl_sy_peak.txt"), dtype=np.int64).reshape(-1, 5)
 mp = int(len(pk) != len(s["peaks"]) or np.any(pk[:, 1] != np.array(s["peaks"][:len(pk)]))); bad += mp
 print("  peaks: RTL %d, model %d: %s   (first peak symbols %s)" % (len(pk), len(s["peaks"]), "identical" if not mp else "MISMATCH", pk[:4, 1].tolist()))
-g = np.loadtxt(os.path.join(HERE, "rtl_sy_gate.txt"), dtype=np.int64).reshape(-1, 2); kg = min(len(g), len(s["gate"]))
+g = np.loadtxt(os.path.join(HERE, "rtl_sy_gate.txt"), dtype=np.int64).reshape(-1, 3); kg = min(len(g), len(s["gate"]))
 mg = int(np.sum(g[:kg, 1] != s["gate"][:kg].astype(int))); bad += mg; print("  gate mismatches %d of %d symbols (open for %d)" % (mg, kg, int(g[:kg, 1].sum())))
+mn = int(np.sum(g[:kg, 2] != s["narrow"][:kg].astype(int))); bad += mn; print("  narrow-gain flag mismatches %d (tracking gains for %d symbols)" % (mn, int(g[:kg, 2].sum())))
+ld = np.loadtxt(os.path.join(HERE, "rtl_sy_load.txt"), dtype=np.int64).reshape(-1, 2); got = {int(a): int(b) for a, b in ld}
+want = {k: v for k, v in s["loads"].items() if k < len(g)}; ml = int(got != want); bad += ml
+print("  loads: RTL %d, model %d: %s   %s" % (len(got), len(want), "identical" if not ml else "MISMATCH", ", ".join("sym %d: %+.0f Hz" % (k, v / 2 ** 32 * 960e3) for k, v in list(got.items())[:3])))
 log = open(os.path.join(HERE, "xsim_sync.log")).read() if os.path.exists(os.path.join(HERE, "xsim_sync.log")) else ""
 vals = {m.group(1): int(m.group(2)) for m in re.finditer(r"^([A-Za-z ]+) = (-?\d+)$", log, re.M)}
 st = s["stats"]; sn = s["snap"]
-want = dict(ndet=st["n_det"], nhit=st["n_hit"], nmiss=st["n_miss"], nfalse=st["n_false"], nlock=st["n_lock"], nlost=st["n_lost"], late=0, cre=sn["cre"], cim=sn["cim"], met=sn["met"], en=sn["en"], pk=sn["p"])
+want = dict(nld=len(want), ndet=st["n_det"], nhit=st["n_hit"], nmiss=st["n_miss"], nfalse=st["n_false"], nlock=st["n_lock"], nlost=st["n_lost"], late=0, cre=sn["cre"], cim=sn["cim"], met=sn["met"], en=sn["en"], pk=sn["p"])
 for key, w in want.items():
     ok = vals.get(key) == w; bad += 0 if ok else 1
     print("  register %-6s RTL %s  model %d  %s" % (key, vals.get(key), w, "ok" if ok else "MISMATCH"))
