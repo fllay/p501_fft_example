@@ -37,6 +37,6 @@ def snippet(spec):
 out = []
 for line in open(SRC).read().split("\n"):
     m = re.match(r"^@@\s+(.*)$", line)
-    out.append(snippet(m.group(1)) if m else line)
+    out.append(snippet(m.group(1)) if m else line.replace("](../../img/", "](img/"))     # the source sits two folders deeper than the built tutorial: its figures are ../../img/, the built file's img/
 open(OUT, "w").write("\n".join(out))
 print("wrote", OUT, "(%d lines)" % len("\n".join(out).split("\n")))

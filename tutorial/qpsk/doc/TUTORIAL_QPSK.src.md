@@ -7,7 +7,7 @@ In tutorials 1 to 3 the FPGA did **measurements** (a spectrum) and **generated t
 as differential QPSK and it **receives** it, including everything that a receiver has to recover on its own (signal level, symbol timing, carrier
 frequency and phase). Python only starts and stops it, sets the loop gains, and reads the results. No sample passes through Python or a DMA.
 
-![The two ends of the link](img/qpsk_block_system.png)
+![The two ends of the link](../../img/qpsk_block_system.png)
 
 | part | content |
 |---|---|
@@ -122,7 +122,7 @@ Parts B and C show the *implementation*: the Verilog, state by state. This secti
 
 ### A.5.1 The link, and what goes wrong in it
 
-![The link and the problems in it](img/qpsk_func_link.png)
+![The link and the problems in it](../../img/qpsk_func_link.png)
 
 | what goes wrong | size in our link | the block that fixes it |
 |---|---|---|
@@ -136,14 +136,14 @@ The rest of the design follows from this table. A transmitter has little to do (
 
 ### A.5.2 The transmitter, block by block
 
-![Transmitter, functional blocks](img/qpsk_func_tx.png)
+![Transmitter, functional blocks](../../img/qpsk_func_tx.png)
 
 The rates along the chain: **1.92 Mbit/s** of data -> **960 ksym/s** (two bits per symbol) -> **3.84 MSPS** (four samples per symbol after the pulse shaping) -> a 3.84 MSPS complex stream to the AD9361, which converts it to a signal around 915.0 MHz about **1.3 MHz wide** (960 kHz x 1.35).
 Blocks 1 to 4 work at the symbol rate and need only a handful of gates: they are *bookkeeping*. Block 5 is the only one that works at the sample rate, and because the symbols are +-1 it needs additions, not multiplications (B.5).
 
 ### A.5.3 The receiver, block by block
 
-![Receiver, functional blocks](img/qpsk_func_rx.png)
+![Receiver, functional blocks](../../img/qpsk_func_rx.png)
 
 **Why this order.**
 * **AGC first**, because the gains of both loops depend on the signal amplitude (the detectors multiply amplitudes: the gain goes with the square).
@@ -155,7 +155,7 @@ Blocks 1 to 4 work at the symbol rate and need only a handful of gates: they are
 
 ### A.5.4 Symbol timing in pictures
 
-![Timing recovery: eye diagram and S-curve](img/qpsk_func_timing.png)
+![Timing recovery: eye diagram and S-curve](../../img/qpsk_func_timing.png)
 
 *Left, the eye diagram.* If the received pulses are laid on top of each other, a gap opens where every trace passes through +1 or -1: that is the instant to sample, and the matched filter was designed to leave no inter-symbol interference there. Early or late, the traces scatter: noise and neighbouring symbols leak into the decision.
 The transmitter and the receiver have independent crystals, so *that instant moves*: by 10.4 ppm, one symbol of drift every 100,000 symbols, which is why the sampling instant cannot be fixed once and for all.
@@ -166,7 +166,7 @@ The loop filter turns `e` into the position: the *integral* path learns the cloc
 
 ### A.5.5 The Costas loop in pictures
 
-![The Costas loop](img/qpsk_func_costas.png)
+![The Costas loop](../../img/qpsk_func_costas.png)
 
 *Left, the loop.* The matched-filter output `m` is rotated back by the NCO's angle `theta` (**derotate**: `z = m x e^(-j theta)`); the **slicer** takes the nearest of the four points; the **phase detector** measures the angle left between `z` and that point, `e = sgn(zi) zq - sgn(zq) zi`
 (about `|z| x sqrt(2) x sin(error)`, positive for a positive error); the **loop filter** adds a proportional term (`alpha x e`, follows the phase) and an integral term (`beta x e` accumulated into `omega`, learns the frequency); the **NCO** produces the next `theta`. A rotation of 3.6 degrees per symbol (9.7 kHz) is a constant frequency error:
@@ -189,7 +189,7 @@ The only price: one symbol error disturbs two differences, so errors come in pai
 
 ### A.5.6 Coarse frequency: the FLL band-edge block of GNU Radio
 
-![The FLL band-edge idea](img/qpsk_func_fll.png)
+![The FLL band-edge idea](../../img/qpsk_func_fll.png)
 
 The GNU Radio receiver (`qpsk_b210_rx.grc`) has one block that the FPGA does not: **`digital_fll_band_edge_cc`**, the *frequency-locked loop with band-edge filters*. Its job is the coarse part of the carrier recovery: bring a frequency offset of several kHz down to a few hundred Hz, so that the Costas loop only has a small error to pull in.
 
@@ -212,17 +212,17 @@ the Costas loop has the initial-frequency register `W0`, and the Python driver's
 
 We did build the FLL as a separate overlay, `p501_qpsk_trx_fll` (`rtl/qpsk_fll.v`, `rtl/qpsk_rx_fll.v`, README in `tutorial/qpsk/p501_rx_fll/`): the same chain as GNU Radio's flowgraph, FLL -> polyphase matched filter and timing loop -> Costas loop. The FLL is a derotator on the sample RAM (7 of the 26 clock cycles per sample) and one error engine per symbol with four multipliers (the two band-edge filters share them), integer model and RTL bit-exact. On the air it locks without any hint, and pulls in about 3 to 7 times faster than the Costas loop alone at an offset of 80 kHz (no clear difference up to 40 kHz, where the Costas loop alone also locks without hints) (details in the README). The main receiver of this chapter is unchanged. A third overlay, `p501_qpsk_trx_fe` (`rtl/qpsk_fe.v`, README in `tutorial/qpsk/p501_rx_fe/`), adds the open-loop differential 4th-power estimator next to the FLL (angle of `m x conj(m_prev)` by CORDIC, times 4, exponential from the sine table, summed over a window): its measurement is 10 to 50 times quieter than the FLL's frequency (58 Hz against about 1 kHz at 2048 symbols), unbiased to within 70 Hz, correct to 110 kHz, and takes 3.5 ms including the settling of the AGC and the timing loop.
 
-![The three carrier-frequency chains](img/qpsk_chains_compare.png)
+![The three carrier-frequency chains](../../img/qpsk_chains_compare.png)
 
 A fourth overlay, `p501_qpsk_trx_4p`, is chain 3 with no FLL and no software in the loop: the estimator takes the symbols after the polyphase filter, the timing loop and the AGC, runs a window of N symbols, takes the `atan2` with a CORDIC, and the hardware writes the result into the Costas loop's frequency register when the window passes a quality gate.
 It is a side path: nothing is added to the signal path, and its only effect on the receiver is one mux at the input of the Costas frequency register.
 
-![Chain 3 in the FPGA](img/qpsk_chain3_block.png)
+![Chain 3 in the FPGA](../../img/qpsk_chain3_block.png)
 
 The mux is `omega <= load ? ld_w : omega + (CB x e_c >> 8)`, evaluated at state S7 of every symbol. The select is a one-shot request (`ld_pend`) from the estimator, not a mode level: with the enable register `FE_AUTO` = 0 the request never comes and the Costas loop is the receiver of chapter 4d, with the estimator's arithmetic idling beside it.
 In *once* mode the load sets the integrator's starting value and the Costas loop goes on from there; in *continuous* mode every window that passes loads again, and between the loads the integrator keeps updating, which is why that mode fights the loop at large offsets.
 
-![What FE_AUTO does](img/qpsk_chain3_modes.png)
+![What FE_AUTO does](../../img/qpsk_chain3_modes.png)
 
 **Frame synchronisation with an m-sequence (chapter 4e, part 1).** `p501_qpsk_trx_sync` (`rtl/qpsk_sync.v`, README in `tutorial/qpsk/p501_sync/`) adds a block beside the engine that correlates the phase steps of the symbols with a known 63-chip m-sequence preamble.
 It finds the frame start before any loop has locked, tracks the frame period, measures the frequency offset from `arg(C)` (data aided, +-480 kHz) and opens a payload gate for the bit error counter. The B210 transmits the frames from a GNU Radio flowgraph (`qpsk_b210_frame_tx.grc`) or from Python;
@@ -232,9 +232,9 @@ The other direction has a GNU Radio flowgraph too: `qpsk_b210_frame_rx.grc` lets
 It also has a software version of the hardware acquisition, a block *Preamble frequency assist* in front of the Costas loop that measures the carrier offset on the m-sequence and rotates the stream by it (ON/OFF choosers for it and for the FLL in the window). Measured over the air, it halves the BER at the good signal level (FLL off: 1.3e-2 to 4.8e-3) and makes the FLL nearly unnecessary,
 but it does not help where the hard symbol decisions are noise-limited: the preamble helps the carrier loops where frequency pull-in is the weak point, not where the noise is. The tables and `run_frame_rx_test.py` are in the README of `tutorial/qpsk/p501_sync/`.
 
-![The frame, the correlation, the tracker](img/qpsk_sync_frame.png)
+![The frame, the correlation, the tracker](../../img/qpsk_sync_frame.png)
 
-![The synchroniser in the FPGA](img/qpsk_sync_block.png)
+![The synchroniser in the FPGA](../../img/qpsk_sync_block.png)
 
 ### A.5.7 From the functional blocks to the Verilog
 
@@ -259,14 +259,14 @@ The Verilog diagrams in B and C show the same blocks as hardware: registers, ROM
 The B210 side of the tests is two GNU Radio flowgraphs (`qpsk_b210_tx.grc`, `qpsk_b210_rx.grc`, E.13). They contain the same functions as the FPGA, built from GNU Radio's stock blocks. If you know one side, the other follows: each row below pairs a block **as it is named in Companion** with the Verilog that does the same job.
 (Blue = a stock GNU Radio block, yellow = an embedded Python block, orange = the B210 radio, grey = a viewer. On the right: the colours of the Verilog diagrams in B and C.)
 
-![Transmitter: GNU Radio blocks and Verilog](img/qpsk_func_vs_grc_tx.png)
+![Transmitter: GNU Radio blocks and Verilog](../../img/qpsk_func_vs_grc_tx.png)
 
 The transmitter's `digital_constellation_modulator` is one block in Companion, but it is a *hierarchical* block (`generic_mod`) made of the five blocks inside the frame: bits to chunks, the pre-differential map, the differential encoder, the symbol mapper and the RRC pulse shaper.
 In `qpsk_tx.v` the same five steps are a few lines each (B.2), and the pulse shaper is the ROM plus twelve adders (B.4, B.5).
 
-![Receiver, front half: GNU Radio blocks and Verilog](img/qpsk_func_vs_grc_rx1.png)
+![Receiver, front half: GNU Radio blocks and Verilog](../../img/qpsk_func_vs_grc_rx1.png)
 
-![Receiver, back half: GNU Radio blocks and Verilog](img/qpsk_func_vs_grc_rx2.png)
+![Receiver, back half: GNU Radio blocks and Verilog](../../img/qpsk_func_vs_grc_rx2.png)
 
 **The knobs, side by side.** The same experiment can be done on either end; this is how the controls correspond:
 
@@ -299,7 +299,7 @@ One flowgraph detail worth knowing: GNU Radio's `pfb_clock_sync_ccf` is the same
 
 # Part B. The transmitter (`rtl/qpsk_tx.v`)
 
-![Transmitter block diagram](img/qpsk_block_tx.png)
+![Transmitter block diagram](../../img/qpsk_block_tx.png)
 
 *This is the implementation view; what each block does and why it is needed is in A.5.2.*
 
@@ -390,7 +390,7 @@ software waits for `STATUS` bit 0 (`applied`). If the AD9361 clock is not runnin
 
 # Part C. The receiver (`rtl/qpsk_rx.v`)
 
-![Receiver block diagram](img/qpsk_block_rx.png)
+![Receiver block diagram](../../img/qpsk_block_rx.png)
 
 *This is the implementation view; what each block does and why it is needed is in A.5.3 to A.5.5.*
 
@@ -926,8 +926,8 @@ What a good result looks like (numbers from our runs, B210 at 80 dB):
 | measured offsets (B210 -> P501) | carrier **+9.68 to +9.71 kHz**, clock **+9.9 to +10.8 ppm** (chapter 4.0: 9.5 kHz, 10.4 ppm) |
 | B210 TX gain 70 / 65 / 60 dB | marginal (BER 2e-6 to 2e-2), poor (6e-4 to 6e-3), not locked |
 
-![Constellations read from the FPGA's capture RAM](img/qpsk_rx_fpga_constellation.png)
-![B210 at 75 dB and 80 dB](img/qpsk_rx_fpga_75_vs_80.png)
+![Constellations read from the FPGA's capture RAM](../../img/qpsk_rx_fpga_constellation.png)
+![B210 at 75 dB and 80 dB](../../img/qpsk_rx_fpga_75_vs_80.png)
 
 The extra 5 dB of B210 TX gain narrows the clusters from 10.5 to 8.1 degrees of angular spread (one capture each), in line with the expectation for a signal-to-noise gain of that size.
 
