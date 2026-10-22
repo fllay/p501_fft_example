@@ -35,12 +35,42 @@ options:
     state: enabled
 
 blocks:
+- name: assist_on
+  id: variable_qtgui_chooser
+  parameters:
+    comment: 'ON: the m-sequence preamble gives the carrier frequency, the symbols
+      are rotated by it before the Costas loop'
+    gui_hint: 1,2,1,1
+    label: Frame-sync assistance
+    label0: 'OFF'
+    label1: 'ON'
+    label2: ''
+    label3: ''
+    label4: ''
+    labels: '[]'
+    num_opts: '2'
+    option0: '0'
+    option1: '1'
+    option2: '2'
+    option3: '3'
+    option4: '4'
+    options: '[0, 1, 2]'
+    orient: Qt.QVBoxLayout
+    type: int
+    value: '1'
+    widget: radio_buttons
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [240, 200]
+    state: enabled
 - name: bw_div
   id: variable_qtgui_range
   parameters:
     comment: wide (small N) pulls in fast and is noisy; narrow (large N) is quieter
       but may not pull in
-    gui_hint: 1,0,1,4
+    gui_hint: 1,0,1,2
     label: 'Loop bandwidth: 2 pi / N (FLL, timing, Costas)'
     min_len: '200'
     orient: QtCore.Qt.Horizontal
@@ -77,6 +107,35 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [8, 180]
+    state: enabled
+- name: fll_on
+  id: variable_qtgui_chooser
+  parameters:
+    comment: 'OFF: the loop gain is zero, the FLL passes the signal through'
+    gui_hint: 1,3,1,1
+    label: FLL band-edge
+    label0: 'OFF'
+    label1: 'ON'
+    label2: ''
+    label3: ''
+    label4: ''
+    labels: '[]'
+    num_opts: '2'
+    option0: '0'
+    option1: '1'
+    option2: '2'
+    option3: '3'
+    option4: '4'
+    options: '[0, 1, 2]'
+    orient: Qt.QVBoxLayout
+    type: int
+    value: '1'
+    widget: radio_buttons
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [240, 260]
     state: enabled
 - name: freq
   id: variable
@@ -298,6 +357,40 @@ blocks:
     bus_structure: null
     coordinate: [1300, 560]
     state: enabled
+- name: blocks_keep_one_in_n_3
+  id: blocks_keep_one_in_n
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    n: '19200'
+    type: float
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1300, 640]
+    state: enabled
+- name: blocks_keep_one_in_n_4
+  id: blocks_keep_one_in_n
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    n: '19200'
+    type: float
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1300, 720]
+    state: enabled
 - name: blocks_null_sink_0
   id: blocks_null_sink
   parameters:
@@ -439,7 +532,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1480, 240]
+    coordinate: [1700, 240]
     state: enabled
 - name: digital_diff_decoder_bb_0
   id: digital_diff_decoder_bb
@@ -469,7 +562,7 @@ blocks:
     rolloff: excess_bw
     samps_per_sym: sps
     type: cc
-    w: 2*3.14159265/bw_div
+    w: 2*3.14159265/bw_div*fll_on
   states:
     bus_sink: false
     bus_source: false
@@ -514,6 +607,93 @@ blocks:
     coordinate: [1260, 240]
     state: enabled
 - name: epy_block_0
+  id: epy_block
+  parameters:
+    _source_code: "\nimport numpy as np\nfrom gnuradio import gr\n\n\nclass blk(gr.sync_block):\n\
+      \    \"\"\"Frame-sync assistance for the carrier loops (the software version\
+      \ of what the FPGA does). Sits between the polyphase clock sync (1 sample per\
+      \ symbol) and the Costas loop.\n    d_n = m_n conj(m_(n-1)) is the phase step\
+      \ between symbols: 2 pi f T for the m-sequence preamble steps (0 or 180 degrees,\
+      \ the chips of x^6 + x + 1) plus the frequency offset. The 63 chips are\n  \
+      \  correlated with the unit-length steps: at the end of the preamble |C|/63\
+      \ is large and arg(C) = 2 pi f T, the carrier offset per symbol, without any\
+      \ loop and whatever the carrier phase\n    (+- 480 kHz at 960 ksym/s). From\
+      \ the symbol after the peak on, the stream is rotated by exp(-j phase) with\
+      \ that frequency (an NCO), so the Costas loop behind starts on frequency.\n\
+      \    Parameters: thr = detection threshold on |C|/63 (noise alone: 0.13 rms,\
+      \ a clean preamble: 1), assist = 1 applies the rotation, 0 passes the stream\
+      \ through (the estimate is still made),\n    smooth = weight of a new estimate\
+      \ (1 = take it as it is), sym_rate for the output in Hz. Outputs: 0 the symbols,\
+      \ 1 the frequency estimate in Hz, 2 the number of preambles found.\"\"\"\n\n\
+      \    def __init__(self, thr=0.5, assist=1, smooth=0.5, sym_rate=960000.0):\n\
+      \        gr.sync_block.__init__(self, name=\"Preamble frequency assist\", in_sig=[np.complex64],\
+      \ out_sig=[np.complex64, np.float32, np.float32])\n        self.thr = float(thr);\
+      \ self.assist = int(assist); self.smooth = float(smooth); self.sym_rate = float(sym_rate)\n\
+      \        a = [1, 0, 0, 0, 0, 0]\n        while len(a) < 63:\n            n =\
+      \ len(a) - 6\n            a.append(a[n + 1] ^ a[n])\n        chips = 1.0 - 2.0\
+      \ * np.array(a, dtype=np.float64)           # bit 0 = step 0 (chip +1), bit\
+      \ 1 = step 180 degrees (chip -1)\n        self.h = chips[::-1].astype(np.complex128)\n\
+      \        self.last_m = 1.0 + 0j; self.dtail = np.zeros(62, dtype=np.complex128)\n\
+      \        self.mprev = 0.0; self.cprev = 0j; self.since = 10 ** 9\n        self.w_est\
+      \ = 0.0; self.have = False; self.phase = 0.0; self.hits = 0\n\n    def work(self,\
+      \ input_items, output_items):\n        x = input_items[0].astype(np.complex128);\
+      \ n = len(x)\n        prev = np.concatenate([[self.last_m], x[:-1]]); d = x\
+      \ * np.conj(prev)\n        mag = np.abs(d); du = np.where(mag > 1e-9, d / np.maximum(mag,\
+      \ 1e-9), 1.0)\n        self.last_m = x[-1]\n        ext = np.concatenate([self.dtail,\
+      \ du]); self.dtail = ext[-62:]\n        corr = np.convolve(ext, self.h, mode=\"\
+      valid\") if len(ext) >= 63 else np.zeros(n, dtype=np.complex128)\n        cm\
+      \ = np.abs(corr) / 63.0\n        M = np.concatenate([[self.mprev], cm]); C =\
+      \ np.concatenate([[self.cprev], corr])\n        self.mprev = cm[-1]; self.cprev\
+      \ = corr[-1]\n        w_arr = None; w_cur = self.w_est if self.assist else 0.0\n\
+      \        trig = []\n        if len(M) > 2:\n            j = np.nonzero((M[1:-1]\
+      \ >= self.thr) & (M[1:-1] >= M[:-2]) & (M[1:-1] > M[2:]))[0] + 1   # local maxima\
+      \ (one-symbol look-ahead); M[j] is chunk index j - 1\n            last = -(10\
+      \ ** 9)\n            for jj in j:\n                if jj - last < 32 and last\
+      \ > -(10 ** 9): continue\n                last = jj; trig.append(jj - 1)\n \
+      \               est = float(np.angle(C[jj]))\n                self.w_est = est\
+      \ if not self.have else self.w_est + self.smooth * (est - self.w_est)\n    \
+      \            self.have = True; self.hits += 1\n        if self.assist:\n   \
+      \         w_arr = np.full(n, w_cur)\n            for t in trig:\n          \
+      \      w_arr[min(max(t + 1, 0), n):] = self.w_est\n            ph = self.phase\
+      \ + np.cumsum(w_arr)\n            self.phase = float(np.mod(ph[-1], 2 * np.pi))\n\
+      \            out = x * np.exp(-1j * ph)\n        else:\n            self.phase\
+      \ = 0.0; out = x\n        output_items[0][:] = out.astype(np.complex64)\n  \
+      \      output_items[1][:] = np.float32(self.w_est / (2 * np.pi) * self.sym_rate)\n\
+      \        output_items[2][:] = np.float32(self.hits)\n        return n\n"
+    affinity: ''
+    alias: ''
+    assist: assist_on
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    smooth: '0.5'
+    sym_rate: samp_rate/sps
+    thr: '0.5'
+  states:
+    _io_cache: '(''Preamble frequency assist'', ''blk'', [(''thr'', ''0.5''), (''assist'',
+      ''1''), (''smooth'', ''0.5''), (''sym_rate'', ''960000.0'')], [(''0'', ''complex'',
+      1)], [(''0'', ''complex'', 1), (''1'', ''float'', 1), (''2'', ''float'', 1)],
+      ''Frame-sync assistance for the carrier loops (the software version of what
+      the FPGA does). Sits between the polyphase clock sync (1 sample per symbol)
+      and the Costas loop.\n    d_n = m_n conj(m_(n-1)) is the phase step between
+      symbols: 2 pi f T for the m-sequence preamble steps (0 or 180 degrees, the chips
+      of x^6 + x + 1) plus the frequency offset. The 63 chips are\n    correlated
+      with the unit-length steps: at the end of the preamble |C|/63 is large and arg(C)
+      = 2 pi f T, the carrier offset per symbol, without any loop and whatever the
+      carrier phase\n    (+- 480 kHz at 960 ksym/s). From the symbol after the peak
+      on, the stream is rotated by exp(-j phase) with that frequency (an NCO), so
+      the Costas loop behind starts on frequency.\n    Parameters: thr = detection
+      threshold on |C|/63 (noise alone: 0.13 rms, a clean preamble: 1), assist = 1
+      applies the rotation, 0 passes the stream through (the estimate is still made),\n    smooth
+      = weight of a new estimate (1 = take it as it is), sym_rate for the output in
+      Hz. Outputs: 0 the symbols, 1 the frequency estimate in Hz, 2 the number of
+      preambles found.'', [''assist'', ''smooth'', ''sym_rate'', ''thr''])'
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1480, 120]
+    state: enabled
+- name: epy_block_1
   id: epy_block
   parameters:
     _source_code: "\nimport numpy as np\nfrom gnuradio import gr\n\n\nclass blk(gr.sync_block):\n\
@@ -639,7 +819,7 @@ blocks:
     color9: '"dark green"'
     comment: ''
     grid: 'True'
-    gui_hint: 4,0,4,2
+    gui_hint: 6,0,4,2
     label1: symbols
     label10: ''
     label2: ''
@@ -736,7 +916,7 @@ blocks:
     fftsize: '2048'
     freqhalf: 'True'
     grid: 'True'
-    gui_hint: 4,2,4,2
+    gui_hint: 6,2,4,2
     label: Relative Gain
     label1: B210 RX2
     label10: ''''''
@@ -906,6 +1086,131 @@ blocks:
     coordinate: [1480, 480]
     state: enabled
 - name: qtgui_number_sink_2
+  id: qtgui_number_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    autoscale: 'False'
+    avg: '0.0'
+    color1: ("black", "black")
+    color10: ("black", "black")
+    color2: ("black", "black")
+    color3: ("black", "black")
+    color4: ("black", "black")
+    color5: ("black", "black")
+    color6: ("black", "black")
+    color7: ("black", "black")
+    color8: ("black", "black")
+    color9: ("black", "black")
+    comment: data-aided estimate, arg(C) of the 63-chip correlation; ~9.7 kHz between
+      the P501 and the B210
+    factor1: '1'
+    factor10: '1'
+    factor2: '1'
+    factor3: '1'
+    factor4: '1'
+    factor5: '1'
+    factor6: '1'
+    factor7: '1'
+    factor8: '1'
+    factor9: '1'
+    graph_type: qtgui.NUM_GRAPH_NONE
+    gui_hint: 5,0,1,2
+    label1: offset
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    max: '500000'
+    min: '-500000'
+    name: '"carrier offset from the preamble (Hz)"'
+    nconnections: '1'
+    type: float
+    unit1: Hz
+    unit10: ''
+    unit2: ''
+    unit3: ''
+    unit4: ''
+    unit5: ''
+    unit6: ''
+    unit7: ''
+    unit8: ''
+    unit9: ''
+    update_time: '0.25'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1480, 640]
+    state: enabled
+- name: qtgui_number_sink_3
+  id: qtgui_number_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    autoscale: 'True'
+    avg: '0.0'
+    color1: ("black", "black")
+    color10: ("black", "black")
+    color2: ("black", "black")
+    color3: ("black", "black")
+    color4: ("black", "black")
+    color5: ("black", "black")
+    color6: ("black", "black")
+    color7: ("black", "black")
+    color8: ("black", "black")
+    color9: ("black", "black")
+    comment: ''
+    factor1: '1'
+    factor10: '1'
+    factor2: '1'
+    factor3: '1'
+    factor4: '1'
+    factor5: '1'
+    factor6: '1'
+    factor7: '1'
+    factor8: '1'
+    factor9: '1'
+    graph_type: qtgui.NUM_GRAPH_NONE
+    gui_hint: 5,2,1,2
+    label1: preambles
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    max: '100000000'
+    min: '0'
+    name: '"preambles found by the assistance"'
+    nconnections: '1'
+    type: float
+    unit1: ''
+    unit10: ''
+    unit2: ''
+    unit3: ''
+    unit4: ''
+    unit5: ''
+    unit6: ''
+    unit7: ''
+    unit8: ''
+    unit9: ''
+    update_time: '0.25'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1480, 720]
+    state: enabled
+- name: qtgui_number_sink_4
   id: qtgui_number_sink
   parameters:
     affinity: ''
@@ -1400,7 +1705,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [240, 240]
+    coordinate: [240, 340]
     state: enabled
 
 connections:
@@ -1412,8 +1717,10 @@ connections:
 - [blocks_float_to_complex_0, '0', digital_fll_band_edge_cc_0, '0']
 - [blocks_keep_one_in_n_0, '0', qtgui_number_sink_0, '0']
 - [blocks_keep_one_in_n_1, '0', qtgui_number_sink_1, '0']
-- [blocks_keep_one_in_n_2, '0', qtgui_number_sink_2, '0']
-- [blocks_unpack_k_bits_bb_0, '0', epy_block_0, '0']
+- [blocks_keep_one_in_n_2, '0', qtgui_number_sink_4, '0']
+- [blocks_keep_one_in_n_3, '0', qtgui_number_sink_2, '0']
+- [blocks_keep_one_in_n_4, '0', qtgui_number_sink_3, '0']
+- [blocks_unpack_k_bits_bb_0, '0', epy_block_1, '0']
 - [digital_constellation_decoder_cb_0, '0', digital_diff_decoder_bb_0, '0']
 - [digital_costas_loop_cc_0, '0', digital_constellation_decoder_cb_0, '0']
 - [digital_costas_loop_cc_0, '0', qtgui_const_sink_x_0, '0']
@@ -1423,13 +1730,16 @@ connections:
 - [digital_fll_band_edge_cc_0, '2', blocks_null_sink_1, '0']
 - [digital_fll_band_edge_cc_0, '3', blocks_null_sink_2, '0']
 - [digital_map_bb_0, '0', blocks_unpack_k_bits_bb_0, '0']
-- [digital_pfb_clock_sync_xxx_0, '0', digital_costas_loop_cc_0, '0']
+- [digital_pfb_clock_sync_xxx_0, '0', epy_block_0, '0']
 - [digital_pfb_clock_sync_xxx_0, '1', blocks_null_sink_3, '0']
 - [digital_pfb_clock_sync_xxx_0, '2', blocks_null_sink_4, '0']
 - [digital_pfb_clock_sync_xxx_0, '3', blocks_null_sink_5, '0']
-- [epy_block_0, '0', blocks_keep_one_in_n_0, '0']
-- [epy_block_0, '1', blocks_keep_one_in_n_1, '0']
-- [epy_block_0, '2', blocks_keep_one_in_n_2, '0']
+- [epy_block_0, '0', digital_costas_loop_cc_0, '0']
+- [epy_block_0, '1', blocks_keep_one_in_n_3, '0']
+- [epy_block_0, '2', blocks_keep_one_in_n_4, '0']
+- [epy_block_1, '0', blocks_keep_one_in_n_0, '0']
+- [epy_block_1, '1', blocks_keep_one_in_n_1, '0']
+- [epy_block_1, '2', blocks_keep_one_in_n_2, '0']
 - [uhd_usrp_source_0, '0', analog_agc2_xx_0, '0']
 - [uhd_usrp_source_0, '0', qtgui_freq_sink_x_0, '0']
 

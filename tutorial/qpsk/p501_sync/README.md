@@ -31,7 +31,8 @@ The receiver correlates the **phase steps** `d = m_n conj(m_n-1)` of the symbols
 | `steps/`, `bd/qpsk_rx_sync_chain.tcl`, `QPSKRXSYNC=1` in `create_project.tcl` | the project (the clock-crossing constraints of `src/qpsk_rx_cdc.xdc`) |
 | `notebook/p501_qpsk_rx_sync.py` | driver `P501QpskRxSync`: `configure_sync`, `gate_enable`, `sync_status`, `wait_lock`, `corr_freq_hz` |
 | `qpsk_b210_frame_tx.grc` (`make_flowgraph_frame.py`) | **the GNU Radio flowgraph** for the B210: frames -> differential QPSK -> TX/RX port, with Transmit ON/OFF, TX gain, amplitude, `payload_syms`, spectrum and envelope displays |
-| `qpsk_b210_frame_rx.grc` (`make_flowgraph_frame.py`) | **the GNU Radio flowgraph of the frame receiver**: the B210 receives the P501's FPGA transmitter: AGC, limiter, FLL, polyphase clock sync, Costas loop, differential decoder, bits -> the block *Frame sync + BER*, which finds the 128-bit preamble pattern (Hamming distance <= 16) and counts the payload errors against the PRBS-15; displays: BER, frames found, frame lock, constellation, spectrum |
+| `qpsk_b210_frame_rx.grc` (`make_flowgraph_frame.py`) | **the GNU Radio flowgraph of the frame receiver**: the B210 receives the P501's FPGA transmitter: AGC, limiter, FLL, polyphase clock sync, **the block *Preamble frequency assist* (the m-sequence preamble gives the carrier frequency to the Costas loop; ON/OFF chooser, as for the FLL)**, Costas loop, differential decoder, bits -> the block *Frame sync + BER*, which finds the 128-bit preamble pattern (Hamming distance <= 16) and counts the payload errors against the PRBS-15; displays: BER, frames found, frame lock, constellation, spectrum |
+| `test_frame_rx_block.py`, `test_assist_block.py` | offline tests of the two epy blocks of the receiver flowgraph |
 | `p501_frame_tx.py`, `run_frame_rx_test.py` | board side (frames from the FPGA transmitter) and host side (starts the board, runs the receiver flowgraph without a screen, prints once a second) |
 | `qpsk_frame_tx.py` | the same transmitter in Python (`FrameTx`, command line or module): the one the tests use |
 | `make_notebook_sync.py` -> `notebook/P501_QPSK_SYNC_Live.ipynb` | the interactive notebook: loopback self-tests, live picture (constellation, the correlation vectors C at the peaks, frequency from the preamble and from the Costas loop, frames found per second, payload mismatches), start modes (carrier search + sync / sync only with the Costas loop unlocked), live threshold / tolerance / misses / guard / gate, experiments (frequency from the preamble, detection against the RX gain, lock time) |
@@ -161,8 +162,39 @@ Over the air, P501 FPGA transmitter (amplitude 0.5) -> B210 RX2 with `run_frame_
 | 40 dB / 60 dB | 530 .. 730 | 8e-2 | the B210 front end is too strong at this distance: RX gain 45 is the right one here |
 | 55 dB / 50 dB, 60 dB / 55 dB | 0 .. 2 | | the GNU Radio loops no longer lock |
 
-The GNU Radio chain pulls in with the FLL, the timing and the Costas loop and has no help from the preamble, so it stops earlier than the FPGA receiver of this chapter (which finds the frames at weaker signals and uses the preamble for its frequency).
+The first version of the flowgraph pulled in with the FLL, the timing and the Costas loop alone. The next section adds the preamble to it.
 The numbers are one session's: the signal level of the link drifts from session to session, compare settings within a session.
+
+### Frame-sync assistance in GNU Radio (the software version of the FPGA's hardware acquisition)
+
+A second epy block, *Preamble frequency assist*, sits between the polyphase clock sync and the Costas loop (1 sample per symbol). It forms d = m x conj(m_prev), correlates the unit-length steps with the 63 chips and, at the correlation peak
+(|C|/63 >= 0.5, one-symbol look-ahead), takes arg(C) = 2 pi f T as the carrier offset (+-480 kHz, without any loop and independent of the carrier phase). From the symbol after the peak the stream is rotated by that frequency (an NCO,
+new estimates smoothed with weight 0.5), so the Costas loop starts on frequency. GNU Radio's Costas block has no frequency input, so the correction is applied in front of it. Choosers in the window switch **Frame-sync assistance** and
+**FLL band-edge** ON/OFF live (the FLL off = zero loop gain), and two number sinks show the offset measured on the preamble and the preambles found. `python3 test_assist_block.py` tests the block on synthetic symbols:
+the offset is exact to +-300 kHz at SNR 20 and 10 dB (the error is 1 to 3 kHz at 6 and 3 dB), 60 of 60 preambles found even at 3 dB, no false preamble in 500 000 random-data symbols or 500 000 noise symbols, assist OFF passes the stream through unchanged.
+
+Over the air, 7 s per cell, P501 FPGA transmitter -> B210 (`run_frame_rx_test.py --assist 0|1 --fll 0|1`); the measured offset is -9.5 kHz between the two radios:
+
+| TX attenuation / RX gain | assist, FLL | frames/s (937.5) | payload BER |
+|---|---|---|---|
+| 40 / 45 dB | ON, ON | 935 | 3.5e-3 |
+| | ON, OFF | 938 | 4.8e-3 |
+| | OFF, ON | 933 | 5.5e-3 |
+| | OFF, OFF | 939 | 1.3e-2 |
+| 50 / 45 dB | ON, ON | 292 | 1.5e-1 |
+| | ON, OFF | 332 | 1.2e-1 |
+| | OFF, ON | 525 | 1.1e-1 |
+| | OFF, OFF | 696 | 8.4e-2 |
+| 55 / 50 dB | all four | 0 .. 2 | 0.26 .. 0.38 |
+
+What it shows (honestly):
+* At the good level the assistance helps the Costas loop: without FLL it halves or better the BER (1.3e-2 -> 4.8e-3), with the FLL on a smaller gain (5.5e-3 -> 3.5e-3). The preamble does the job of the FLL: with the assistance the FLL can be switched off with little loss.
+* At 50 dB the assistance does **not** improve the decoded bits (BER 0.12 to 0.15 against 0.08 to 0.11 without it). The frame finder counts a frame only when at most 16 of the 128 preamble bits are wrong, so the frames per second just follow the BER.
+  The limit there is the noise on the hard decisions after the clock sync and Costas loop, not the pull-in: the offset is small after the FLL and the Costas loop tracks it without help.
+* The preamble correlator itself still sees what the hard decisions lose. At 50 dB it finds 870 to 910 of the 937.5 preambles per second with or without the Costas loop's help, and at 55 dB 230 to 425 per second, while the bits behind it have BER 0.26 or more.
+  With the Hamming limit widened to 28 and a smoothing of 0.1 (`--dmax 28 --smooth 0.1`): at 50 dB 711 (assisted) against 853 frames/s (not assisted); at 55 dB 163 against 13.
+  This is the processing gain of the 63-chip correlation in the soft domain, which the FPGA synchroniser uses and the hard-bit finder in GNU Radio cannot.
+* So the frame sync helps the carrier loops where the loops are the weak point (frequency pull-in), not where the symbol decisions themselves are noise-limited. To go further in GNU Radio the payload decisions would need a better detector, not more frequency help.
 
 ## Notes and what is left
 
