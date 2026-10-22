@@ -34,6 +34,7 @@ The receiver correlates the **phase steps** `d = m_n conj(m_n-1)` of the symbols
 | `qpsk_frame_tx.py` | the same transmitter in Python (`FrameTx`, command line or module): the one the tests use |
 | `make_notebook_sync.py` -> `notebook/P501_QPSK_SYNC_Live.ipynb` | the interactive notebook: loopback self-tests, live picture (constellation, the correlation vectors C at the peaks, frequency from the preamble and from the Costas loop, frames found per second, payload mismatches), start modes (carrier search + sync / sync only with the Costas loop unlocked), live threshold / tolerance / misses / guard / gate, experiments (frequency from the preamble, detection against the RX gain, lock time) |
 | `study_acq.py`, `p501_sync_acq.py`, `run_acq_test.py` | the hardware acquisition: offline study, board and host side of the six-offset comparison with the Python search |
+| `rtl/qpsk_tx_fr.v`, `p501_sync_fpga.py`, `sim/tb_qpsk_tx_fr.v`, `sim/compare_tx_fr.py` | the transmitter with frames and the all-FPGA tests (digital loopback, over the air) |
 | `p501_sync_link.py`, `run_sync_test.py`, `p501_sync_false.py`, `run_false_alarm.py` | board side and host side of the over-the-air tests |
 | `make_diagrams_sync.py` | draws the two figures |
 
@@ -71,6 +72,31 @@ Defaults keep the old behaviour (`SY_LOAD = 0`, `SY_NSW = 0`): the earlier tests
   the driver's `acquire_hw` checks every 20 ms and returns after about 0.1 s.
 * **Limit**: the frequency from the preamble is 1 to 3.5 kHz low (see above): the acquisition gains (2 pi/100, pull-in about 10 kHz) take up the error; with `Load = every lock/hit` the loop's own integrator is replaced every frame, so the 1 kHz noise of the preamble's estimate goes into the Costas frequency
   (the payload BER is a little worse than with the first-8 loads, as with chain 3's continuous mode): use *first N* for acquisition.
+
+## The FPGA transmitter sends the frames too: the whole link in the FPGA
+
+`rtl/qpsk_tx_fr.v` is `qpsk_tx.v` with a frame generator. The overlay `p501_qpsk_trx_sync` now uses it (the other overlays keep `qpsk_tx.v`); its configuration is the **FTW register** of the register block (unused by the QPSK transmitter):
+bit 31 = frames, bits 15:0 = payload symbols; 0 = the continuous PRBS-15 as before. Driver: `P501QpskTxFrames.start_frames(payload=960, amp=0.5)` (in `notebook/p501_qpsk.py`), `start()` for the continuous PRBS.
+The frame is exactly the one of the B210 transmitter: symbol 0 the reference, 63 phase steps from the m-sequence (a chip -1 is a step of 180 degrees, sent directly as the phase step, not through the bit map), then PRBS-15 restarted in every frame.
+
+* **RTL vs model**: the output samples of `qpsk_tx_fr` equal `qpsk_model.model(..., bits = frames_bits(PL, n))` sample for sample (12000 samples) for PL = 192, 960 and 4, and equal the old model of the continuous PRBS-15 when frames are off (`sim/tb_qpsk_tx_fr.v`, `compare_tx_fr.py`).
+* **Build**: WNS +0.417 ns, WHS +0.010 ns; 16290 LUTs, 58 DSPs.
+* **Digital loopback** of the AD9361 (no antenna; `p501_sync_fpga.py`): the transmitter starts, the frame tracker locks **1.1 ms** later and the Costas loop is locked within about 30 ms (the driver's strict criterion, which includes the switch to the tracking gains); in 2 s 1877 frames found of 1875 sent
+  (0 misses, 0 false peaks, `late` 0), **0 mismatches in 3.57 million payload bits** (twice, at amplitudes 0.5 and 0.25), the frequency from the preamble +5 Hz (the same clock at both ends), spread 0.3 degrees.
+  Starting the receiver with no transmitter finds nothing (not locked), as it must.
+* **Over the air**, TX1 antenna to RX1 antenna a few centimetres apart, RX gain index 70, TX attenuation stepped up (2 s each):
+
+| TX attenuation | frames sent / found | misses | false peaks | payload BER | spread |
+|---|---|---|---|---|---|
+| 20 dB | 1875 / 1877 | 0 | 0 | 0 (3.57 Mbit) | 5.3 deg |
+| 30 dB | 1875 / 1878 | 0 | 0 | 0 (3.57 Mbit) | 9.7 deg |
+| 40 dB | 1875 / 1877 | 0 | 14 | 5.8e-2 | 20.8 deg |
+| 45 dB | 1875 / 726 | 563 | 138 | 0.17 (90 lost locks) | 25.6 deg |
+| 50 dB and weaker | not locked | | | | |
+
+  The same signal levels as in chapter 4d (20 and 30 dB clean, 40 dB too weak for the data); the frames are still found at 40 dB, where the data no longer decode. With RX gain 45 instead of 70 the receiver is the other way round: at 30 dB it saturates
+  (148 false peaks, BER 3e-2): the P501's own signal is strong at this antenna spacing and the gain index must be matched to it.
+* The notebook has the controls (*FPGA transmits*: frames / PRBS, TX attenuation, amplitude), self-tests of the framed link in the digital loopback and an experiment over the air without the B210.
 
 ## Verification
 
@@ -119,7 +145,7 @@ Over the whole run `late` was 0: the synchroniser kept up with every symbol.
 
 ## Notes and what is left
 
-* The transmitter is the B210 (GNU Radio flowgraph or `FrameTx`); the FPGA transmitter of chapter 4c does not send frames yet, so there is no all-FPGA loopback test of this overlay.
+* The transmitter can be the B210 (GNU Radio flowgraph or `FrameTx`) or the P501's own FPGA transmitter.
 * Part 2 of chapter 4e (a header with a length, a CRC, packets, the round trip) builds on this: the gate gives the position of the payload.
 * The frame format has no spare symbols for the very first frame after a long silence: the AGC and the timing loop must have settled (a few ms) before the first preamble is seen.
 

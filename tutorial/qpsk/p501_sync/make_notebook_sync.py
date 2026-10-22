@@ -33,7 +33,7 @@ The receiver of the overlay **`p501_qpsk_trx_sync`** finds the start of each fra
 * Overlay `p501_qpsk_trx_sync` copied to `/home/xilinx/jupyter_notebooks/p501_qpsk_trx_sync/` (with `p501_qpsk.py`, `p501_qpsk_rx.py`, `p501_qpsk_rx_sync.py`), and the notebooks of `p501_fft_dds` (for `p501_radio.py`).
 * The transmitter: the B210 flowgraph **`tutorial/qpsk/p501_sync/qpsk_b210_frame_tx.grc`** (set *Transmit* ON, TX gain 80; **`payload_syms` must match the *Payload* control below**: 960 by default), or `python3 qpsk_frame_tx.py --payload 960 --seconds 600`.
 * Antennas on TX1 / RX1 of the P501 and on the TX/RX port of the B210, a few centimetres apart. **Very low power** (B210 TX gain 80 dB at most). Check the rules where you are before transmitting.
-* **Start the transmitter first, then press Start receiver.** The FPGA transmitter of this overlay sends PRBS-15 without frames (frames from the FPGA come later): here it is only used for the self-test in digital loopback.
+* **Start the transmitter first, then press Start receiver.** The transmitter can be the B210 (flowgraph) **or the P501's own FPGA transmitter, which now sends the same frames** (`rtl/qpsk_tx_fr.v`, the *FPGA transmits* control): then the whole link is in the FPGA, in the AD9361's digital loopback or over the air between the P501's antennas.
 * Everything ends quiet: the last cell (*Stop and silence*) turns the transmitter off and sets the TX attenuation to its maximum.
 """)
 
@@ -55,12 +55,13 @@ sys.path.insert(0, '/home/xilinx/jupyter_notebooks')
 sys.path.insert(0, '/home/xilinx/jupyter_notebooks/p501_fft_dds')            # p501_radio.py, p501_dds.py
 sys.path.insert(0, '/home/xilinx/jupyter_notebooks/p501_qpsk_trx_sync')      # p501_qpsk.py, p501_qpsk_rx.py, p501_qpsk_rx_sync.py
 import p501_radio
-from p501_qpsk import P501QpskTx
+from p501_qpsk import P501QpskTxFrames
 from p501_qpsk_rx import soft_quality, constellation_ok, UNIT, REG, _signed, SYMBOL_RATE
 import importlib, p501_qpsk_rx, p501_qpsk_rx_sync
 for _m in (p501_qpsk_rx, p501_qpsk_rx_sync): importlib.reload(_m)                   # a module that is already imported is not re-read: reload, so that a newer file is used without restarting the kernel
 from p501_qpsk_rx_sync import P501QpskRxSync
 print('driver:', p501_qpsk_rx_sync.__file__)
+assert hasattr(__import__("p501_qpsk"), "P501QpskTxFrames"), "p501_qpsk.py is older than this notebook: copy notebook/p501_qpsk.py again and restart the kernel"
 _need = [m for m in ("configure_sync", "configure_acquisition", "acquire_hw", "gate_enable", "sync_status", "wait_lock", "corr_freq_hz") if not hasattr(P501QpskRxSync, m)]
 assert not _need, f"p501_qpsk_rx_sync.py is older than this notebook (missing {_need}): copy notebook/p501_qpsk_rx_sync.py again to /home/xilinx/jupyter_notebooks/p501_qpsk_trx_sync/ and RESTART THE KERNEL (a module that is already imported is not re-read)"
 
@@ -70,7 +71,7 @@ def check(name, ok, detail):
     print(f"{'PASS' if ok else 'FAIL'}  {name}: {detail}")
 
 ol = Overlay(BIT)                                  # programs the PL
-tx = P501QpskTx(ol.qpsk_regs, FS)                  # transmitter registers at 0x9C460000: enable, amplitude (PRBS-15, no frames)
+tx = P501QpskTxFrames(ol.qpsk_regs, FS)            # transmitter registers at 0x9C460000: enable, amplitude, frames (the FTW register: bit 31 frames, bits 15:0 the payload symbols)
 rx = P501QpskRxSync(ol.qpsk_rx)                    # receiver registers at 0x9C470000 (the constructor checks the ID 0xDD520005: the frame synchroniser)
 ad = p501_radio.bring_up(ol, LO, 4_000_000, TX_ATTEN0, RX_GAIN)     # the AD9361 over SPI; TX attenuation at its maximum during the calibrations
 tx.off(); rx.stop()
@@ -83,8 +84,8 @@ check("AD9361 up", ad.info["ok"], f"LO locks {ad.info['rx_lock']}/{ad.info['tx_l
 md("""
 ## Self-test: the FPGA transmitter into the FPGA receiver, inside the AD9361 (digital loopback)
 
-No antennas, no B210. The FPGA transmitter sends PRBS-15 **without frames**, so the synchroniser must find **no** frame; with the gate off the checker counts everything (the receiver of chapter 4d) and must see no bit error;
-with the gate on and the tracker not locked, the checker must count **nothing**.
+No antennas, no B210. First the FPGA transmitter sends PRBS-15 **without frames**: the synchroniser must find **no** frame; with the gate off the checker counts everything (the receiver of chapter 4d) and must see no bit error;
+with the gate on and the tracker not locked, the checker must count **nothing**. Then it sends **frames**: the synchroniser must lock within a few milliseconds, find every frame, and the payload must be error free (all in the FPGA: framed transmitter -> hardware acquisition -> gated checker).
 """)
 code('''
 FL = PAYLOAD + 64
@@ -102,6 +103,18 @@ check("loopback: no frame in PRBS-only data", y1["locks"] == 0 and y3["locks"] =
 check("loopback, gate on, not locked: the checker is closed", s3["bits"] == s2["bits"], f"bits {s2['bits']:,} -> {s3['bits']:,}")
 check("synchroniser keeps up with the symbols", y3["late"] == 0, f"late = {y3['late']}")
 check("no overruns", s3["overruns"] == 0, f"overruns {s3['overruns']}")
+
+# the frames of the FPGA transmitter
+p501_radio.loopback(ad, True); ad.set_tx_atten_db(20.0)
+rx.stop(); rx.configure(timing_bw=2 * np.pi / 400, phase_bw=2 * np.pi / 400); rx.configure_sync(fl=FL, pl=PAYLOAD); rx.configure_acquisition(load=1, nload=8, nsw=4); rx.gate_enable(True)
+rx.start(); time.sleep(0.2); tx.start_frames(payload=PAYLOAD, amp=0.5); t0 = time.time(); ok = rx.wait_lock(1.0); t_lock = (time.time() - t0) * 1e3
+time.sleep(0.5); s4 = rx.stats(); y4 = rx.sync_status(); time.sleep(2.0); s5 = rx.stats(); y5 = rx.sync_status(); f_hz, q, sd = rx.corr_freq_hz(n=50)
+tx.off(); rx.configure_acquisition(load=0, nsw=0); rx.stop(); p501_radio.loopback(ad, False)
+exp = 2.0 * SYMBOL_RATE / FL
+check("FPGA frames: the frame sync locks", ok, f"locked after {t_lock:.1f} ms")
+check("FPGA frames: every frame found", y5["hits"] - y4["hits"] >= exp - 2 and y5["misses"] == 0 and y5["false"] == 0, f"{y5['hits'] - y4['hits']} hits in 2 s (frames sent {exp:.0f}), misses {y5['misses']}, false {y5['false']}")
+check("FPGA frames: payload without a bit error", s5["bits"] - s4["bits"] > 3_000_000 and s5["mismatches"] == s4["mismatches"], f"{s5['bits'] - s4['bits']:,} payload bits, {s5['mismatches'] - s4['mismatches']} mismatches")
+check("FPGA frames: frequency from the preamble about 0", abs(f_hz) < 300 and q > 0.9, f"{f_hz:+.1f} Hz (consistency {q:.2f}), Costas {rx._omega_hz():+.1f} Hz")
 ''')
 
 md("""
@@ -256,7 +269,8 @@ md("""
   *Sync only (Costas unlocked)* starts with loops of `2 pi / 1600`, which cannot pull in the +9.7 kHz offset: the constellation spins, the bit errors are meaningless, **but the synchroniser finds the frames and measures the frequency just the same.**
 * **Threshold** (`SY_THR`, 256 x |C| / E: 140 = 0.55), **Tolerance** (symbols), **Misses to lose the lock**, **Guard** (the first payload symbol that counts: 2 by default): written live (*Apply*).
 * **Gate**: ticked, the bit error counters (`BITS`, `MISMATCH`) count only inside the payload of locked frames (and restart at its start); unticked, they count everything.
-* **RX gain**: the AD9361's receive gain index (70 for the B210 at 80 dB). **Digital loopback**: the chip feeds the FPGA transmitter (PRBS-15, no frames) into the receiver. **FPGA transmits (loopback test)**: for the false-alarm test.
+* **RX gain**: the AD9361's receive gain index (70 for the B210 at 80 dB). **Digital loopback**: the chip feeds the transmitter into the receiver without an antenna.
+* **FPGA transmits**: *frames* (the P501's own transmitter sends the frames, payload = the *Payload* control; with *Digital loopback*, or over the air from TX1 to RX1 with **TX atten 20 to 30 dB**: weaker than 40 dB is too weak for this antenna spacing) or *PRBS-15, no frames* (for the false-alarm test). Start the transmitter first, then **Start receiver**.
 
 **Start display / Stop display**: the live picture; stopping it does not stop the receiver.
 """)
@@ -275,7 +289,9 @@ w_acqd  = widgets.Dropdown(options=[50, 100, 200], value=100, description="Acq. 
 w_gate  = widgets.Checkbox(value=True, description="Gate the bit error counters to the payload", layout=widgets.Layout(width="380px"))
 w_rxg   = widgets.IntSlider(value=RX_GAIN, min=0, max=76, description="RX gain", continuous_update=False, layout=widgets.Layout(width="520px"))
 w_loop  = widgets.Checkbox(value=False, description="Digital loopback")
-w_tx    = widgets.Checkbox(value=False, description="FPGA transmits PRBS, no frames (loopback test)")
+w_tx    = widgets.Dropdown(options=[("off", 0), ("frames (the same as the B210's)", 1), ("PRBS-15, no frames", 2)], value=0, description="FPGA transmits", layout=widgets.Layout(width="380px"))
+w_att   = widgets.FloatSlider(value=30.0, min=20.0, max=89.75, step=0.25, description="TX atten (dB)", continuous_update=False, layout=widgets.Layout(width="520px"))
+w_amp   = widgets.FloatSlider(value=0.5, min=0.05, max=1.0, step=0.05, description="TX amplitude", continuous_update=False, layout=widgets.Layout(width="520px"))
 b_rx    = widgets.Button(description="Start receiver", button_style="success")
 b_apply = widgets.Button(description="Apply", button_style="primary")
 b_rxoff = widgets.Button(description="Stop receiver", button_style="warning")
@@ -332,7 +348,8 @@ def do_start_receiver(_=None):
         live.paused = False
 
 def do_tx(change=None):
-    if w_tx.value: ad.set_tx_atten_db(60.0); tx.start(amp=0.5)
+    if w_tx.value == 1: ad.set_tx_atten_db(w_att.value); tx.start_frames(payload=max(4, (int(w_pl.value) // 4) * 4), amp=w_amp.value)       # the payload of the frames = the Payload control
+    elif w_tx.value == 2: ad.set_tx_atten_db(w_att.value); tx.start(amp=w_amp.value)
     else: tx.off(); p501_radio.quiet(ad, TX_ATTEN0)
 
 b_rx.on_click(guard(do_start_receiver)); b_apply.on_click(guard(apply_sync)); b_rxoff.on_click(guard(lambda b: rx.stop()))
@@ -342,9 +359,11 @@ w_rxg.observe(guard(lambda c: ad.set_rx_manual_gain(c["new"])), names="value")
 w_mode.observe(guard(lambda c: None), names="value")
 w_loop.observe(guard(lambda c: p501_radio.loopback(ad, c["new"])), names="value")
 w_tx.observe(guard(do_tx), names="value")
+w_att.observe(guard(lambda c: ad.set_tx_atten_db(c["new"]) if w_tx.value else None), names="value")
+w_amp.observe(guard(lambda c: tx.set(amp=c["new"]) if w_tx.value else None), names="value")
 
 display(widgets.VBox([widgets.HBox([b_rx, b_apply, b_rxoff, b_start, b_stop, status]), widgets.HBox([w_mode, w_pl, w_fl]), widgets.HBox([w_ld, w_nld, w_nsw, w_acqd]), widgets.HBox([w_thr, w_tol]), widgets.HBox([w_mm, w_gd]), w_gate, w_rxg,
-                      widgets.HBox([w_loop, w_tx]), errout, image]))
+                      widgets.HBox([w_loop, w_tx]), w_att, w_amp, errout, image]))
 ''')
 
 md("""
@@ -353,7 +372,7 @@ md("""
 Moves the controls from Python, the way clicks would, in the digital loopback (PRBS only, no frames): the synchroniser must not lock, the registers must follow the controls.
 """)
 code('''
-w_loop.value = True; w_tx.value = True; time.sleep(0.5)
+w_loop.value = True; w_att.value = 20.0; w_tx.value = 2; time.sleep(0.5)
 w_pl.value = 192; w_thr.value = 120; w_tol.value = 2; w_mm.value = 5; w_gd.value = 3; w_gate.value = True
 b_apply.click(); time.sleep(0.2)
 check("apply writes the registers", [rx.ip.read(REG[k]) for k in ("SY_FL", "SY_PL", "SY_THR", "SY_TOL", "SY_MISSMAX", "SY_GUARD")] == [256, 192, 120, 2, 5, 3], f"{[rx.ip.read(REG[k]) for k in ('SY_FL', 'SY_PL', 'SY_THR', 'SY_TOL', 'SY_MISSMAX', 'SY_GUARD')]}")
@@ -367,7 +386,11 @@ w_gate.value = False; time.sleep(0.5)
 check("gate off: the checker counts everything", rx.ip.read(REG["BITS"]) > 100000, f"bits {rx.ip.read(REG['BITS']):,}")
 w_gate.value = True
 b_stop.click(); display(IPImage(image.value))
-w_tx.value = False; w_loop.value = False; b_rxoff.click()
+# the FPGA transmitter's frames, with the controls
+w_tx.value = 0; time.sleep(0.2); w_pl.value = PAYLOAD; w_thr.value = 140; w_tol.value = 1; w_mm.value = 3; w_gd.value = 2; w_mode.value = "hw"; apply_sync(); w_tx.value = 1; time.sleep(0.3)
+b_rx.click(); time.sleep(0.6)
+check("FPGA frames with the controls: hardware acquisition locks", "frame sync LOCKED" in status.value and "receiver LOCKED" in status.value, status.value)
+w_tx.value = 0; w_loop.value = False; b_rxoff.click()
 w_pl.value = PAYLOAD; w_thr.value = 140; w_tol.value = 1; w_mm.value = 3; w_gd.value = 2; apply_sync()
 check("transmitter off again", not tx.enabled, f"enabled = {tx.enabled}")
 ''')
@@ -381,7 +404,9 @@ md("""
 4. Lower the **B210 TX gain** in the flowgraph (80 -> 76 -> 72 -> 68): the data stop decoding first, the frames are still found down to about 72 dB. Or lower the **RX gain** here.
 5. Change *Payload* in the flowgraph and here, and see the lock follow. Stop the flowgraph: after 3 missed frames the lock is lost.
 
-The cells below do the same measurements automatically (they need the B210 transmitting frames at 80 dB).
+**Without the B210:** tick *Digital loopback*, set *FPGA transmits* to *frames*, press *Start receiver* (hardware acquisition): the frame sync and the receiver lock in milliseconds and the payload BER is 0; for the air, untick *Digital loopback* and use TX atten 20 to 30 dB.
+
+The cells below do the same measurements automatically (experiments 1 to 4 need the B210 transmitting frames at 80 dB; experiment 5 needs no B210).
 """)
 
 md("""
@@ -483,6 +508,28 @@ def acq_experiment(trials=5):
     return out
 
 acq = acq_experiment()
+''')
+
+md("""
+## Experiment 5: all in the FPGA, over the air (no B210)
+
+The P501's transmitter sends frames from TX1, the receiver at RX1 (antennas a few centimetres apart) finds them and counts the payload errors; the TX attenuation is stepped up (the signal gets weaker). **The B210 must not transmit.**
+Earlier results (RX gain 70): 20 and 30 dB: every frame found, no bit error in 3.5 Mbit; 40 dB: frames found, BER 6e-2; 45 dB: frames lost; 50 dB and more: nothing.
+""")
+code('''
+def air_experiment(attens=(20.0, 30.0, 40.0, 45.0, 50.0), seconds=2.0):
+    live.stop(); live.paused = True; fl = PAYLOAD + 64
+    ad.set_rx_manual_gain(70); p501_radio.loopback(ad, False)
+    print(f"{'TX atten':>9}{'sync':>7}{'frames sent':>13}{'hits':>7}{'misses':>8}{'false':>7}{'lost':>6}{'payload bits':>14}{'mismatches':>12}{'BER':>10}{'spread':>8}")
+    for att in attens:
+        tx.off(); rx.stop(); ad.set_tx_atten_db(att); tx.start_frames(payload=PAYLOAD, amp=0.5); time.sleep(0.2)
+        rx.configure(timing_bw=2 * np.pi / 400, phase_bw=2 * np.pi / 400); rx.configure_sync(fl=fl, pl=PAYLOAD); rx.configure_acquisition(load=1, nload=8, nsw=4); rx.gate_enable(True); rx.start()
+        ok = rx.wait_lock(1.0); time.sleep(0.4); s0 = rx.stats(); y0 = rx.sync_status(); time.sleep(seconds); s1 = rx.stats(); y1 = rx.sync_status(); z = rx.capture()
+        nb, nm = s1["bits"] - s0["bits"], s1["mismatches"] - s0["mismatches"]
+        print(f"{att:>7.0f}dB{('locked' if ok else '-'):>7}{seconds * SYMBOL_RATE / fl:>13.0f}{y1['hits'] - y0['hits']:>7}{y1['misses'] - y0['misses']:>8}{y1['false'] - y0['false']:>7}{y1['lost'] - y0['lost']:>6}{nb:>14,}{nm:>12,}{nm / 3.0 / max(nb, 1):>10.1e}{soft_quality(z)[1]:>7.1f}d")
+    tx.off(); rx.configure_acquisition(load=0, nsw=0); rx.stop(); p501_radio.quiet(ad, TX_ATTEN0); live.paused = False
+
+air_experiment()
 ''')
 
 md("""

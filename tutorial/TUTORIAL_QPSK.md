@@ -226,7 +226,7 @@ In *once* mode the load sets the integrator's starting value and the Costas loop
 
 **Frame synchronisation with an m-sequence (chapter 4e, part 1).** `p501_qpsk_trx_sync` (`rtl/qpsk_sync.v`, README in `tutorial/qpsk/p501_sync/`) adds a block beside the engine that correlates the phase steps of the symbols with a known 63-chip m-sequence preamble.
 It finds the frame start before any loop has locked, tracks the frame period, measures the frequency offset from `arg(C)` (data aided, +-480 kHz) and opens a payload gate for the bit error counter. The B210 transmits the frames from a GNU Radio flowgraph (`qpsk_b210_frame_tx.grc`) or from Python;
-the synchroniser found every frame down to a TX gain 8 dB below the level at which the data can be decoded. With the hardware acquisition it also loads the Costas loop's frequency from `arg(C)` and switches the loop gains from acquisition to tracking by itself, so the receiver locks from a cold start at any offset up to +-110 kHz with no hint and no search loop in software (the carrier search of chapter 4d fails above about 40 kHz).
+the synchroniser found every frame down to a TX gain 8 dB below the level at which the data can be decoded. With the hardware acquisition it also loads the Costas loop's frequency from `arg(C)` and switches the loop gains from acquisition to tracking by itself, so the receiver locks from a cold start at any offset up to +-110 kHz with no hint and no search loop in software (the carrier search of chapter 4d fails above about 40 kHz). The FPGA transmitter sends the same frames (`rtl/qpsk_tx_fr.v`, configured through the FTW register), so the whole link can run inside the FPGA: in the AD9361's digital loopback the frame lock comes 1.1 ms after the transmitter starts and 3.57 million payload bits arrive without an error.
 
 ![The frame, the correlation, the tracker](img/qpsk_sync_frame.png)
 
@@ -1000,12 +1000,15 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:util_vector_logic:2.0 qpsk_rstn_inv
 set_property -dict [list CONFIG.C_OPERATION {not} CONFIG.C_SIZE {1}] [get_bd_cells qpsk_rstn_inv]
 connect_bd_net [get_bd_pins axi_ad9361/rst] [get_bd_pins qpsk_rstn_inv/Op1]
 
-create_bd_cell -type module -reference qpsk_tx qpsk_tx
+set txmod qpsk_tx
+if {[info exists ::p501_qpsk_tx_module]} { set txmod $::p501_qpsk_tx_module }       ;# qpsk_tx_fr: the transmitter with frames (chapter 4e), its configuration comes from the FTW register
+create_bd_cell -type module -reference $txmod qpsk_tx
 connect_bd_net [get_bd_pins axi_ad9361/l_clk]        [get_bd_pins qpsk_tx/clk]
 connect_bd_net [get_bd_pins qpsk_rstn_inv/Res]       [get_bd_pins qpsk_tx/resetn]
 connect_bd_net [get_bd_pins axi_ad9361/dac_valid_i0] [get_bd_pins qpsk_tx/ce]
 connect_bd_net [get_bd_pins qpsk_regs/enable]        [get_bd_pins qpsk_tx/enable]
 connect_bd_net [get_bd_pins qpsk_regs/amp]           [get_bd_pins qpsk_tx/amp]
+if {$txmod eq "qpsk_tx_fr"} { connect_bd_net [get_bd_pins qpsk_regs/ftw] [get_bd_pins qpsk_tx/cfg] }
 ```
 *`tutorial/qpsk/p501_tx/steps/step2_tx.tcl`*
 

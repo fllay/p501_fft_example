@@ -78,6 +78,7 @@ source [file join $script_dir bd qpsk_rx_sync_chain.tcl]
 if {$opt(DDS) && $opt(QPSK)} { error "DDS=1 and QPSK=1 both drive TX1: choose one" }
 if {$opt(FFT)} { p501_add_fft_chain $opt(NFFT_LOG2) $opt(SCALE_SHIFT) }
 if {$opt(DDS)} { p501_add_dds_chain }
+if {$opt(QPSKRXSYNC)} { set ::p501_qpsk_tx_module qpsk_tx_fr }     ;# the overlay with the frame synchroniser transmits frames too (cfg = the FTW register: bit 31 frames, bits 15:0 payload symbols; 0 = the continuous PRBS-15)
 if {$opt(QPSK)} { p501_add_qpsk_chain }
 if {$opt(QPSKRX)} { p501_add_qpsk_rx_chain }
 if {$opt(QPSKRXFLL)} { p501_add_qpsk_rx_fll_chain }
