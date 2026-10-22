@@ -107,7 +107,7 @@ check("no overruns", s3["overruns"] == 0, f"overruns {s3['overruns']}")
 md("""
 ## The live machinery
 
-* `render()` draws one picture with NumPy and Pillow: the **constellation** after the Costas loop, the **correlation vectors** `C` at the last peaks (each one has the length `|C|` normalised and the angle `2 pi f T`: a tight cluster at an angle means a steady frequency offset), the **status**
+* `render()` draws one picture with NumPy and Pillow: the **constellation** after the Costas loop, the **BER of the payload** (since the start and over the last 2 s: mismatches / 3 / bits, the checker counts 3 mismatches per isolated bit error), the **correlation vectors** `C` at the last peaks (each one has the length `|C|` normalised and the angle `2 pi f T`: a tight cluster at an angle means a steady frequency offset), the **status**
   (locked, gate, peaks, hits, misses, false peaks, losses, bit errors in the payload) and three strips: the **frequency** from the preamble (purple, one frame per picture) and from the Costas loop (blue), the **frames found per second** against the expected rate, and the **payload mismatches per second**.
 * `Live` runs `read registers -> read capture RAM -> picture` in a background thread, so the controls stay responsive.
 """)
@@ -150,7 +150,7 @@ def strip(d, x0, y0, w, h, series, label, lo=None, hi=None):
         if len(pts) > 1: d.line(pts, fill=color, width=1)
     d.text((x0 + w + 4, y0 - 2), f"{hi:.0f}", fill=(100, 100, 100), font=FONT); d.text((x0 + w + 4, y0 + h - 9), f"{lo:.0f}", fill=(100, 100, 100), font=FONT)
 
-def render(z, st, y, mrate, hrate, expected, note=""):
+def render(z, st, y, mrate, hrate, expected, ber_recent=float('nan'), note=""):
     img = BASE.copy(); d = ImageDraw.Draw(img)
     zn = np.asarray(z) / UNIT
     for a, b in zip(zn.real, zn.imag):
@@ -166,6 +166,7 @@ def render(z, st, y, mrate, hrate, expected, note=""):
              f"peaks {y['peaks']:>8,}  hits {y['hits']:>8,}  misses {y['misses']:>5,}  false {y['false']:>4,}",
              f"locks {y['locks']}  lost {y['lost']}  late {y['late']}      quality |C|/sum|d| {y['quality']:.2f}",
              f"payload bits {st['bits']:>10,}  mismatches {st['mismatches']:>7,} (about {st['mismatches'] // 3:,} errors)",
+             (f"BER (payload): no error in {st['bits'] / 1e6:.1f} Mbit (BER < {1.0 / max(st['bits'], 1):.0e})" if (st['bits'] and st['mismatches'] == 0) else f"BER (payload): {st['ber_estimate']:.1e} since start, " + ("-" if ber_recent != ber_recent else f"{ber_recent:.1e}") + " last 2 s"),
              f"frequency from the preamble {y['freq_hz']:+9.0f} Hz  (one frame)",
              f"Costas frequency            {st['carrier_offset_hz']:+9.0f} Hz",
              f"AGC gain {st['agc_gain']:.2f}   |z| {mag:.2f}   spread {spread:.1f} deg   overruns {st['overruns']}"]
@@ -183,6 +184,7 @@ class Live:
         self.running, self.thread, self.frames = False, None, 0
         self.last, self.last_t = None, time.time()
         self.locked, self.y, self.st = False, None, None
+        self.win = []                                            # (time, bits, mismatches) of the last 2 s, for the recent BER
         self.paused = False                                      # set while a start procedure or an experiment uses the registers
         self.fl = PAYLOAD + 64
     def _run(self):
@@ -204,7 +206,11 @@ class Live:
                     if len(vec) > 4 * HIST: del vec[:HIST]
                 for h, v in ((hist_f, y["freq_hz"] if (y["cre"] or y["cim"]) else np.nan), (hist_c, st["carrier_offset_hz"]), (hist_h, hrate), (hist_m, mrate)): h.pop(0); h.append(v)
                 self.y, self.st = y, st
-                self.image.value = render(z, st, y, mrate, hrate, SYMBOL_RATE / self.fl, f"{rate:.1f} pictures/s")
+                self.win.append((now, st["bits"], st["mismatches"])); self.win = [w for w in self.win if now - w[0] <= 2.0]
+                ber_recent = float("nan")
+                if len(self.win) > 1 and self.win[-1][1] > self.win[0][1] and self.win[-1][1] >= self.win[0][1] and self.win[-1][2] >= self.win[0][2]:
+                    ber_recent = (self.win[-1][2] - self.win[0][2]) / 3.0 / (self.win[-1][1] - self.win[0][1])
+                self.image.value = render(z, st, y, mrate, hrate, SYMBOL_RATE / self.fl, ber_recent, f"{rate:.1f} pictures/s")
                 self.frames += 1; n_rate += 1
                 if now - t_rate > 2: rate = n_rate / (now - t_rate); t_rate = now; n_rate = 0
             except TimeoutError:
