@@ -31,6 +31,8 @@ The receiver correlates the **phase steps** `d = m_n conj(m_n-1)` of the symbols
 | `steps/`, `bd/qpsk_rx_sync_chain.tcl`, `QPSKRXSYNC=1` in `create_project.tcl` | the project (the clock-crossing constraints of `src/qpsk_rx_cdc.xdc`) |
 | `notebook/p501_qpsk_rx_sync.py` | driver `P501QpskRxSync`: `configure_sync`, `gate_enable`, `sync_status`, `wait_lock`, `corr_freq_hz` |
 | `qpsk_b210_frame_tx.grc` (`make_flowgraph_frame.py`) | **the GNU Radio flowgraph** for the B210: frames -> differential QPSK -> TX/RX port, with Transmit ON/OFF, TX gain, amplitude, `payload_syms`, spectrum and envelope displays |
+| `qpsk_b210_frame_rx.grc` (`make_flowgraph_frame.py`) | **the GNU Radio flowgraph of the frame receiver**: the B210 receives the P501's FPGA transmitter: AGC, limiter, FLL, polyphase clock sync, Costas loop, differential decoder, bits -> the block *Frame sync + BER*, which finds the 128-bit preamble pattern (Hamming distance <= 16) and counts the payload errors against the PRBS-15; displays: BER, frames found, frame lock, constellation, spectrum |
+| `p501_frame_tx.py`, `run_frame_rx_test.py` | board side (frames from the FPGA transmitter) and host side (starts the board, runs the receiver flowgraph without a screen, prints once a second) |
 | `qpsk_frame_tx.py` | the same transmitter in Python (`FrameTx`, command line or module): the one the tests use |
 | `make_notebook_sync.py` -> `notebook/P501_QPSK_SYNC_Live.ipynb` | the interactive notebook: loopback self-tests, live picture (constellation, the correlation vectors C at the peaks, frequency from the preamble and from the Costas loop, frames found per second, payload mismatches), start modes (carrier search + sync / sync only with the Costas loop unlocked), live threshold / tolerance / misses / guard / gate, experiments (frequency from the preamble, detection against the RX gain, lock time) |
 | `study_acq.py`, `p501_sync_acq.py`, `run_acq_test.py` | the hardware acquisition: offline study, board and host side of the six-offset comparison with the Python search |
@@ -143,6 +145,25 @@ Over the whole run `late` was 0: the synchroniser kept up with every symbol.
 
 **False alarms** (the same threshold, 19.2 million symbols each, 20 s): receiver noise only: 29 peaks, no lock; PRBS-15 data at 80 dB without a preamble: **0 peaks**, no lock. A lock needs two peaks one frame apart.
 
+## The B210 receives the frames: `qpsk_b210_frame_rx.grc`
+
+The GNU Radio receiver of chapter 4a only knows the continuous PRBS-15 (a self-synchronising checker). For frames the flowgraph ends in a block that does in software what the FPGA does: the decoded bits (two per symbol, after the differential decoder)
+are compared with the 128 preamble bits (symbol 0 = 00, then 00 for a chip +1 and 11 for a chip -1) by the Hamming distance; random data are at 64 +- 6, a distance <= 16 is a frame. The 1920 payload bits that follow are compared with the PRBS-15 of the frame
+(restarted in every frame, so every error counts exactly once), and the next preamble is expected one frame later. Outputs: BER (exponential average over about 2000 frames; 0.5 until a frame is found), frames found, frame lock.
+Unit test of the block alone (40 frames, random chunk sizes, bit flips at 1e-3, 1e-2 and 3e-2 everywhere including the preamble, random bits only): all 40 frames found, the BER equals the flip rate, no false frame in 200 000 random bits.
+
+Over the air, P501 FPGA transmitter (amplitude 0.5) -> B210 RX2 with `run_frame_rx_test.py` (937.5 frames per second expected for 960 payload symbols):
+
+| P501 TX attenuation / B210 RX gain | frames found per second | BER | remark |
+|---|---|---|---|
+| 40 dB / 45 dB | 938 (all) | 1e-3 .. 4e-3 | frame lock 1 all the time |
+| 50 dB / 45 dB | about 790 | 6e-2 | Costas loop slips, frames are lost in between |
+| 40 dB / 60 dB | 530 .. 730 | 8e-2 | the B210 front end is too strong at this distance: RX gain 45 is the right one here |
+| 55 dB / 50 dB, 60 dB / 55 dB | 0 .. 2 | | the GNU Radio loops no longer lock |
+
+The GNU Radio chain pulls in with the FLL, the timing and the Costas loop and has no help from the preamble, so it stops earlier than the FPGA receiver of this chapter (which finds the frames at weaker signals and uses the preamble for its frequency).
+The numbers are one session's: the signal level of the link drifts from session to session, compare settings within a session.
+
 ## Notes and what is left
 
 * The transmitter can be the B210 (GNU Radio flowgraph or `FrameTx`) or the P501's own FPGA transmitter.
@@ -153,11 +174,12 @@ Over the whole run `late` was 0: the synchroniser kept up with every symbol.
 
 ```
 source tools/gnuradio_env.sh
-python3 tutorial/qpsk/p501_sync/make_flowgraph_frame.py                   # (re)writes qpsk_b210_frame_tx.grc; open it with gnuradio-companion
+python3 tutorial/qpsk/p501_sync/make_flowgraph_frame.py                   # (re)writes qpsk_b210_frame_tx.grc and qpsk_b210_frame_rx.grc; open them with gnuradio-companion
 python3 tutorial/qpsk/p501_sync/run_sync_test.py --out /tmp/p501_sync_run --gains 80,76,72,68,64,60 --payload 960 --seconds 3 [--freq 915.03e6]
+python3 tutorial/qpsk/p501_sync/run_frame_rx_test.py --p501-atten 40 --rx-gain 45 --seconds 10     # P501 FPGA frames -> B210 / qpsk_b210_frame_rx.grc (needs p501_frame_tx.py in /tmp on the board)
 python3 tutorial/qpsk/p501_sync/run_false_alarm.py --what noise|prbs --seconds 20
 cd tutorial/qpsk/p501_sync/sim; python3 gen_sim_samples.py              # the simulation signals; xvlog/xelab/xsim as in the README of chapter 4d, plusargs hex=samples_a.hex thr=140 fl=256 pl=192
 SIGNAL=a python3 compare_sync.py 256 192 140
 ```
-Board folder (once): `p501_qpsk_trx_sync.{bit,hwh}`, `p501_qpsk.py`, `p501_qpsk_rx.py`, `p501_qpsk_rx_sync.py` -> `/home/xilinx/jupyter_notebooks/p501_qpsk_trx_sync/`; `p501_sync_link.py`, `p501_sync_false.py` -> `/tmp/`.
+Board folder (once): `p501_qpsk_trx_sync.{bit,hwh}`, `p501_qpsk.py`, `p501_qpsk_rx.py`, `p501_qpsk_rx_sync.py` -> `/home/xilinx/jupyter_notebooks/p501_qpsk_trx_sync/`; `p501_sync_link.py`, `p501_sync_false.py`, `p501_frame_tx.py` -> `/tmp/`.
 In the GRC flowgraph set `payload_syms` (a multiple of 4) to the same value as `SY_PL` (and `SY_FL` = 64 + `payload_syms`); switch **Transmit** ON after the P501 is ready.
