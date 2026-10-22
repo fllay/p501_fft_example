@@ -62,7 +62,7 @@ Defaults keep the old behaviour (`SY_LOAD = 0`, `SY_NSW = 0`): the earlier tests
 | session | way | locked | payload BER (median of the starts) |
 |---|---|---|---|
 | 1 (signal better: spread 11 degrees) | hardware | 24 of 24 | 1e-6 to 1e-4 (e.g. 1e-5 at +9.5 kHz, 3e-6 at +89.5 kHz) |
-| | Python search | 7 of 24 by its strict criterion; wrong or noisy at 40 kHz and more | 1e-4 to 2e-1 (+119.5 kHz: it ended at -121 kHz) |
+| | Python search | 4 of 23 logged starts by its strict criterion (the first line of the run was lost); 0 of 16 at 40 kHz and more | 1e-4 to 2e-1 (+119.5 kHz: it ended at -121 kHz) |
 | 2 (signal weaker: spread 13 to 17 degrees) | hardware | 30 of 30 (a sane constellation and a settled frequency) | 6e-5 to 3e-4 |
 | | Python search | 0 of 29 by its strict criterion (no mismatch in 50 ms, which a BER of 1e-3 never satisfies); the Costas frequency was right except at +119.5 kHz (ended at -120.7 kHz, BER 0.18) | 7e-4 to 2e-3 |
 
