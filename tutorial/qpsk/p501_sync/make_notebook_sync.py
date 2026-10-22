@@ -58,6 +58,9 @@ import p501_radio
 from p501_qpsk import P501QpskTx
 from p501_qpsk_rx import soft_quality, constellation_ok, UNIT, REG, _signed, SYMBOL_RATE
 from p501_qpsk_rx_sync import P501QpskRxSync
+import inspect
+_need = [m for m in ("configure_sync", "configure_acquisition", "acquire_hw", "gate_enable", "sync_status", "wait_lock", "corr_freq_hz") if not hasattr(P501QpskRxSync, m)]
+assert not _need, f"p501_qpsk_rx_sync.py is older than this notebook (missing {_need}): copy notebook/p501_qpsk_rx_sync.py again to /home/xilinx/jupyter_notebooks/p501_qpsk_trx_sync/ and RESTART THE KERNEL (a module that is already imported is not re-read)"
 
 results = {}
 def check(name, ok, detail):
