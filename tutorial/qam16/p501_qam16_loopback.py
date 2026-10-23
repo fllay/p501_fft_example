@@ -1,6 +1,6 @@
 """First board test of the 16-QAM receiver (run on the board as root; overlay p501_qam16_trx): the FPGA frame transmitter sends frames, the AD9361's digital loopback returns them, the receiver
 (FLL, polyphase / timing, power AGC, ZC synchroniser, PLL, slicer) locks on them and counts symbol and bit errors against the PRBS-15 payload. Then over the air (TX1 -> RX1 antennas, optional).
-    python3 /tmp/p501_qam16_loopback.py <RX gain index> [air]
+    python3 /tmp/p501_qam16_loopback.py <RX gain index> [air [attenuations, e.g. 20,24,28,32]]
 Every run ends with the transmitter off, the loopback off and the TX attenuation at its maximum. The soft symbols of each step are saved in /tmp/qam16_cap_*.npy."""
 import sys, time, os
 import numpy as np
@@ -10,6 +10,7 @@ import p501_radio
 from p501_qam16_rx import P501Qam16Rx, P501Qam16Tx
 RX_GAIN = int(sys.argv[1]) if len(sys.argv) > 1 else 45
 AIR = len(sys.argv) > 2 and sys.argv[2] == "air"
+AIR_ATTENS = [float(v) for v in sys.argv[3].split(",")] if len(sys.argv) > 3 else [20.0, 30.0, 40.0]       # TX attenuations (dB) of the air test; 20 dB is the strongest signal
 FS = 3_840_000
 ol = Overlay('/home/xilinx/jupyter_notebooks/p501_qam16/p501_qam16_trx.bit')
 tx = P501Qam16Tx(ol.qpsk_regs, FS); rx = P501Qam16Rx(ol.qam16_rx)
@@ -45,7 +46,7 @@ try:
             time.sleep(0.2); report("loopback amp %.2f" % amp, 1.0); report("loopback amp %.2f later" % amp, 2.0)
     else:
         p501_radio.loopback(ad, False)
-        for att in (20.0, 30.0, 40.0):
+        for att in AIR_ATTENS:
             ad.set_tx_atten_db(att); tx.off(); rx.stop(); time.sleep(0.05)
             tx.start(amp=0.25); time.sleep(0.05)
             r = rx.acquire()

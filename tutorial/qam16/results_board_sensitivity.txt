@@ -1,0 +1,32 @@
+Sensitivity of the 16-QAM receiver over the air, 2026-10-23 (antennas a few cm apart, P501 RX gain index 70, overlay p501_qam16_trx, a cold start per level)
+
+1. P501 transmitter (amp 0.25) -> P501 receiver, TX attenuation sweep (python3 /tmp/p501_qam16_loopback.py 70 air 20,24,...); 2 s counted per level = 1,988 frames expected
+atten  frames found  SER       EVM(dB)   AGC gain  peaks locks hits miss lost
+20     1988          0         -23.9 / -20.2 (two runs)
+22     1988          5.7e-06   -17.4     4.5       2     1     2228 0    0
+24     1988          4.3e-05   -16.8
+26     1988          6.2e-03   -15.6     7.0       2     1     2228 0    0
+28     1988          6.0e-02   -11.7
+30     1988          3.7e-03   -16.1   (an earlier run; this level varies by several dB between runs)
+32..40 1988          0.52 .. 0.86  -10.4 .. -9.5    (the PLL has lost the carrier: SER 0.5 .. 0.9, the synchroniser still finds every frame)
+44     1988          0.90      -8.8      44.0      3     1     2226 1    0
+46     1988 (14 miss) 0.91     -8.1      50.5      4     1     2212 14   0
+48     1665 of 1988  0.93      -9.3      52.5      245   15    1634 262  14
+50      255          lock lost 26 times            55.4      961   26    147  156  26
+51      114          lock lost 14 times            57.2
+52        7          2 locks                       61.2      773   2     4    8    2
+54        0          no lock                       64.6      554   0     0    0    0
+
+2. B210 (TX gain 80 .. 56 dB, digital RMS 0.35) -> P501, the same session as the sweep above (the level was 6 to 9 dB lower than in the session of results_board_b210.txt: AGC gain 15.5 instead of 5.7 at 80 dB)
+tx gain  AGC gain  SER    EVM(dB)  frames found of 2978   locks hits miss lost
+80       15.5      0.85   -8.8     2982                   1  3321 0    0
+76       24.0      0.89   -9.1     2981
+72       34.7      0.91   -9.4     2981
+68       47.6      0.91   -9.0     2982
+66       54.9      0.92   -8.9     2982                   1  3321 0    0
+64       59.7      0.93   -8.1     2982                   1  3279 43   0
+62       69.7      0.93   -8.3     2970 (7 locks, 6 lost)        2954 281  6
+60       77.0      0.94   -8.2     604 (59 locks, 59 lost)       299  338  59
+58       81.7      locked=False after 2 s, 47 frames    7 locks 15 hits 37 miss
+56       83.7      no lock (438 peaks, 0 locks)
+(a repeat of 86, 84, 82, 80 dB at the end of the session: AGC 6.1 / 8.9 / 9.6 / 12.9, SER 0.43 / 0.57 / 0.57 / 0.66, EVM -11.7 / -9.6 / -10.3 / -9.7 dB)

@@ -163,5 +163,17 @@ B210 TX gain 80, 82, 84 and 86 dB (as requested; the transmitter's own limit in 
   (7 errors at 80 dB). The EVM is not monotonic in the gain at the 0.35 level (-21.9 dB at 82, -18.1 dB at 84): the B210 level and the multipath at a few centimetres change from one cold start to the next; the figures are one measurement each.
 * The EVM floor of the FPGA chain itself is -30 dB (digital loopback), so the over-the-air EVM is the link's, not the receiver's.
 
-## 11. Next
-7. The P501's own transmitter over the air (`p501_qam16_loopback.py <RX gain> air`, TX attenuation 20 to 40 dB) and a TX attenuation / RX gain sweep to find the sensitivity limit (SER against level, the lower end of the FLL / ZC lock range); a notebook for the live view; the two open points of section 8 (a lock one symbol off near 6 kHz at low SNR, and 3 to 4 bad frames after a gap).
+## 11. Step 7: the P501 transmitter over the air and the sensitivity (`results_board_sensitivity.txt`)
+
+* **P501 transmitter -> P501 receiver, TX attenuation 20 to 60 dB** (amp 0.25, RX gain 70): 20 dB SER 0 in 1.75 M symbols (EVM -24 / -20 dB in two runs), 22 dB SER 5.7e-6 (EVM -17.4), 24 dB 4.3e-5 (-16.8), 26 dB 6.2e-3 (-15.6), 28 dB 6e-2 (-11.7);
+  **from 32 dB on the PLL no longer holds the carrier** (SER 0.5 to 0.9, EVM -10 to -9 dB) although the synchroniser still finds every frame (1,988 of 1,988 up to 44 dB, 1,665 at 48 dB with 14 lost locks, 255 at 50 dB, 7 at 52 dB, none at 54 dB).
+  The decision-directed PLL therefore sets the limit of the 16-QAM data at an EVM of about -15 dB (SER 1e-3 needs -16 dB, a SER of 5e-2 is at -12 dB, below that the loop slips continuously), and **the frame synchronisation works about 20 dB below that** (the AGC gain at the end of the lock range is 55 against 7 at the decode limit: 18 dB).
+  The levels vary by several dB between runs (the same attenuation gave EVM -23.9 and -20.2 dB, and 30 dB gave -16.1 dB in one run and 28 dB gave -11.7 dB in another).
+* **B210 -> P501 sweep of the TX gain 80 to 56 dB** (digital RMS 0.35): in this session the received level was 6 to 9 dB lower than in the session of section 10 (AGC gain 15.5 at 80 dB against 5.7), the PLL did not hold the carrier at any of the gains (SER 0.85 to 0.94, EVM -9 dB), so the sweep shows the **synchroniser's limit**:
+  every frame found down to 66 dB (AGC gain 55), 43 misses at 64 dB, 281 misses and 6 lost locks at 62 dB, 59 lost locks at 60 dB, no lock at 56 to 58 dB. The same limit as with the P501's own transmitter (AGC gain 50 to 60).
+  The decode threshold cannot be read from this session's B210 sweep (it was below it everywhere); section 10 and the P501 sweep give it.
+* What this means for the design: (1) the Zadoff-Chu synchroniser and the FLL are not the limit, the carrier PLL is: 16-QAM data needs an EVM of -15 dB or better, and the decision-directed loop loses the carrier below -12 dB. The ZC word could keep the PLL alive at low SNR (data-aided loop on the word and the pilots only, hold the NCO frequency over the data): a design option for a rate-adaptive link
+  (QPSK-fallback payload at low SNR with the same ZC word); (2) the loop bandwidth: 0.04 helped under phase noise in the float study, and costs 0.7 dB at 14 dB; the hardware registers (CA, CB) can be changed without a rebuild.
+
+## 12. Next
+8. A notebook for the live view; the two open points of section 8 (a lock one symbol off near 6 kHz at low SNR, and 3 to 4 bad frames after a gap); a PLL that survives lower SNR (pilot-weighted / data-aided loop), tried in the model first with the float study (`study_qam16_rx.py`) at 12 to 14 dB, then in the register values (CA / CB / pilot weight) on the board.
