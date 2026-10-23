@@ -1,0 +1,425 @@
+options:
+  parameters:
+    author: ''
+    category: Custom
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: 16-QAM + Zadoff-Chu frame receiver (USRP B210)
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: qam16_zc_rx
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: 16-QAM + Zadoff-Chu frame receiver (USRP B210)
+    window_size: (1200,900)
+  states:
+    coordinate:
+    - 8
+    - 8
+    rotation: 0
+    state: enabled
+blocks:
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: ''
+    value: '1000000'
+  states:
+    coordinate:
+    - 8
+    - 80
+    rotation: 0
+    state: enabled
+- name: sps
+  id: variable
+  parameters:
+    comment: ''
+    value: '4'
+  states:
+    coordinate:
+    - 8
+    - 144
+    rotation: 0
+    state: enabled
+- name: symbol_rate
+  id: variable
+  parameters:
+    comment: ''
+    value: samp_rate/sps
+  states:
+    coordinate:
+    - 8
+    - 208
+    rotation: 0
+    state: enabled
+- name: excess_bw
+  id: variable
+  parameters:
+    comment: ''
+    value: '0.35'
+  states:
+    coordinate:
+    - 8
+    - 272
+    rotation: 0
+    state: enabled
+- name: nfilts
+  id: variable
+  parameters:
+    comment: ''
+    value: '32'
+  states:
+    coordinate:
+    - 8
+    - 336
+    rotation: 0
+    state: enabled
+- name: freq
+  id: variable
+  parameters:
+    comment: ''
+    value: 2.4e9
+  states:
+    coordinate:
+    - 8
+    - 400
+    rotation: 0
+    state: enabled
+- name: usrp_rx
+  id: uhd_usrp_source
+  parameters:
+    type: fc32
+    otw: ''
+    stream_args: ''
+    stream_chans: '[]'
+    dev_addr: '""'
+    dev_args: '""'
+    sync: sync
+    start_time: '-1.0'
+    clock_rate: '0.0'
+    num_mboards: '1'
+    clock_source0: ''
+    time_source0: ''
+    sd_spec0: ''
+    nchan: '1'
+    samp_rate: samp_rate
+    center_freq0: freq
+    rx_agc0: Default
+    gain0: '40'
+    gain_type0: default
+    ant0: RX2
+    bw0: '0'
+    lo_source0: internal
+    lo_export0: 'False'
+    dc_offs_enb0: default
+    dc_offs0: 0j
+    iq_imbal_enb0: default
+    iq_imbal0: 0j
+    norm_gain0: 'False'
+    comment: B210 RX2 port
+  states:
+    coordinate:
+    - 260
+    - 220
+    rotation: 0
+    state: enabled
+- name: rx_taps
+  id: variable_rrc_filter_taps
+  parameters:
+    gain: nfilts
+    samp_rate: nfilts*samp_rate
+    sym_rate: symbol_rate
+    alpha: excess_bw
+    ntaps: 11*sps*nfilts
+    comment: Polyphase RRC bank for pfb_clock_sync (matched filter + timing)
+  states:
+    coordinate:
+    - 200
+    - 144
+    rotation: 0
+    state: enabled
+- name: rx_agc
+  id: analog_agc_xx
+  parameters:
+    type: complex
+    rate: 1e-4
+    reference: '0.5'
+    gain: '1.0'
+    max_gain: '65536'
+    comment: '1. AGC (slow: the 16-QAM envelope is not constant)'
+  states:
+    coordinate:
+    - 600
+    - 220
+    rotation: 0
+    state: enabled
+- name: rx_fll
+  id: digital_fll_band_edge_cc
+  parameters:
+    type: cc
+    samps_per_sym: sps
+    rolloff: excess_bw
+    filter_size: '44'
+    w: '0.01'
+    comment: '2. Coarse CFO: band-edge FLL (leaves residual < Rs/(2*63) = 2 kHz for the sync word)'
+  states:
+    coordinate:
+    - 850
+    - 220
+    rotation: 0
+    state: enabled
+- name: rx_timing
+  id: digital_pfb_clock_sync_xxx
+  parameters:
+    type: ccf
+    sps: sps
+    loop_bw: 6.28/100.0
+    taps: rx_taps
+    filter_size: nfilts
+    init_phase: nfilts/2
+    max_dev: '1.5'
+    osps: '1'
+    comment: 3. RRC matched filter + timing recovery, output 1 sps
+  states:
+    coordinate:
+    - 1100
+    - 220
+    rotation: 0
+    state: enabled
+- name: rx_sync
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"ZC frame sync + carrier PLL + gain for the 16-QAM / Zadoff-Chu frame (1 sample\
+      \ per symbol in, data symbols out).\n\nIn : complex symbols after the matched filter and timing\
+      \ recovery (1 sps)\nOut: the 882 payload data symbols of every locked frame, gain-normalised and\
+      \ derotated (unit average power)\n\nStates: SEARCH (normalised correlation with the ZC word) ->\
+      \ verify one frame later (967 symbols) -> LOCKED.\nPer locked frame: gain and absolute phase from\
+      \ the sync word, then a 2nd-order PLL over the payload\n(decision-directed on data, data-aided on\
+      \ the pilot at the end of every 64-symbol block). The PLL is frozen over CP + sync word.\n\"\"\"\
+      \nimport math\nimport numpy as np\nfrom gnuradio import gr\n\nN_ZC, ROOT, N_CP, N_BLK, N_DATA =\
+      \ 63, 1, 8, 14, 63\nN_PAY = N_BLK * N_DATA\nBLK = N_DATA + 1\nPAY_LEN = N_BLK * BLK            \
+      \            # 896\nFRAME = N_CP + N_ZC + PAY_LEN                # 967\nS10 = math.sqrt(10.0)\n\
+      PILOTS = [1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0]\n_N = np.arange(N_ZC)\n\
+      ZC = np.exp(-1j * np.pi * ROOT * _N * (_N + 1) / N_ZC)\nGRAY_IDX = {-3: 0, -1: 1, 1: 3, 3: 2}  \
+      \      # level -> 2-bit index (inverse of the transmitter table)\n\n\ndef _level(a):           \
+      \                    # a = value * sqrt(10)\n    return -3 if a < -2 else (-1 if a < 0 else (1 if\
+      \ a < 2 else 3))\n\n\ndef tx_fixed_indices(seed):\n    return np.random.RandomState(int(seed)).randint(0,\
+      \ 16, N_PAY)\n\n\ndef tone_freq(z, pad=16):\n    \"\"\"frequency (cycles/symbol) of the strongest\
+      \ tone in z: zero-padded FFT + parabolic interpolation\"\"\"\n    nf = pad * len(z)\n    s = np.abs(np.fft.fft(z,\
+      \ nf))\n    k = int(np.argmax(s))\n    a, b, c = np.log(s[(k - 1) % nf] + 1e-30), np.log(s[k] +\
+      \ 1e-30), np.log(s[(k + 1) % nf] + 1e-30)\n    den = a - 2 * b + c\n    d = 0.5 * (a - c) / den\
+      \ if den != 0 else 0.0\n    kk = k + d\n    if kk > nf / 2:\n        kk -= nf\n    return kk / nf\n\
+      \n\nclass FrameRx:\n    def __init__(self, loop_bw=0.02, thr_search=0.6, thr_lock=0.45, max_miss=3,\
+      \ pilot_weight=3.0,\n                 check_payload=False, seed=1):\n        zeta = 0.7071\n   \
+      \     den = 1 + 2 * zeta * loop_bw + loop_bw ** 2\n        self.alpha, self.beta = 4 * zeta * loop_bw\
+      \ / den, 4 * loop_bw ** 2 / den\n        self.thr_search, self.thr_lock, self.max_miss, self.pw\
+      \ = thr_search, thr_lock, max_miss, pilot_weight\n        self.check = bool(check_payload)\n   \
+      \     self.ref_idx = tx_fixed_indices(seed)\n        self.buf = np.zeros(0, dtype=complex)\n   \
+      \     self.locked = False\n        self.pos = 0\n        self.first = True\n        self.miss =\
+      \ 0\n        self.omega = 0.0           # rad / symbol, residual carrier frequency (PLL integrator)\n\
+      \        self.amp = 1.0\n        self.frames = 0\n        self.evm_db = float('nan')\n        self.sym_err\
+      \ = 0\n        self.sym_cnt = 0\n        self.lock_count = 0\n\n    # ---------- helpers ----------\n\
+      \    @staticmethod\n    def _rho(seg):\n        c = np.abs(np.correlate(seg, ZC, 'valid'))\n   \
+      \     e = np.concatenate([[0.0], np.cumsum(np.abs(seg) ** 2)])\n        we = e[N_ZC:] - e[:-N_ZC]\n\
+      \        return c / np.sqrt(we * N_ZC + 1e-20)\n\n    # ---------- main entry ----------\n    def\
+      \ push(self, x):\n        self.buf = np.concatenate([self.buf, np.asarray(x, dtype=complex)])\n\
+      \        out = []\n        while True:\n            more = self._frame(out) if self.locked else\
+      \ self._search()\n            if not more:\n                break\n        return np.concatenate(out)\
+      \ if out else np.zeros(0, dtype=complex)\n\n    def _search(self):\n        L = len(self.buf)\n\
+      \        if L < N_ZC:\n            return False\n        rho = self._rho(self.buf)\n        k =\
+      \ int(np.argmax(rho))\n        if rho[k] < self.thr_search:\n            self.buf = self.buf[-(N_ZC\
+      \ - 1):]\n            return False\n        if k + FRAME + N_ZC + 4 > L:           # cannot verify\
+      \ yet: wait, keeping data from the candidate on\n            self.buf = self.buf[k:]\n         \
+      \   return False\n        seg = self.buf[k + FRAME - 3: k + FRAME + 3 + N_ZC]\n        if np.max(self._rho(seg))\
+      \ >= self.thr_lock:\n            self.buf = self.buf[k:]\n            self.pos, self.locked, self.first,\
+      \ self.miss = 0, True, True, 0\n            self.lock_count += 1\n            return True\n    \
+      \    self.buf = self.buf[k + 1:]            # false alarm: look further\n        return True\n\n\
+      \    def _frame(self, out):\n        L = len(self.buf)\n        if L < self.pos + N_ZC + PAY_LEN\
+      \ + 8:\n            return False\n        lo = max(self.pos - 4, 0)\n        seg = self.buf[lo:\
+      \ self.pos + 4 + N_ZC]\n        rho = self._rho(seg)\n        j = int(np.argmax(rho))\n        if\
+      \ rho[j] >= self.thr_lock:\n            start, self.miss = lo + j, 0\n        else:\n          \
+      \  start, self.miss = self.pos, self.miss + 1\n            if self.miss > self.max_miss:      #\
+      \ lost the frame: back to SEARCH\n                self.locked = False\n                self.buf\
+      \ = self.buf[self.pos + 1:]\n                self.omega = 0.0\n                return True\n   \
+      \     win = self.buf[start: start + N_ZC]\n        z = win * np.conj(ZC)\n        h = z.sum() /\
+      \ N_ZC\n        if self.first:\n            self.omega = 2 * math.pi * tone_freq(z)\n          \
+      \  self.amp = abs(h)\n        else:\n            self.amp = 0.7 * self.amp + 0.3 * abs(h)\n    \
+      \    c = (N_ZC - 1) / 2.0\n        ph_c = np.angle(np.sum(z * np.exp(-1j * self.omega * (_N - c))))\n\
+      \        theta = ph_c + self.omega * (N_ZC - c)\n        self.first = False\n        pay = self.buf[start\
+      \ + N_ZC: start + N_ZC + PAY_LEN] / max(self.amp, 1e-9)\n        res = self._pll(pay, theta)\n \
+      \       out.append(res)\n        self.frames += 1\n        self.pos = start + FRAME - FRAME    \
+      \      # next frame starts FRAME symbols after this one's start\n        self.buf = self.buf[start\
+      \ + FRAME - 4:]\n        self.pos = 4\n        return True\n\n    def _pll(self, pay, theta):\n\
+      \        al, be, pw = self.alpha, self.beta, self.pw\n        om = self.omega\n        data = []\n\
+      \        err2 = ref2 = 0.0\n        ref_idx = self.ref_idx\n        d = 0\n        mism = 0\n  \
+      \      pr = pay.real.tolist()\n        pi_ = pay.imag.tolist()\n        for i in range(PAY_LEN):\n\
+      \            cs, sn = math.cos(theta), math.sin(theta)\n            yr, yi = pr[i], pi_[i]\n   \
+      \         zr, zi = yr * cs + yi * sn, yi * cs - yr * sn\n            if i % BLK == BLK - 1:    \
+      \                               # pilot\n                rr, ri, w = PILOTS[i // BLK], 0.0, pw\n\
+      \            else:\n                lr, lq = _level(zr * S10), _level(zi * S10)\n              \
+      \  rr, ri, w = lr / S10, lq / S10, 1.0\n                data.append(complex(zr, zi))\n         \
+      \       err2 += (zr - rr) ** 2 + (zi - ri) ** 2\n                ref2 += rr * rr + ri * ri\n   \
+      \             if self.check:\n                    if 4 * GRAY_IDX[lr] + GRAY_IDX[lq] != ref_idx[d]:\n\
+      \                        mism += 1\n                d += 1\n            e = (zi * rr - zr * ri)\
+      \ * w\n            om += be * e\n            theta += om + al * e\n        self.omega = om\n   \
+      \     if self.check:\n            self.sym_err += mism\n            self.sym_cnt += N_PAY\n    \
+      \    self.evm_db = 10 * math.log10(max(err2, 1e-12) / max(ref2, 1e-12))\n        return np.array(data,\
+      \ dtype=complex)\n\n\nclass blk(gr.basic_block):\n    def __init__(self, symbol_rate=250000.0, loop_bw=0.02,\
+      \ thr_search=0.6, pilot_weight=3.0,\n                 check_payload=False, seed=1, print_every=200):\n\
+      \        gr.basic_block.__init__(self, name='ZC frame sync + carrier PLL', in_sig=[np.complex64],\
+      \ out_sig=[np.complex64])\n        self.rs = float(symbol_rate)\n        self.core = FrameRx(loop_bw=loop_bw,\
+      \ thr_search=thr_search, pilot_weight=pilot_weight,\n                            check_payload=check_payload,\
+      \ seed=seed)\n        self.pending = np.zeros(0, dtype=np.complex64)\n        self.print_every =\
+      \ int(print_every)\n        self.last_print = 0\n\n    def forecast(self, noutput_items, ninputs):\n\
+      \        return [1] * ninputs\n\n    def general_work(self, input_items, output_items):\n      \
+      \  out = output_items[0]\n        if len(self.pending) < 4 * max(len(out), 1):\n            x =\
+      \ input_items[0]\n            self.consume(0, len(x))\n            self.pending = np.concatenate([self.pending,\
+      \ self.core.push(x).astype(np.complex64)])\n            c = self.core\n            if self.print_every\
+      \ and c.frames - self.last_print >= self.print_every:\n                self.last_print = c.frames\n\
+      \                msg = \"ZC sync: locked=%s frames=%d cfo=%.1f Hz evm=%.1f dB\" % (c.locked, c.frames,\
+      \ self.get_cfo_hz(), c.evm_db)\n                if c.check and c.sym_cnt:\n                    msg\
+      \ += \" SER=%.2e (%d/%d)\" % (c.sym_err / c.sym_cnt, c.sym_err, c.sym_cnt)\n                print(msg,\
+      \ flush=True)\n        n = min(len(self.pending), len(out))\n        out[:n] = self.pending[:n]\n\
+      \        self.pending = self.pending[n:]\n        return n\n\n    def get_locked(self):\n      \
+      \  return 1.0 if self.core.locked else 0.0\n\n    def get_cfo_hz(self):\n        return float(self.core.omega\
+      \ / (2 * math.pi) * self.rs)\n\n    def get_evm_db(self):\n        return float(self.core.evm_db)\n\
+      \n    def get_ser(self):\n        c = self.core\n        return float(c.sym_err / c.sym_cnt) if\
+      \ c.sym_cnt else 0.0\n"
+    symbol_rate: symbol_rate
+    loop_bw: '0.02'
+    thr_search: '0.6'
+    pilot_weight: '3.0'
+    check_payload: 'True'
+    seed: '1'
+    print_every: '100'
+    comment: '4. ZC frame sync (SEARCH->VERIFY->LOCKED) + carrier phase/gain from the sync word + pilot/decision-directed
+      PLL. Output: 882 payload symbols per frame'
+  states:
+    coordinate:
+    - 1350
+    - 220
+    rotation: 0
+    state: enabled
+    _io_cache: ('ZC frame sync + carrier PLL', 'blk', [('symbol_rate', '250000.0'), ('loop_bw', '0.02'),
+      ('thr_search', '0.6'), ('pilot_weight', '3.0'), ('check_payload', 'False'), ('seed', '1'), ('print_every',
+      '200')], [('0', 'complex', 1)], [('0', 'complex', 1)], '', ['print_every'])
+- name: rx_const
+  id: qtgui_const_sink_x
+  parameters:
+    type: complex
+    name: '"16-QAM after sync + PLL"'
+    size: '2048'
+    grid: 'True'
+    autoscale: 'False'
+    ymin: '-1.5'
+    ymax: '1.5'
+    xmin: '-1.5'
+    xmax: '1.5'
+    nconnections: '1'
+    update_time: '0.10'
+    gui_hint: ''
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_level: '0.0'
+    tr_chan: '0'
+    tr_tag: '""'
+    legend: 'True'
+    axislabels: 'True'
+    label1: ''
+    width1: '1'
+    color1: '"blue"'
+    style1: '0'
+    marker1: '0'
+    alpha1: '1.0'
+  states:
+    coordinate:
+    - 1650
+    - 220
+    rotation: 0
+    state: enabled
+- name: rx_const_pre
+  id: qtgui_const_sink_x
+  parameters:
+    type: complex
+    name: '"1 sps before sync (after timing)"'
+    size: '2048'
+    grid: 'True'
+    autoscale: 'False'
+    ymin: '-2'
+    ymax: '2'
+    xmin: '-2'
+    xmax: '2'
+    nconnections: '1'
+    update_time: '0.10'
+    gui_hint: ''
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_level: '0.0'
+    tr_chan: '0'
+    tr_tag: '""'
+    legend: 'True'
+    axislabels: 'True'
+    label1: ''
+    width1: '1'
+    color1: '"red"'
+    style1: '0'
+    marker1: '0'
+    alpha1: '1.0'
+  states:
+    coordinate:
+    - 1650
+    - 440
+    rotation: 0
+    state: enabled
+- name: n1
+  id: note
+  parameters:
+    alias: ''
+    comment: ''
+    note: 'Chain: AGC -> band-edge FLL -> RRC + polyphase timing -> ZC frame sync/PLL -> 16-QAM symbols.
+      The status line (locked, frames, CFO, EVM, SER) is printed every 100 frames.'
+  states:
+    coordinate:
+    - 600
+    - 460
+    rotation: 0
+    state: enabled
+connections:
+- - rx_agc
+  - '0'
+  - rx_fll
+  - '0'
+- - rx_fll
+  - '0'
+  - rx_timing
+  - '0'
+- - rx_timing
+  - '0'
+  - rx_sync
+  - '0'
+- - rx_sync
+  - '0'
+  - rx_const
+  - '0'
+- - rx_timing
+  - '0'
+  - rx_const_pre
+  - '0'
+- - usrp_rx
+  - '0'
+  - rx_agc
+  - '0'
+metadata:
+  file_format: 1
+  grc_version: 3.10.9.2

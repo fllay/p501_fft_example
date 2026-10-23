@@ -1,0 +1,240 @@
+options:
+  parameters:
+    author: ''
+    category: Custom
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: 16-QAM + Zadoff-Chu frame transmitter (USRP B210)
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: qam16_zc_tx
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: 16-QAM + Zadoff-Chu frame transmitter (USRP B210)
+    window_size: (1200,900)
+  states:
+    coordinate:
+    - 8
+    - 8
+    rotation: 0
+    state: enabled
+blocks:
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: ''
+    value: '1000000'
+  states:
+    coordinate:
+    - 8
+    - 80
+    rotation: 0
+    state: enabled
+- name: sps
+  id: variable
+  parameters:
+    comment: ''
+    value: '4'
+  states:
+    coordinate:
+    - 8
+    - 144
+    rotation: 0
+    state: enabled
+- name: symbol_rate
+  id: variable
+  parameters:
+    comment: ''
+    value: samp_rate/sps
+  states:
+    coordinate:
+    - 8
+    - 208
+    rotation: 0
+    state: enabled
+- name: excess_bw
+  id: variable
+  parameters:
+    comment: ''
+    value: '0.35'
+  states:
+    coordinate:
+    - 8
+    - 272
+    rotation: 0
+    state: enabled
+- name: nfilts
+  id: variable
+  parameters:
+    comment: ''
+    value: '32'
+  states:
+    coordinate:
+    - 8
+    - 336
+    rotation: 0
+    state: enabled
+- name: freq
+  id: variable
+  parameters:
+    comment: ''
+    value: 2.4e9
+  states:
+    coordinate:
+    - 8
+    - 400
+    rotation: 0
+    state: enabled
+- name: tx_taps
+  id: variable_rrc_filter_taps
+  parameters:
+    gain: sps
+    samp_rate: samp_rate
+    sym_rate: symbol_rate
+    alpha: excess_bw
+    ntaps: 11*sps*1+1
+    comment: Transmit pulse shape (RRC, 4 sps, span 11 symbols)
+  states:
+    coordinate:
+    - 200
+    - 80
+    rotation: 0
+    state: enabled
+- name: tx_frames
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"16-QAM + Zadoff-Chu framed symbol source, 1 sample per symbol, unit average power.\n\
+      \nFrame (967 symbols) = [ CP 8 | ZC sync word 63 | 14 x ( 63 x 16-QAM data + 1 pilot ) ]\n  CP \
+      \   = last 8 symbols of the ZC word (cyclic prefix)\n  ZC    = Zadoff-Chu, root 1, length 63, constant\
+      \ amplitude 1 (= average payload power)\n  pilot = known +-1 symbol at the end of every 64-symbol\
+      \ block\nfixed_payload = True repeats the same payload (from seed) in every frame, so the receiver\
+      \ can count symbol errors.\n\"\"\"\nimport numpy as np\nfrom gnuradio import gr\n\nN_ZC, ROOT, N_CP,\
+      \ N_BLK, N_DATA = 63, 1, 8, 14, 63\nN_PAY = N_BLK * N_DATA                       # 882 data symbols\
+      \ per frame\nFRAME = N_CP + N_ZC + N_BLK * (N_DATA + 1)   # 967\nGRAY = np.array([-3, -1, 3, 1])\
+      \ / np.sqrt(10.0)     # 2-bit index -> level (00,01,10,11)\nPILOTS = np.array([1, 1, -1, 1, -1,\
+      \ -1, 1, 1, 1, -1, -1, 1, -1, 1], dtype=float)\n\n\ndef zc_word():\n    n = np.arange(N_ZC)\n  \
+      \  return np.exp(-1j * np.pi * ROOT * n * (n + 1) / N_ZC)\n\n\ndef qam_from_index(k):\n    k = np.asarray(k)\n\
+      \    return GRAY[k >> 2] + 1j * GRAY[k & 3]\n\n\nclass blk(gr.sync_block):\n    def __init__(self,\
+      \ seed=1, fixed_payload=False):\n        gr.sync_block.__init__(self, name='16-QAM + ZC frame source',\
+      \ in_sig=None, out_sig=[np.complex64])\n        self.rng = np.random.RandomState(int(seed))\n  \
+      \      self.fixed = bool(fixed_payload)\n        self.zc = zc_word()\n        self.fixed_idx = np.random.RandomState(int(seed)).randint(0,\
+      \ 16, N_PAY)\n        self.pending = np.zeros(0, dtype=np.complex64)\n\n    def make_frame(self):\n\
+      \        idx = self.fixed_idx if self.fixed else self.rng.randint(0, 16, N_PAY)\n        data =\
+      \ qam_from_index(idx).reshape(N_BLK, N_DATA)\n        blocks = np.concatenate([data, PILOTS[:, None].astype(complex)],\
+      \ axis=1).reshape(-1)\n        return np.concatenate([self.zc[-N_CP:], self.zc, blocks]).astype(np.complex64)\n\
+      \n    def work(self, input_items, output_items):\n        out = output_items[0]\n        n = len(out)\n\
+      \        while len(self.pending) < n:\n            self.pending = np.concatenate([self.pending,\
+      \ self.make_frame()])\n        out[:] = self.pending[:n]\n        self.pending = self.pending[n:]\n\
+      \        return n\n"
+    seed: '1'
+    fixed_payload: 'True'
+    comment: '[CP 8 | ZC 63 | 14 x (63 x 16-QAM + 1 pilot)] = 967 symbols per frame, 1 sample/symbol'
+  states:
+    coordinate:
+    - 400
+    - 200
+    rotation: 0
+    state: enabled
+    _io_cache: ('16-QAM + ZC frame source', 'blk', [('seed', '1'), ('fixed_payload', 'False')], [], [('0',
+      'complex', 1)], '', [])
+- name: tx_rrc
+  id: interp_fir_filter_xxx
+  parameters:
+    type: ccf
+    interp: sps
+    taps: tx_taps
+    samp_delay: '0'
+    comment: pulse shaping, 1 sps -> 4 sps
+  states:
+    coordinate:
+    - 730
+    - 200
+    rotation: 0
+    state: enabled
+- name: tx_amp
+  id: blocks_multiply_const_vxx
+  parameters:
+    type: complex
+    const: '0.3'
+    vlen: '1'
+    comment: back-off / TX level
+  states:
+    coordinate:
+    - 1000
+    - 200
+    rotation: 0
+    state: enabled
+- name: usrp_tx
+  id: uhd_usrp_sink
+  parameters:
+    type: fc32
+    otw: ''
+    stream_args: ''
+    stream_chans: '[]'
+    dev_addr: '""'
+    dev_args: '""'
+    sync: sync
+    start_time: '-1.0'
+    clock_rate: '0.0'
+    num_mboards: '1'
+    clock_source0: ''
+    time_source0: ''
+    sd_spec0: ''
+    nchan: '1'
+    samp_rate: samp_rate
+    center_freq0: freq
+    gain0: '60'
+    gain_type0: default
+    ant0: TX/RX
+    bw0: '0'
+    norm_gain0: 'False'
+    lo_source0: internal
+    lo_export0: 'False'
+    len_tag_name: ''
+    comment: B210 TX/RX port. Use an attenuator/cable for a wired test!
+  states:
+    coordinate:
+    - 1250
+    - 190
+    rotation: 0
+    state: enabled
+- name: n1
+  id: note
+  parameters:
+    alias: ''
+    comment: ''
+    note: 'Frame (967 symbols, 3.87 ms at 250 ksym/s): CP 8 | ZC 63 | 14 x (63 16-QAM + 1 pilot). Sync
+      word and CP at average payload power.'
+  states:
+    coordinate:
+    - 400
+    - 330
+    rotation: 0
+    state: enabled
+connections:
+- - tx_frames
+  - '0'
+  - tx_rrc
+  - '0'
+- - tx_rrc
+  - '0'
+  - tx_amp
+  - '0'
+- - tx_amp
+  - '0'
+  - usrp_tx
+  - '0'
+metadata:
+  file_format: 1
+  grc_version: 3.10.9.2

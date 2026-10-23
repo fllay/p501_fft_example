@@ -1,0 +1,97 @@
+# 16-QAM with a Zadoff-Chu frame sync in the FPGA: plan (no RTL yet)
+
+Input: `handoff_16qam_zc/` (HANDOFF.md, `gnuradio/rx_block.py` = `FrameRx`, the floating-point golden model, `tx_block.py` = the frame). Frame: `[CP 8 | ZC 63 root 1 | 14 x (63 16-QAM + 1 pilot)]` = 967 symbols, 960 ksym/s.
+Receiver chain: AGC -> band-edge FLL -> RRC + polyphase timing -> ZC frame sync -> pilot / decision-directed PLL -> 16-QAM slicer.
+The numbers marked *(study)* come from `study_zc_metrics.py` in this folder (numpy only).
+
+## 1. What the existing RTL gives us (and two corrections to the handoff)
+
+| | |
+|---|---|
+| Clock budget | `aclk` 100 MHz, 960 ksym/s: **104.2 clocks per symbol**. The engine `qpsk_rx.v` needs about 60 to 65 of them (47 MAC clocks for the 44-tap matched + derivative filter, S0..S9). The m-sequence synchroniser `qpsk_sync.v` is its **own state machine** (about 55 clocks, `late` = 0 in all tests): it does not compete with the engine for cycles. |
+| Multipliers | **Not shared.** The 4 multipliers of the MAC (`xi*cm, xq*cm, xi*cd, xq*cd`) are busy 44 of the 60 clocks; every other product (AGC 4, timing error 2, AGC speed 1, gains 4, derotation 4, ...) is a separate DSP. That is how the engine has 53 DSP, the m-sequence sync 5 more. |
+| Whole system (placed, `p501_qpsk_trx_sync`) | 16,290 LUT (13.9 % of 117,120), 22,447 FF (9.6 %), 6.5 BRAM (4.5 % of 144), **58 DSP (4.7 % of 1,248)**, timing WNS +0.417 ns at 100 MHz. |
+
+Consequences:
+1. **Resources are not the constraint, clock cycles per symbol and timing closure are.** Sharing the engine's 4 MAC multipliers would save DSPs we have 1,190 of and would put the correlator into the engine's schedule (which already has only about 40 free clocks). I propose a **separate synchroniser block with its own 4-DSP complex MAC**, like `qpsk_sync.v` is separate today.
+2. **The ZC reference is a 63-entry ROM of 63rd roots of unity** (`n(n+1)` is always even, so `exp(-j pi n(n+1)/63) = exp(-j 2 pi (n(n+1)/2)/63)`); the handoff says 126th.
+3. **`fixed_payload` cannot be reproduced in the FPGA** (`np.random.RandomState` = Mersenne Twister). For symbol/bit error counting in hardware the payload must come from an LFSR: PRBS-15, 4 bits per symbol, restarted at the first payload symbol of every frame (as in chapter 4e), or a payload RAM loaded by software. I recommend the PRBS-15 and a `payload='prbs15'` option in `tx_block.py` / `FrameRx`.
+4. **CFO.** The sync word is unambiguous only for |CFO| < Rs/(2N) = 7.6 kHz, and the correlation magnitude is already down *(study)* to 0.89 (-1.0 dB) at 4 kHz, 0.83 (-1.6 dB) at 5 kHz, 0.64 (-3.9 dB) at 7.6 kHz and 0.46 (-6.8 dB) at 9.7 kHz. **The natural offset between our P501 and B210 is +9.5 to +9.7 kHz**, so without a front-end CFO correction the word is not found. The handoff's tests (250 ksym/s, +-1.5 kHz) scale to +-5.8 kHz at 960 ksym/s; the model (section 6) locks correctly up to 6 kHz at every SNR from 8 to 20 dB and up to 7.3 kHz at 20 dB, and fails at 7.6 kHz. We need the FLL in front (`qpsk_fll.v` exists, locks in 0.2 to 1 ms, scatter +-1 to 2 kHz), or a CFO hint in W0 for lab tests. The 4th-power estimator of chapter 4d is useless for 16-QAM.
+
+## 2. Design of the three additions
+
+### (1) AGC: power detector (extends the symbol-rate AGC of `qpsk_rx.v`)
+* Keep the structure: gain `g` (Q10) applied after the matched filter, before the timing error and before the correlator, so everything downstream sees unit RMS.
+* Detector: `P = mi2^2 + mq2^2` (2 DSP, 33-bit), error `Pref - P`, `g += (MU * err) >> k`. A register bit selects the old `max + min/2` magnitude detector, for A/B comparison.
+* Scale: RMS R = 4096 * sqrt(10) = 12,953 counts, so the inner 16-QAM level is L = 4096 and the thresholds are 0 and +-2L = +-8192; the outer corner is 1.34 R = 17,380 of 32,767 (1.9 x headroom).
+* Honest note: a power detector is not *required*. The magnitude detector reads 1.0275 on random 16-QAM (calibrate `REF`) and 1.087 on the ZC word (0.5 dB higher, harmless with a slow loop). The power detector's gain noise is 17 % lower (amplitude-equivalent CV 0.283 against 0.339) and it is exact for any constellation; it costs 2 DSP and about 80 LUT. The loop has to be slower than the QPSK one because the symbol power fluctuates (CV 0.57 of the power); the value of `MU` comes from the model.
+* The ZC word gives the exact gain, `|h| = |C|/63`. Use it once, at the first lock, to kick `g` to the right value (one serial division of 20 clocks), so the AGC does not have to converge first. Afterwards the slow AGC runs on.
+
+### (2) ZC correlator, energy normalisation, frame counter: new `qam_zc_sync.v`
+* Input: `mi2, mq2` at state S2 (after AGC, before derotation), the same tap as `qpsk_sync.v`. Ring RAM 64 x 32 bit (LUTRAM), reference ROM 63 x (cos, sin) Q14.
+* **One complex MAC (4 DSP, 48-bit accumulators), 1 tap per clock: 63 clocks + about 8 pipeline = about 71 of 104 clocks.** The whole correlation per symbol, SEARCH included, fits with 32 % margin; no 2-taps-per-clock needed.
+* Normalisation without a square root: `rho_mag = |C| / sum|x|` (`|.|` = max + min/2), a running sum accumulated in the same loop (the existing trick), test `256 |C| >= THR * E`. *(study)* `rho_mag` and FrameRx's `rho_pow` differ by < 1 % at the peak (0.935 against 0.933 at 20 dB / 3 kHz) and the largest false value in a frame is 0.46 against 0.43: use THR about 0.6 for SEARCH (peak 0.75 at 6 kHz, false max 0.51) and 0.45 for LOCKED, as in the handoff. A false alarm needs `rho` > 0.6: about 1e-10 per symbol for random data.
+* Multiplier-free alternative, held in reserve: an 8-phase reference (shift-add only) loses 0.2 dB at the peak (0.971 against 0.995, same sidelobes), 4-phase loses 0.9 dB *(study)*. Not needed at 71 of 104 clocks.
+* Tracker as `FrameRx`: SEARCH (peak >= THR_S) -> VERIFY (second peak 967 +-3 later, THR_L) -> LOCKED; in LOCKED the correlation only runs in a +-4 window around the expected peak (9 of 967 symbols), more than 3 misses in a row -> SEARCH. A 10-bit frame counter (mod 967) re-aligns on every hit and gives each symbol its position: CP (0..7), word (8..70), data, pilot (every 64th after the word), as flags for the PLL and the checker.
+* **Carrier from the word, once per frame at the peak (about 150 clocks, the correlator is idle then):** three partial sums are accumulated (taps 0..30 = C1, tap 31, taps 32..62 = C2), so `C = C1 + c31 + C2` costs nothing extra.
+  * frequency: `w = arg(C2 conj C1) / 32` (a complex multiply on the idle MAC, the existing 18-iteration CORDIC from `qpsk_sync.v`, then a 5-bit shift). Unambiguous to +-15 kHz. *(study)* unbiased, std 86 Hz at 20 dB, 152 Hz at 15 dB, 220 Hz at 12 dB (the m-sequence estimate was 1 to 3.5 kHz low and 1 kHz noisy: ZC has constant amplitude, so no magnitude weighting).
+  * phase at the first payload symbol: `theta0 = arg(C1 e^{+j 16 w} + C2 e^{-j 16 w}) + 32 w` (two small rotations by the engine's sine table, a second CORDIC pass; all phases in turns x 2^32, the wrap-around is free). FrameRx's formula derotates 63 products by the tone; this is the same number from the two half sums.
+  * gain: `|C1 e^{..} + C2 e^{..}| / 62`, for the one-time AGC kick above.
+* **Delay line:** the answer arrives about 1.5 to 3 symbols after the peak, but the engine derotates the first payload symbol right after it. Put the pair `(mi2, mq2)` through a 16-deep LUTRAM delay (D = 8 symbols, about 40 LUT) between S2 and the derotation. Then `theta0` and `w` are loaded (theta and omega registers; omega already has a load path from the m-sequence project, theta needs one) exactly when the first payload symbol is derotated. The timing loop and the AGC stay in front of the delay and are not affected.
+
+### (3) 16-QAM phase detector with pilot weighting in the Costas loop
+* Slicer: two comparators per axis against 0 and +-2L give the level in {-3, -1, 1, 3} (units of L); Gray bits `{00:-3, 01:-1, 10:+3, 11:+1}`.
+* Error `e = Im(z conj(s)) = zq*si - zi*sq` with `s` in {+-1, +-3} L: **shift-add only (3x = 2x + x), no multiplier**. Pilot (`s = +-1`, `sq = 0`): `e = w * zq * p` with `w = 3` (shift-add), taken from the frame counter flags. The registers CA/CB scale for the different error size (the model computes them).
+* Known symbols through the PLL: CP and word (71) and pilots (14) are 8.8 % of the frame. FrameRx freezes the PLL over CP + word; the hardware can instead keep tracking with the **known** ZC symbols as data-aided references (`e = Im(z conj(ZC_n))`, 2 more DSP, the ROM again). A register selects freeze or data-aided, so the model can decide on numbers.
+* Ring weighting (error divided by the radius, or the corner points only) is a known improvement for 16-QAM decision-directed loops: shift-add weights {4, 1, 1/2}; to be decided with the cycle-slip simulation.
+* Phase ambiguity: resolved absolutely by `theta0` at every lock (the word is coherent), so the 4-fold ambiguity of a QAM loop never reaches the data; slips between frames are bounded to one frame by the word / pilots.
+* Checker: 4 bits per symbol against the PRBS-15 restarted at the first payload symbol (the frame counter gives the position), bit errors (popcount) and symbol errors, gated by the frame counter, plus the soft-symbol capture RAM for the constellation.
+
+## 3. Resource and cycle estimate (+-30 %, scaled from the m-sequence synchroniser: 1,260 LUT / 5 DSP for a similar structure)
+
+| block | LUT | FF | DSP | BRAM | clocks / symbol |
+|---|---|---|---|---|---|
+| power AGC detector + mode bit | 80 | 80 | +2 | 0 | within the engine's 60 |
+| ZC correlator, ring, ROM, energy, metric | 700 | 900 | 5 | 0 | 71 (own FSM) |
+| tracker, frame counter, position flags, statistics | 500 | 400 | 0 | 0 | parallel |
+| carrier from the word (complex multiply on the idle MAC, CORDIC, sine ROM, control) | 700 | 500 | 0 to 4 | 0 to 1 | once per frame |
+| delay line + theta / omega load | 100 | 100 | 0 | 0 | +2 in the engine |
+| slicer, PD, data-aided reference, 4-bit PRBS checker, counters | 600 | 400 | 2 | 0 | +2 in the engine |
+| about 30 new AXI registers | 400 | 900 | 0 | 0 | |
+| **new total** | **about 3,100** | **about 3,300** | **about 11 to 15** | **0 to 1** | |
+
+Replacing `qpsk_sync.v` by `qam_zc_sync.v` (-1,260 LUT, -5 DSP): **overlay about 18,000 LUT (about 15 %), about 65 to 70 DSP (about 5.5 %), about 7 BRAM.** Resources are a non-issue; the risk is the 100 MHz timing closure (WNS is +0.417 ns today): the CORDIC and the 48-bit accumulators get pipeline registers from the start.
+Engine schedule: about 64 of 104 clocks (+4), synchroniser 71 (parallel), no conflict. A 16-QAM transmitter (not part of this task) needs a real FIR (45 taps, the QPSK one is adder-only): 2 serial MAC DSPs at 26 clocks per sample are enough.
+
+## 4. Verification plan: the model first, bit-exact
+
+1. **Make `FrameRx` importable without GNU Radio** (the file imports `gnuradio` at the top) and put the handoff files under `tutorial/qam16/ref/`.
+2. **`FrameRxHW` (float, streaming)**: the algorithm the hardware will use, with the same input/output as `FrameRx`: `rho_mag`, +-4 window, half-word frequency, centre phase from C1/C2, shift-add slicer / PD, data-aided word option, PRBS-15 payload. Regression against `FrameRx` on the handoff's test matrix (SER at 40 dB / 30 dB +-1.5 kHz / 25 dB / 18 dB / 15 dB / 12 dB, scaled to 960 ksym/s) must agree within 0.2 dB EVM / the same SER.
+3. **The items marked NOT validated in the handoff, measured here:** detection and false-alarm probability against SNR and CFO, lock-time distribution, cycle-slip rate of the PD variants (plain, ring-weighted, pilot weight 1 / 3 / 5, freeze or data-aided word), AGC with and without the word kick, and the whole chain with the real front end (`qpsk_rx_fixed.py` polyphase / timing / AGC extended: a new `qam16_rx_fixed.py`).
+4. **Integer model** `qam_zc_fixed.py` + `qam16_rx_fixed.py`, bit-exact to the RTL, with `regs_from_bw`-style register computation.
+5. **RTL** `qam_zc_sync.v`, changes in a copy of `qpsk_rx_sync.v` (`qam16_rx.v`), xsim testbench against the integer model on synthetic frames (RRC at 4 sps, CFO, timing offset, noise, as `gen_sim_samples.py`).
+6. **Overlay** (`QAM16RX=1` in `create_project.tcl`), driver, notebook, GRC (`qam16_zc_tx.grc` for the B210 TX exists), digital loopback, then the air. Expect a marginal link: the best QPSK constellation we measured (spread 8.3 deg) is about 17 dB, where 16-QAM has SER about 2e-3; 16-QAM needs about 17 dB Es/N0 for 1e-3 BER, so test the loopback first and the air at the shortest range.
+
+## 5. Decisions (answered 2026-10-23)
+1. Front-end CFO: the existing FLL in front of the polyphase filter. 2. Payload: PRBS-15 restarted in every frame. 3. Known word symbols in the PLL: both, `word_mode` freeze / aided and `anchor` first / every as registers.
+4. Steps 1 and 2 (models and measurements, no RTL): done, results below.
+
+## 6. Results of steps 1 and 2 (float model, 1 sample per symbol, 960 ksym/s)
+
+Files: `frame16.py` (frame, PRBS-15 payload, channel with CFO / gain / Wiener phase noise / frequency ramp), `framerx_ref.py` (loads the handoff's `FrameRx` without GNU Radio), `framerx_hw.py` (**FrameRxHW**, the model of what the FPGA will do),
+`test_regression.py` -> `results_regression.txt`, `study_qam16_rx.py` -> `results_qam16_study.txt`, `study_zc_metrics.py`, `ref/` (the handoff files).
+
+* **Regression against FrameRx** on the handoff's own test matrix (60 frames, 8 conditions): the hardware model has the same or fewer symbol errors everywhere: 0 at 40 / 30 / 25 dB, 0 to 1.3e-4 at 20 dB / 1.9 kHz (FrameRx 9.8e-2, near its CFO limit), 6e-4 at 18 dB (1.3e-3), 2.0e-2 at 15 dB (2.4e-2), 0.12 at 12 dB (0.12); both fail beyond Rs/(2N) (2.4 kHz at 250 ksym/s). The frequency from the two half sums replaces the FFT without loss.
+* **Detection and lock** (60 trials per cell, 5 frames, random lead-in, `norm='mag'`, approximate magnitudes, thresholds 0.6 / 0.45): the lock is on the true word position and the frequency error is small for **every SNR from 8 to 20 dB up to 6 kHz CFO (60 of 60)**; at 7.6 kHz only 28 to 34 of 60 are right (the peak moves by one symbol: the time / frequency ambiguity, estimate off by Rs/63 = 15.2 kHz), at 9.7 kHz 0 of 60.
+  Lock time 1.48 frames on average (about 1.4 ms: the word, then the verify one frame later). Frequency error (std, unbiased): 76 Hz at 20 dB, 134 Hz at 15 dB, 190 Hz at 12 dB, 239 Hz at 10 dB, 301 Hz at 8 dB.
+* **False alarms** (2 million symbols each): **no peak at all above 0.5** for noise, random 16-QAM and 16-QAM at 15 dB, with either normalisation; at 0.45 the magnitude normalisation gives 28 (noise) and 5 to 7 (data) peaks per million symbols, the power normalisation 0.5 to 1. SEARCH threshold 0.55 to 0.6, LOCKED threshold 0.45 (only used in the +-4 window, 9 positions per frame). 0 locks in all cases.
+* **Phase detector and word modes** (CFO 3 kHz, 265,000 symbols per point, no phase noise): all variants are within 10 % of the ideal coherent 16-QAM SER from 14 to 22 dB (14 dB: 4.1e-2 against 3.7e-2, 18 dB: 6.3e-4 against 5.7e-4, 20 dB: 1.1e-5 against 1.2e-5) and have **no cycle slip**. `freeze/every`, `aided/first`, `aided/every`, pilot weight 1 / 3 / 5 and the ring-weighted PD are indistinguishable; the corner-only PD is 2 x worse at 20 dB.
+* **Phase noise** (Wiener, SNR 22 dB; 0.0256 rad per symbol = 100 Hz linewidth): up to 0.01 rad / symbol nothing happens. At 0.02 and 0.03 the loop bandwidth decides: **bw 0.04 gives SER 3.4e-5 / 3.7e-3 with 0 / 1 bad frame, bw 0.02 gives 3.5e-4 / 4.0e-2 (0 / 19 bad frames), bw 0.01 fails (3.3e-2, 2.7e-1)**; pilot weight 5 or the ring PD halve the slips of bw 0.02 (4 bad frames at 0.03). With the loop at 0.04 the 14 dB SER is 4.8e-2 against 4.1e-2 at 0.02: the bandwidth is a trade between phase noise and noise, so CA / CB stay **registers** (they are) and the right value comes from measuring the real LO noise on the board.
+  `aided` against `freeze` is a small gain under phase noise (4.0e-2 against 4.9e-2 at 0.03), `anchor=every` is the same as `first`: implement both as register bits as decided (the phase from the word is needed at the first lock anyway).
+* **Frequency drift** of 1 and 10 kHz/s is no problem for the PLL (SER 0 and 3.8e-6): the limit is only the ZC ambiguity.
+* **AGC accuracy needed:** with the slicer thresholds fixed, a gain error of -0.9 dB to +1.6 dB costs nothing at 22 dB SNR (SER <= 6e-6), **-1.9 dB gives SER 1.4e-2**. The AGC must hold the level within about +-1 dB; the gain from the word (|h|) at the first lock and a calibrated `REF` are enough, and a power or magnitude detector are equivalent for that.
+* Not modelled yet (the next step): the real front end. The timing loop (derivative matched filter, non-data-aided) and the AGC in a loop with 16-QAM, quantisation of every stage, and the FLL residual. These need the 4 samples per symbol signal and `qpsk_rx_fixed.py` extended.
+
+## 7. Next
+3. `qam16_rx_fixed.py` / `qam_zc_fixed.py`: the integer model of the synchroniser (bit-exact to the future RTL, checked against FrameRxHW) and the front end with a 16-QAM signal at 4 sps (RRC shaping, ADC-like counts, CFO, timing offset), to put the timing loop, the AGC and the FLL residual under test.
+4. RTL only after that.

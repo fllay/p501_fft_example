@@ -1,0 +1,74 @@
+== detection: 60 trials of 5 frames, lead-in random 0..966 symbols, thresholds 0.6 / 0.45
+   SNR   CFO Hz | locked   good lock lock (frames)  frequency error mean / std payload SER (good locks)
+   8 dB        0 |  60/60    60/60    1.48               -25 /   301 Hz         4.4e-01
+   8 dB     2000 |  60/60    60/60    1.48                +6 /   317 Hz         4.5e-01
+   8 dB     4000 |  60/60    60/60    1.48                +2 /   349 Hz         4.4e-01
+   8 dB     6000 |  60/60    60/60    1.48               -34 /   367 Hz         4.4e-01
+   8 dB     7600 |  60/60    34/60    1.52             -6630 /  7260 Hz         6.4e-01
+   8 dB     9700 |  60/60     0/60    1.48            -15205 /   361 Hz         -
+  10 dB        0 |  60/60    60/60    1.48               -20 /   239 Hz         2.7e-01
+  10 dB     2000 |  60/60    60/60    1.48                +4 /   252 Hz         2.7e-01
+  10 dB     4000 |  60/60    60/60    1.48                +2 /   277 Hz         2.6e-01
+  10 dB     6000 |  60/60    60/60    1.48               -26 /   292 Hz         2.7e-01
+  10 dB     7600 |  60/60    33/60    1.52             -6858 /  7330 Hz         5.3e-01
+  10 dB     9700 |  60/60     0/60    1.48            -15191 /   287 Hz         -
+  12 dB        0 |  60/60    60/60    1.48               -16 /   190 Hz         1.2e-01
+  12 dB     2000 |  60/60    60/60    1.48                +3 /   200 Hz         1.2e-01
+  12 dB     4000 |  60/60    60/60    1.48                +2 /   220 Hz         1.2e-01
+  12 dB     6000 |  60/60    60/60    1.48               -21 /   232 Hz         1.2e-01
+  12 dB     7600 |  60/60    33/60    1.52             -6846 /  7368 Hz         4.5e-01
+  12 dB     9700 |  60/60     0/60    1.48            -15179 /   228 Hz         -
+  15 dB        0 |  60/60    60/60    1.48               -11 /   134 Hz         1.9e-02
+  15 dB     2000 |  60/60    60/60    1.48                +2 /   142 Hz         1.9e-02
+  15 dB     4000 |  60/60    60/60    1.48                +1 /   156 Hz         2.0e-02
+  15 dB     6000 |  60/60    60/60    1.48               -14 /   165 Hz         2.0e-02
+  15 dB     7600 |  60/60    30/60    1.48             -7577 /  7451 Hz         4.2e-01
+  15 dB     9700 |  60/60     0/60    1.48            -15166 /   161 Hz         -
+  20 dB        0 |  60/60    60/60    1.48                -6 /    76 Hz         7.6e-06
+  20 dB     2000 |  60/60    60/60    1.48                +1 /    80 Hz         1.5e-05
+  20 dB     4000 |  60/60    60/60    1.48                +1 /    87 Hz         3.8e-06
+  20 dB     6000 |  60/60    60/60    1.48                -8 /    93 Hz         1.1e-05
+  20 dB     7600 |  60/60    28/60    1.48             -8074 /  7479 Hz         4.5e-01
+  20 dB     9700 |  60/60     0/60    1.48            -15153 /    91 Hz         -
+
+== false peaks per million symbols (local maxima of rho above the threshold) and locks (two peaks one frame apart), 2000000 symbols
+norm mag noise               :  thr 0.45:   28.0 peaks  thr 0.50:    0.0 peaks  thr 0.55:    0.0 peaks  thr 0.60:    0.0 peaks  thr 0.65:    0.0 peaks   | locks at 0.6/0.45: 0
+norm mag random 16-QAM       :  thr 0.45:    7.0 peaks  thr 0.50:    0.0 peaks  thr 0.55:    0.0 peaks  thr 0.60:    0.0 peaks  thr 0.65:    0.0 peaks   | locks at 0.6/0.45: 0
+norm mag 16-QAM, 15 dB noise :  thr 0.45:    5.5 peaks  thr 0.50:    0.0 peaks  thr 0.55:    0.0 peaks  thr 0.60:    0.0 peaks  thr 0.65:    0.0 peaks   | locks at 0.6/0.45: 0
+norm pow noise               :  thr 0.45:    1.0 peaks  thr 0.50:    0.0 peaks  thr 0.55:    0.0 peaks  thr 0.60:    0.0 peaks  thr 0.65:    0.0 peaks   | locks at 0.6/0.45: 0
+norm pow random 16-QAM       :  thr 0.45:    0.5 peaks  thr 0.50:    0.0 peaks  thr 0.55:    0.0 peaks  thr 0.60:    0.0 peaks  thr 0.65:    0.0 peaks   | locks at 0.6/0.45: 0
+norm pow 16-QAM, 15 dB noise :  thr 0.45:    0.5 peaks  thr 0.50:    0.0 peaks  thr 0.55:    0.0 peaks  thr 0.60:    0.0 peaks  thr 0.65:    0.0 peaks   | locks at 0.6/0.45: 0
+
+== SER against SNR, CFO 3 kHz, 300 frames (264600 symbols) per point; ideal coherent 16-QAM SER in the last column; bad = frames with > 20 % symbol errors
+variant (SER / bad frames)              14 dB          16 dB          18 dB          20 dB          22 dB          25 dB
+plain pw3 freeze/every          4.1e-02 /  0    8.1e-03 /  0    6.3e-04 /  0    1.1e-05 /  0    0.0e+00 /  0    0.0e+00 /  0  
+plain pw3 aided/first           4.1e-02 /  0    8.0e-03 /  0    6.4e-04 /  0    1.1e-05 /  0    0.0e+00 /  0    0.0e+00 /  0  
+plain pw3 aided/every           4.1e-02 /  0    8.0e-03 /  0    6.3e-04 /  0    1.1e-05 /  0    0.0e+00 /  0    0.0e+00 /  0  
+plain pw1 aided/first           4.0e-02 /  0    8.0e-03 /  0    6.3e-04 /  0    1.1e-05 /  0    0.0e+00 /  0    0.0e+00 /  0  
+plain pw5 aided/first           4.2e-02 /  0    8.2e-03 /  0    6.7e-04 /  0    7.6e-06 /  0    0.0e+00 /  0    0.0e+00 /  0  
+ring  pw3 aided/first           4.3e-02 /  0    8.3e-03 /  0    6.5e-04 /  0    1.1e-05 /  0    0.0e+00 /  0    0.0e+00 /  0  
+corner pw3 aided/first          4.3e-02 /  0    8.7e-03 /  0    7.2e-04 /  0    2.3e-05 /  0    0.0e+00 /  0    0.0e+00 /  0  
+plain pw3 aided/first bw.01     3.9e-02 /  0    7.5e-03 /  0    6.0e-04 /  0    1.1e-05 /  0    0.0e+00 /  0    0.0e+00 /  0  
+plain pw3 aided/first bw.04     4.8e-02 /  2    9.1e-03 /  0    7.3e-04 /  0    2.3e-05 /  0    0.0e+00 /  0    0.0e+00 /  0  
+ideal (no sync loss)                  3.7e-02        7.2e-03        5.7e-04        1.2e-05        2.7e-08        2.7e-15
+
+== gain error of the AGC (thresholds fixed at the nominal levels), SNR 22 dB, CFO 3 kHz, plain PD, aided/first
+  gain x0.80 (-1.9 dB): SER 1.4e-02, bad frames 0 of 200
+  gain x0.90 (-0.9 dB): SER 5.1e-05, bad frames 0 of 200
+  gain x0.95 (-0.4 dB): SER 5.7e-06, bad frames 0 of 200
+  gain x1.00 (+0.0 dB): SER 0.0e+00, bad frames 0 of 200
+  gain x1.05 (+0.4 dB): SER 0.0e+00, bad frames 0 of 200
+  gain x1.10 (+0.8 dB): SER 0.0e+00, bad frames 0 of 200
+  gain x1.20 (+1.6 dB): SER 5.7e-06, bad frames 0 of 200
+
+== phase noise (Wiener, rad per symbol; 0.0256 = 100 Hz linewidth at 960 ksym/s) and a frequency ramp (1 ppm/s of 915 MHz is 0.9 kHz/s; the 300 frames last 0.3 s), SNR 22 dB, CFO 3 kHz: SER / bad frames
+variant                                       pn 0         pn .005          pn .01          pn .02          pn .03    ramp 1 kHz/s   ramp 10 kHz/s
+freeze/every pw3 (FrameRx style)     0.0e+00 /  0    0.0e+00 /  0    3.8e-06 /  0    1.1e-03 /  1    4.9e-02 / 21    0.0e+00 /  0    0.0e+00 /  0 
+aided/first  pw3                     0.0e+00 /  0    0.0e+00 /  0    0.0e+00 /  0    3.5e-04 /  0    4.0e-02 / 19    0.0e+00 /  0    0.0e+00 /  0 
+aided/every  pw3                     0.0e+00 /  0    0.0e+00 /  0    0.0e+00 /  0    3.5e-04 /  0    4.8e-02 / 22    0.0e+00 /  0    0.0e+00 /  0 
+aided/first  pw5                     0.0e+00 /  0    0.0e+00 /  0    0.0e+00 /  0    3.1e-04 /  0    2.0e-02 /  4    0.0e+00 /  0    0.0e+00 /  0 
+aided/first  ring                    0.0e+00 /  0    0.0e+00 /  0    0.0e+00 /  0    3.7e-04 /  0    1.8e-02 /  4    0.0e+00 /  0    0.0e+00 /  0 
+aided/first  bw 0.01                 0.0e+00 /  0    0.0e+00 /  0    3.8e-06 /  0    3.3e-02 / 12    2.7e-01 /130    0.0e+00 /  0    0.0e+00 /  0 
+aided/first  bw 0.04                 0.0e+00 /  0    0.0e+00 /  0    0.0e+00 /  0    3.4e-05 /  0    3.7e-03 /  1    0.0e+00 /  0    3.8e-06 /  0 
+aided/every  bw 0.04                 0.0e+00 /  0    0.0e+00 /  0    0.0e+00 /  0    3.4e-05 /  0    3.7e-03 /  1    0.0e+00 /  0    3.8e-06 /  0 
+
