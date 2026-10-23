@@ -139,6 +139,29 @@ Files: `rtl/qam_zc_sync.v` (the synchroniser and `qam_zc_carrier`), `rtl/qam_zc_
 
 ![16-QAM in the digital loopback](../img/qam16_loopback_constellation.png)
 
-## 10. Next
-6. Over the air: `p501_qam16_loopback.py <RX gain> air` (TX1 to RX1 antennas, TX attenuation 20 to 40 dB) and the B210 flowgraphs of the handoff (`ref/gnuradio/qam16_zc_tx.grc`: the B210 as the transmitter, with the natural +9.7 kHz offset: the FLL has to bring it under 4.5 kHz); a notebook for the live view;
-   the two open points of section 8 (a lock one symbol off near 6 kHz at low SNR; 3 to 4 bad frames after a gap); the acquisition mode with a frequency-check; the three-way comparison of the receivers.
+## 10. Step 6: over the air, B210 -> P501 (the natural +9.6 kHz offset, no hint)
+
+`qam16_frame_tx.py` (the B210 transmits the 16-QAM frames made in Python: the same RRC filter and frame as the models, one frame period repeated), `p501_qam16_levels.py` (board: a cold start per level, `rx.acquire()`, counts) and `run_qam16_b210.py` (host); results in `results_board_b210.txt`.
+B210 TX gain 80, 82, 84 and 86 dB (as requested; the transmitter's own limit in the older QPSK scripts was 80 dB), antennas a few centimetres apart, P501 RX gain index 70, 3 s counted per level (about 2.63 million symbols, 2,980 frames), the P501 does not transmit:
+
+| B210 digital RMS | TX gain | frames found (2,978 sent) | symbol errors | SER | EVM |
+|---|---|---|---|---|---|
+| 0.18 | 80 dB | 2,982 | 1.60 M of 2.63 M | 0.61 | -10.6 dB |
+| 0.18 | 82 dB | 2,981 | 1.02 M | 0.39 | -12.3 dB |
+| 0.18 | 84 dB | 2,981 | 183,466 | 7.0e-2 | -15.3 dB |
+| 0.18 | 86 dB | 2,982 | 7,832 | 3.0e-3 | -16.1 dB |
+| **0.35** | **80 dB** | 2,982 | **7 of 2.63 M** | **2.7e-6** | -20.1 dB |
+| **0.35** | **82 dB** | 2,982 | **0** | **0** | -21.9 dB |
+| **0.35** | **84 dB** | 2,982 | **0** | **0** | -18.1 dB |
+| **0.35** | **86 dB** | 2,980 | **0 of 2.63 M** | **0** | -24.0 dB |
+
+![16-QAM over the air](../img/qam16_b210_constellation.png)
+
+* Every level, both amplitudes: the receiver starts from cold and **locks in 23 ms** (FLL acquisition 20 ms + the first two frames), **finds every frame** (one lock, no miss, no lost lock, no late event, no engine overrun) and measures the natural offset of the two radios as **+9.5 to +9.9 kHz**
+  (the PLL's frequency minus the FLL's: the FLL takes -5.9 to -8.1 kHz, the PLL the remaining +1.6 to +4.4 kHz: the residual after the FLL is inside the 6.5 kHz margin of the Zadoff-Chu word but not far from it).
+* With the B210 digital level 0.18 (RMS) the link is **noise-limited**: EVM improves by about the TX gain (-10.6 dB at 80 dB, -16.1 dB at 86 dB) and 16-QAM needs about -17 dB for a SER of 1e-3; with 0.35 (peak 0.64, +5.8 dB) the signal-to-noise ratio is 20 to 24 dB and **there is no error in 2.6 million symbols at 82, 84 and 86 dB**
+  (7 errors at 80 dB). The EVM is not monotonic in the gain at the 0.35 level (-21.9 dB at 82, -18.1 dB at 84): the B210 level and the multipath at a few centimetres change from one cold start to the next; the figures are one measurement each.
+* The EVM floor of the FPGA chain itself is -30 dB (digital loopback), so the over-the-air EVM is the link's, not the receiver's.
+
+## 11. Next
+7. The P501's own transmitter over the air (`p501_qam16_loopback.py <RX gain> air`, TX attenuation 20 to 40 dB) and a TX attenuation / RX gain sweep to find the sensitivity limit (SER against level, the lower end of the FLL / ZC lock range); a notebook for the live view; the two open points of section 8 (a lock one symbol off near 6 kHz at low SNR, and 3 to 4 bad frames after a gap).

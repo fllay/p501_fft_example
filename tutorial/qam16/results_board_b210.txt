@@ -1,0 +1,15 @@
+B210 (TX/RX port, 915.0 MHz, python qam16_frame_tx.py: 16-QAM frames, PRBS-15 payload) -> P501 (RX1, RX gain index 70, overlay p501_qam16_trx, cold start per level), antennas a few cm apart, 3 s counted per level, 2026-10-23
+python3 run_qam16_b210.py --gains 80,82,84,86 --rx-gain 70 --seconds 3 --rms <digital RMS of the B210 samples>
+
+--rms 0.18 (peak 0.33)
+tx80  frames 2982 of 2978 expected  SER 6.09e-01  BER 2.39e-01  EVM -10.6 dB  AGC gain 12.2  offset +8669 Hz  (locks 1, misses 0, lost 0)
+tx82  frames 2981 of 2978           SER 3.88e-01  BER 1.43e-01  EVM -12.3 dB  AGC gain 10.2  offset +9763 Hz
+tx84  frames 2981 of 2978           SER 6.98e-02  BER 2.31e-02  EVM -15.3 dB  AGC gain  8.3  offset +9031 Hz
+tx86  frames 2982 of 2978           SER 2.98e-03  BER 8.21e-04  EVM -16.1 dB  AGC gain  6.5  offset +9523 Hz
+
+--rms 0.35 (peak 0.64)
+tx80  frames 2982 of 2978  SER 2.66e-06 (7 of 2629242)  BER 6.66e-07  EVM -20.1 dB  AGC gain 5.7  clock -16.9 ppm  lock w -5142 Hz  PLL +2108 Hz  FLL -7427 Hz  offset +9535 Hz
+tx82  frames 2982 of 2978  SER 0 (0 of 2630124)         BER 0           EVM -21.9 dB  AGC gain 5.3  clock  -5.0 ppm  lock w -1186 Hz  PLL +3022 Hz  FLL -6853 Hz  offset +9875 Hz
+tx84  frames 2982 of 2978  SER 0 (0 of 2630124)         BER 0           EVM -18.1 dB  AGC gain 3.8  clock +32.9 ppm  lock w +4477 Hz  PLL +3760 Hz  FLL -5850 Hz  offset +9609 Hz
+tx86  frames 2980 of 2978  SER 0 (0 of 2628360)         BER 0           EVM -24.0 dB  AGC gain 2.9  clock +12.2 ppm  lock w +2687 Hz  PLL +1602 Hz  FLL -8061 Hz  offset +9663 Hz
+every level: acquire locked in 0.023 s, 1 lock, all frames hit, 0 misses, 0 lost, no synchroniser / event / FLL lateness, 0 engine overruns
