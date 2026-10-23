@@ -1,0 +1,25 @@
+Why is B210 -> P501 so much worse than P501 -> P501 over the air? 2026-10-23, after the user's report of EVM -12.6 dB (SER 0.22) with a strong signal (AGC gain 3.5)
+
+Reference now (same minutes, notebook stopped): P501 FPGA TX -> P501 RX over the air, RX gain 70: atten 20 dB EVM -22.8 dB (SER 0 in 1.75 M symbols), atten 24 dB EVM -19.7 dB (SER 0).
+P501 FPGA TX -> B210 RX with qam16_b210_frame_rx.grc: -19.6 dB at 20 dB attenuation (SER 0 in 7 M symbols).
+
+1. B210 TX gain against digital amplitude at the same received level (run_qam16_sweep.py, P501 RX gain 70, FLL 0.0001): no dependence
+   86 dB / RMS 0.175: EVM -10.3 dB   83 / 0.25: -10.6   80 / 0.35: -10.6   77 / 0.5: -10.7        (AGC gain 7.6 to 8.2; no UHD underflow; SER 0.36 to 0.38)
+2. P501 RX gain index (B210 76 dB, RMS 0.5): index 76 AGC 4.3 EVM -10.3 dB; 70: AGC 8.3 -10.6; 60: AGC 26.1 -10.4   -> the EVM does not depend on the received level over a range of 15 dB
+   B210 70 dB / 0.5 / index 76: -10.1;  80 / 0.35 / 76: -10.1 (AGC 3.9);  84 / 0.25 / 76: -10.4 (AGC 3.4)
+3. FLL settings on a steady signal (p501_qam16_fllprobe.py, B210 80 dB / 0.35): default (acq 0.002 20 ms, track 0.0001) -10.8; track 0.0003 -10.5; 0.001 -10.2; never narrow -9.9; started at -9.6 kHz -10.6; held at -9.6 kHz -9.8;
+   FLL OFF with the offset removed by F0 = -9600 Hz (PLL left with -116 Hz): -10.1; PLL bandwidth 0.04: -9.8 / -8.8   -> not the FLL, not the residual carrier offset, not the PLL bandwidth
+4. The B210 carrier moved by -9.6 kHz so that the P501 sees the offset -164 Hz: EVM -12.3 dB (AGC 3.2), +9.6 kHz moved the wrong way (offset +19.7 kHz): -10.1 dB (the frame sync still locks)   -> the offset is not the cause
+5. The error vector of the captured soft symbols is circular: radial and tangential standard deviations equal (ratio 0.9 to 1.05) for the clean captures: additive noise-like, not phase noise, not amplitude fading
+6. The B210's own transmission recorded by its own RX2 (test_b210_record.py, antennas a few cm apart, RX gain adjusted for the same recorded level) and analysed with the integer model of the FPGA receiver (analyse_rec.py):
+   TX gain  recorded rms/peak   EVM      SER       out-of-band power below in-band   (spectrum of the recording)
+   30       0.137 / 0.264       -17.1    2.4e-6    40 dB
+   50       0.157 / 0.298       -17.2    0         50 dB
+   60       0.176 / 0.334       -17.2    0         51 dB
+   70       0.155 / 0.285       -17.1    0         44 dB
+   80       0.331 / 0.504       -15.6    1.1e-2    29 dB   <- spectral regrowth: the B210 TX output stage starts to compress
+   86       0.403 / 0.559       -12.3    0.60      21 dB   <- clearly compressed (the recorded level grows 1.7 dB for 6 dB more gain)
+   so the B210 transmission is clean (EVM -17 dB, the floor of this B210-to-B210 path) up to about 70 dB and degrades from 80 dB with digital RMS 0.35: use TX gain <= 76 dB.
+
+Summary: the P501 receiver and the P501 transmitter are fine (-22.8 dB). The B210 transmitter compresses above ~78 dB (RMS 0.35). With the B210 at 70 to 76 dB (clean) the P501 still gets EVM -10 to -12 dB at every received level, with every FLL / PLL setting and with the offset removed:
+a level-independent, noise-like impairment that exists only for the B210 -> P501 combination at the moment. One session (the first B210 test, TX 80 to 86 dB, RMS 0.35) had -18 to -24 dB. Not explained yet.

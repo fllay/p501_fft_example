@@ -29,15 +29,21 @@ def one_period(rms=0.18):
 class Qam16FrameTx(gr.top_block):
     def __init__(self, tx_gain=80.0, rms=0.18, freq=915.0e6, samp_rate=3.84e6, dev_args=DEV):
         gr.top_block.__init__(self, "qam16_frame_tx")
-        self.period = one_period(rms)
+        self.period = one_period(1.0)                                      # unit RMS; the amplitude is a separate multiplier so that it can be changed live
         src = blocks.vector_source_c(self.period.tolist(), True)
+        self.amp = blocks.multiply_const_cc(float(rms))
         sink = uhd.usrp_sink(dev_args, uhd.stream_args(cpu_format="fc32", args="", channels=[0]), "")
         sink.set_samp_rate(samp_rate); sink.set_center_freq(uhd.tune_request(freq), 0); sink.set_gain(tx_gain, 0); sink.set_antenna("TX/RX", 0)
         self.sink = sink
-        self.connect(src, sink)
+        self.connect(src, self.amp, sink)
 
     def set_freq(self, f):
         self.sink.set_center_freq(uhd.tune_request(f), 0)
+
+    def set_rms(self, rms):
+        """digital RMS of the samples, live (the peak is 1.8 x the RMS)"""
+        assert 0 <= rms <= 0.5
+        self.amp.set_k(float(rms))
 
     def set_gain(self, g):
         """B210 TX gain in dB, live (the hardware limit is 89.75)"""

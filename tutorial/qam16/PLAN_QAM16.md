@@ -214,5 +214,16 @@ Built by `make_notebook_qam16.py` (18 cells, like `P501_QPSK_SYNC_Live`), deploy
 * A GNU Radio gotcha found on the way: a Python block must be kept alive by a reference in the flowgraph's class (a local variable of `__init__` is garbage collected and the scheduler segfaults).
 * The FLL of the flowgraph is `fll_div` = 1600 (2 pi / 1600) by default: it pulls in the +9.6 kHz and leaves 0 to 1.7 kHz to the PLL; the FLL noise matters here too (the same finding as in the FPGA): a larger N is quieter.
 
-## 15. Next
-11. The two open points of section 8 (a lock one symbol off near 6 kHz at low SNR, 3 to 4 bad frames after a gap); the noise in the band during the weak-link session; a tutorial chapter that tells the story of the 16-QAM receiver.
+## 15. Step 11: why the B210 -> P501 link is poor at the moment (`results_b210_diagnosis.txt`)
+
+Reported by the user from the live notebook: B210 transmitting, EVM -12.6 dB and SER 0.22 although the AGC gain (3.5) says the signal is strong.
+* The P501 side is fine: P501 transmitter -> P501 receiver over the air, the same minutes: EVM -22.8 dB at 20 dB TX attenuation, SER 0; P501 transmitter -> B210 with the GNU Radio receiver: -19.6 dB.
+* **The B210 transmitter compresses at high gain.** The B210 recorded its own transmission (`test_b210_record.py`, no processing during the recording, analysed offline with `analyse_rec.py`, the integer model of the FPGA receiver):
+  the spectrum is clean up to TX gain 70 (out-of-band -44 to -51 dB, EVM -17.1 dB, the floor of that B210-to-B210 path), regrows at 80 dB (-29 dB; EVM -15.6, SER 1e-2) and at 86 dB (-21 dB; EVM -12.3, SER 0.6). **Use B210 TX gain 76 dB or less** (digital RMS 0.35 to 0.5).
+* **But the P501 sees -10 dB EVM from the B210 at every gain, level and setting** (all in `results_b210_diagnosis.txt`): TX gain 70 to 86 against RMS 0.18 to 0.5 at the same level; P501 RX gain 60 to 76 (the received level over 15 dB); the FLL off with the offset removed by F0; FLL gains; PLL bandwidth; the B210 carrier moved so that the offset is -164 Hz (-12.3 dB).
+  The error is circular (radial = tangential), so it is neither phase noise nor fading. It does not depend on the received level, so it is not the P501's receiver noise. It exists for the B210 -> P501 combination only: unexplained. One earlier session gave -18 to -24 dB with the same settings, so it comes and goes.
+  What the data exclude: UHD underflows (none), TX compression at gain <= 76, carrier offset, FLL / PLL settings, receive level. What remains: a property of the B210's output seen by the P501 receiver only (an interferer or spur that moves with the B210, the antenna / near-field coupling, a response of the AD9361 receive filters that only the B210's waveform excites, LO phase noise that the PLL cannot follow); the next measurements need a cable with attenuators instead of antennas and a spectrum of what the P501 receives (its ADC data through the DMA, as the FFT overlay does).
+* **A working setting for 16-QAM today**: the P501's own FPGA transmitter (EVM -22.8 dB at 20 dB, SER 0) or the B210 as the receiver of the P501's transmission (-19.6 dB): the link in the direction P501 -> B210 meets the -20 dB goal, the direction B210 -> P501 does not (best -12 dB today).
+
+## 16. Next
+12. A cable with attenuators between the B210 TX and the P501 RX1 (no antennas) and a capture of the P501's ADC data to see what it receives from the B210; the two open points of section 8; the tutorial chapter.
