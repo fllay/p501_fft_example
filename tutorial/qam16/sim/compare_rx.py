@@ -8,7 +8,8 @@ import qam16_rx_fixed as X, qam_zc_fixed as Z
 name = sys.argv[1] if len(sys.argv) > 1 else "a"
 xi, xq = np.load(os.path.join(HERE, "rx_xi_%s.npy" % name)), np.load(os.path.join(HERE, "rx_xq_%s.npy" % name))
 R = X.regs16()
-fe, sy, res = X.receive16(xi, xq, R, trace=True)
+import gen_rx_vectors as G
+fe, sy, res = X.receive16(xi, xq, R, trace=True, fll=(G.GI_TRK, 0, G.f0(G.SCEN[name]["cfo_hz"])))
 bad = 0
 f = np.loadtxt(os.path.join(HERE, "rtl_rx_front.txt"), dtype=np.int64).reshape(-1, 6)
 k = min(len(f), len(fe["mi2"])); assert (f[:k, 0] == np.arange(k)).all()
@@ -17,8 +18,8 @@ for j, key in ((1, "mi2"), (2, "mq2"), (3, "g"), (4, "rate"), (5, "e_t")):
     mm = int(np.sum(f[:k, j] != fe[key][:k])); bad += mm; print("  front %-4s mismatches %d" % (key, mm))
 e = np.loadtxt(os.path.join(HERE, "rtl_rx_engine.txt"), dtype=np.int64).reshape(-1, 8)
 tr = np.array(res.trace, dtype=np.int64).reshape(-1, 8)
-jmax = e[:, 0].max()
-tr = tr[tr[:, 0] <= jmax]
+jmax = min(e[:, 0].max(), tr[:, 0].max())                                         # the last symbol of the record can differ by one (the FLL works in blocks of 4 samples)
+tr = tr[tr[:, 0] <= jmax]; e = e[e[:, 0] <= jmax]
 ok = len(e) == len(tr) and np.array_equal(e[:, 0], tr[:, 0])
 print("  engine trace: RTL %d symbols, model %d: %s" % (len(e), len(tr), "same symbols" if ok else "DIFFERENT SYMBOLS"))
 if not ok: bad += 1

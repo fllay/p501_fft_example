@@ -1,0 +1,12 @@
+p501_qam16_trx overlay, AD9361 digital loopback, RX gain index 45, TX attenuation 20 dB, FPGA frame transmitter -> FPGA receiver (python3 /tmp/p501_qam16_loopback.py 45), 2026-10-23
+READY bring_up_ok=True rx id=0xDD520006
+A amp 0.25: acquire locked=True in 0.023 s, FLL +570 Hz
+R loopback amp 0.25      locked=True frames  1234 (+994) SER 0.00e+00 (0 of 876708) BER 0.00e+00 EVM -30.1 dB (soft -29.4 dB) bad 0 | gain 0.7 ppm +2.1 | lock w +3178 Hz PLL +454 Hz FLL +408 Hz | peaks 2 locks 1 hits 1234 miss 0 lost 0 late 0/0/0 ev 0/0 ovr 0
+R loopback amp 0.25 later locked=True frames  3243 (+1989) SER 0.00e+00 (0 of 1754298) BER 0.00e+00 EVM -30.0 dB (soft -30.6 dB) bad 0 | gain 0.7 ppm -7.4 | lock w +3178 Hz PLL +854 Hz FLL +784 Hz | peaks 2 locks 1 hits 3243 miss 0 lost 0 late 0/0/0 ev 0/0 ovr 0
+A amp 0.15: acquire locked=True in 0.023 s, FLL +630 Hz
+R loopback amp 0.15      locked=True frames  1235 (+994) SER 0.00e+00 (0 of 877590) BER 0.00e+00 EVM -30.8 dB (soft -30.9 dB) bad 0 | gain 1.2 ppm -2.9 | lock w +2202 Hz PLL +661 Hz FLL +533 Hz | peaks 2 locks 1 hits 1235 miss 0 lost 0 late 0/0/0 ev 0/0 ovr 0
+R loopback amp 0.15 later locked=True frames  3242 (+1988) SER 0.00e+00 (0 of 1753416) BER 0.00e+00 EVM -30.6 dB (soft -31.3 dB) bad 0 | gain 1.2 ppm +19.1 | lock w +2202 Hz PLL +675 Hz FLL +584 Hz | peaks 2 locks 1 hits 3242 miss 0 lost 0 late 0/0/0 ev 0/0 ovr 0
+A amp 0.40: acquire locked=True in 0.023 s, FLL +51 Hz
+R loopback amp 0.40      locked=True frames  1234 (+994) SER 0.00e+00 (0 of 876708) BER 0.00e+00 EVM -29.0 dB (soft -28.1 dB) bad 0 | gain 0.5 ppm -10.0 | lock w -152 Hz PLL +71 Hz FLL +25 Hz | peaks 2 locks 1 hits 1234 miss 0 lost 0 late 0/0/0 ev 0/0 ovr 0
+R loopback amp 0.40 later locked=True frames  3241 (+1988) SER 0.00e+00 (0 of 1753416) BER 0.00e+00 EVM -29.0 dB (soft -29.3 dB) bad 0 | gain 0.4 ppm -11.7 | lock w -152 Hz PLL -94 Hz FLL +22 Hz | peaks 2 locks 1 hits 3242 miss 0 lost 0 late 0/0/0 ev 0/0 ovr 0
+DONE (transmitter off, loopback off, TX attenuation 89.75 dB)

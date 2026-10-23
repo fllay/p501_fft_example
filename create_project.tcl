@@ -25,21 +25,23 @@
 #                    (QPSK=1 QPSKRX4P=1: transmitter + receiver in one overlay, p501_qpsk_trx_4p)
 #   QPSKRXSYNC=0     add the FPGA QPSK receiver with the m-sequence frame synchroniser (bd/qpsk_rx_sync_chain.tcl, chapter 4e); use it instead of the other QPSKRX* options
 #                    (QPSK=1 QPSKRXSYNC=1: transmitter + receiver in one overlay, p501_qpsk_trx_sync)
+#   QAM16RX=0        add the FPGA 16-QAM receiver with the Zadoff-Chu frame synchroniser and the band-edge FLL (bd/qam16_rx_chain.tcl); use it instead of the QPSKRX* options
+#                    (QPSK=1 QAM16RX=1: the 16-QAM frame transmitter + receiver in one overlay, p501_qam16_trx; the QPSK transmitter is replaced by rtl/qam16_tx_fr.v)
 #   NAME=...         project name (created in ./build/<NAME>). Default: p501_fft (FFT only), p501_dds (DDS only),
 #                    p501_fft_dds (both), p501_fft_tut (neither: the starting point of the tutorials)
 # -----------------------------------------------------------------------------
 set script_dir [file dirname [file normalize [info script]]]
 
-array set opt {NFFT_LOG2 10 SCALE_SHIFT {} LIB {} RUN none JOBS 8 NAME {} FFT 1 DDS 0 QPSK 0 QPSKRX 0 QPSKRXFLL 0 QPSKRXFE 0 QPSKRX4P 0 QPSKRXSYNC 0 PART xczu5ev-sfvc784-2-i}
+array set opt {NFFT_LOG2 10 SCALE_SHIFT {} LIB {} RUN none JOBS 8 NAME {} FFT 1 DDS 0 QPSK 0 QPSKRX 0 QPSKRXFLL 0 QPSKRXFE 0 QPSKRX4P 0 QPSKRXSYNC 0 QAM16RX 0 PART xczu5ev-sfvc784-2-i}
 foreach a $argv {
   if {[regexp {^(\w+)=(.*)$} $a -> k v]} { set opt($k) $v }
 }
 
 if {$opt(NAME) eq {}} {
-  set opt(NAME) [expr {$opt(QPSKRXSYNC) ? ($opt(QPSK) ? "p501_qpsk_trx_sync" : "p501_qpsk_rx_sync") : $opt(QPSKRX4P) ? ($opt(QPSK) ? "p501_qpsk_trx_4p" : "p501_qpsk_rx_4p") : $opt(QPSKRXFE) ? ($opt(QPSK) ? "p501_qpsk_trx_fe" : "p501_qpsk_rx_fe") : $opt(QPSKRXFLL) ? ($opt(QPSK) ? "p501_qpsk_trx_fll" : "p501_qpsk_rx_fll") : $opt(QPSKRX) ? ($opt(QPSK) ? "p501_qpsk_trx" : "p501_qpsk_rx") : $opt(QPSK) ? ($opt(FFT) ? "p501_fft_qpsk" : "p501_qpsk") : ($opt(FFT) ? ($opt(DDS) ? "p501_fft_dds" : "p501_fft") : ($opt(DDS) ? "p501_dds" : "p501_fft_tut"))}]
+  set opt(NAME) [expr {$opt(QAM16RX) ? ($opt(QPSK) ? "p501_qam16_trx" : "p501_qam16_rx") : $opt(QPSKRXSYNC) ? ($opt(QPSK) ? "p501_qpsk_trx_sync" : "p501_qpsk_rx_sync") : $opt(QPSKRX4P) ? ($opt(QPSK) ? "p501_qpsk_trx_4p" : "p501_qpsk_rx_4p") : $opt(QPSKRXFE) ? ($opt(QPSK) ? "p501_qpsk_trx_fe" : "p501_qpsk_rx_fe") : $opt(QPSKRXFLL) ? ($opt(QPSK) ? "p501_qpsk_trx_fll" : "p501_qpsk_rx_fll") : $opt(QPSKRX) ? ($opt(QPSK) ? "p501_qpsk_trx" : "p501_qpsk_rx") : $opt(QPSK) ? ($opt(FFT) ? "p501_fft_qpsk" : "p501_qpsk") : ($opt(FFT) ? ($opt(DDS) ? "p501_fft_dds" : "p501_fft") : ($opt(DDS) ? "p501_dds" : "p501_fft_tut"))}]
 }
 
-if {($opt(QPSKRX) + $opt(QPSKRXFLL) + $opt(QPSKRXFE) + $opt(QPSKRX4P) + $opt(QPSKRXSYNC)) > 1} { error "QPSKRX, QPSKRXFLL, QPSKRXFE, QPSKRX4P and QPSKRXSYNC all instantiate the receiver at 0x9C470000: choose one" }
+if {($opt(QPSKRX) + $opt(QPSKRXFLL) + $opt(QPSKRXFE) + $opt(QPSKRX4P) + $opt(QPSKRXSYNC) + $opt(QAM16RX)) > 1} { error "QPSKRX, QPSKRXFLL, QPSKRXFE, QPSKRX4P, QPSKRXSYNC and QAM16RX all instantiate the receiver at 0x9C470000: choose one" }
 if {$opt(LIB) eq {}} {
   foreach c [list [file join $script_dir .. pzsdr-p501 hdl library] \
                   [expr {[info exists ::env(P501_HDL_LIBRARY)] ? $::env(P501_HDL_LIBRARY) : {}}]] {
@@ -75,16 +77,19 @@ source [file join $script_dir bd qpsk_rx_fll_chain.tcl]
 source [file join $script_dir bd qpsk_rx_fe_chain.tcl]
 source [file join $script_dir bd qpsk_rx_4p_chain.tcl]
 source [file join $script_dir bd qpsk_rx_sync_chain.tcl]
+source [file join $script_dir bd qam16_rx_chain.tcl]
 if {$opt(DDS) && $opt(QPSK)} { error "DDS=1 and QPSK=1 both drive TX1: choose one" }
 if {$opt(FFT)} { p501_add_fft_chain $opt(NFFT_LOG2) $opt(SCALE_SHIFT) }
 if {$opt(DDS)} { p501_add_dds_chain }
 if {$opt(QPSKRXSYNC)} { set ::p501_qpsk_tx_module qpsk_tx_fr }     ;# the overlay with the frame synchroniser transmits frames too (cfg = the FTW register: bit 31 frames, bits 15:0 payload symbols; 0 = the continuous PRBS-15)
+if {$opt(QAM16RX)} { set ::p501_qpsk_tx_module qam16_tx_fr }        ;# the 16-QAM overlay transmits 16-QAM frames (rtl/qam16_tx_fr.v, same ports as qpsk_tx_fr)
 if {$opt(QPSK)} { p501_add_qpsk_chain }
 if {$opt(QPSKRX)} { p501_add_qpsk_rx_chain }
 if {$opt(QPSKRXFLL)} { p501_add_qpsk_rx_fll_chain }
 if {$opt(QPSKRXFE)} { p501_add_qpsk_rx_fe_chain }
 if {$opt(QPSKRX4P)} { p501_add_qpsk_rx_4p_chain }
 if {$opt(QPSKRXSYNC)} { p501_add_qpsk_rx_sync_chain }
+if {$opt(QAM16RX)} { p501_add_qam16_rx_chain }
 regenerate_bd_layout
 validate_bd_design
 save_bd_design

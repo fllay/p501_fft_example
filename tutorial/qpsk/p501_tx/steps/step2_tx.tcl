@@ -13,4 +13,4 @@ connect_bd_net [get_bd_pins qpsk_rstn_inv/Res]       [get_bd_pins qpsk_tx/resetn
 connect_bd_net [get_bd_pins axi_ad9361/dac_valid_i0] [get_bd_pins qpsk_tx/ce]
 connect_bd_net [get_bd_pins qpsk_regs/enable]        [get_bd_pins qpsk_tx/enable]
 connect_bd_net [get_bd_pins qpsk_regs/amp]           [get_bd_pins qpsk_tx/amp]
-if {$txmod eq "qpsk_tx_fr"} { connect_bd_net [get_bd_pins qpsk_regs/ftw] [get_bd_pins qpsk_tx/cfg] }
+if {$txmod eq "qpsk_tx_fr" || $txmod eq "qam16_tx_fr"} { connect_bd_net [get_bd_pins qpsk_regs/ftw] [get_bd_pins qpsk_tx/cfg] }

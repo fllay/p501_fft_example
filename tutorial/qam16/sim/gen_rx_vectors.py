@@ -15,9 +15,16 @@ SCEN = dict(a=dict(nfr=16, snr_db=22, cfo_hz=3000, ppm=10.4, lead=0),
             d=dict(nfr=18, snr_db=15, cfo_hz=-6000, ppm=50, lead=1200))
 
 
-def regs_lines(R):
+GI_TRK = 205070                                          # 0.0003 rad / sample per unit error (the FLL's tracking gain); the starting frequency is the negative CFO (the FLL_F0 register)
+
+
+def f0(cfo_hz):
+    return int(round(-cfo_hz / 3.84e6 * 2 ** 32)) & 0xFFFFFFFF
+
+
+def regs_lines(R, cfo):
     m = [(0x08, R["TA"]), (0x0C, R["TB"]), (0x10, R["CA"]), (0x14, R["CB"]), (0x18, R["MU"]), (0x1C, R["PREF"]), (0x20, R["G0"]), (0x28, R["MAXR"]),
-         (0x2C, R["TAA"]), (0x30, R["TBA"]), (0x34, R["MUA"]), (0x38, R["ACQ"]), (0x3C, 0x901), (0x40, 0x739A), (0x44, 3), (0x48, 4), (0x4C, 3), (0xB8, R["NSW"])]
+         (0x2C, R["TAA"]), (0x30, R["TBA"]), (0x34, R["MUA"]), (0x38, R["ACQ"]), (0x3C, 0x901), (0x40, 0x739A), (0x44, 3), (0x48, 4), (0x4C, 3), (0xB8, R["NSW"]), (0xBC, 1), (0xC0, GI_TRK), (0xC4, 0), (0xC8, f0(cfo))]
     return ["%02x %08x" % (a, v & 0xFFFFFFFF) for a, v in m]
 
 
@@ -27,6 +34,6 @@ if __name__ == "__main__":
         xi, xq, ids = synth16(**kw)
         with open(os.path.join(HERE, "rx_%s.hex" % name), "w") as f:
             for a, b in zip(xi, xq): f.write("%08x\n" % ((int(b) & 0xFFFF) << 16 | (int(a) & 0xFFFF)))
-        open(os.path.join(HERE, "rx_regs.txt"), "w").write("\n".join(regs_lines(R)) + "\n")
+        open(os.path.join(HERE, "rx_regs_%s.txt" % name), "w").write("\n".join(regs_lines(R, kw["cfo_hz"])) + "\n")
         np.save(os.path.join(HERE, "rx_xi_%s.npy" % name), xi); np.save(os.path.join(HERE, "rx_xq_%s.npy" % name), xq)
         print(name, len(xi), "samples")

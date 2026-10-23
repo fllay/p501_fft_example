@@ -12,7 +12,7 @@ module tb;
     .s_axi_wready(wready), .s_axi_bresp(bresp), .s_axi_bvalid(bvalid), .s_axi_bready(1'b1), .s_axi_araddr(araddr), .s_axi_arvalid(arvalid), .s_axi_arready(arready),
     .s_axi_rdata(rdata), .s_axi_rresp(rresp), .s_axi_rvalid(rvalid), .s_axi_rready(1'b1), .adc_clk(adc_clk), .adc_valid(adc_valid), .adc_i(adc_i), .adc_q(adc_q));
   reg [31:0] samples [0:NS-1];
-  integer ff, fe, fv, k, nsamp, code, a, d; reg [1023:0] hexname; reg [31:0] v;
+  integer ff, fe, fv, k, nsamp, code, a, d; reg [1023:0] hexname, regname; reg [31:0] v;
   task wr(input [13:0] ad, input [31:0] dd); begin
     @(posedge aclk); awaddr <= ad; wdata <= dd; awvalid <= 1; wvalid <= 1;
     @(posedge aclk); while (!(awready && wready)) @(posedge aclk);
@@ -33,7 +33,8 @@ module tb;
     ff = $fopen("rtl_rx_front.txt", "w"); fe = $fopen("rtl_rx_engine.txt", "w"); fv = $fopen("rtl_rx_events.txt", "w");
     #200 aresetn = 1; #100;
     rd(14'h000, v); $display("ID = %h", v);
-    a = $fopen("rx_regs.txt", "r");
+    if (!$value$plusargs("regs=%s", regname)) regname = "rx_regs_a.txt";
+    a = $fopen(regname, "r");
     while (!$feof(a)) begin code = $fscanf(a, "%h %h\n", d, v); if (code == 2) wr(d[13:0], v); end
     $fclose(a);
     wr(14'h004, 32'h1);

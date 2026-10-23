@@ -20,6 +20,8 @@ sys.path.insert(0, os.path.join(HERE, "..", "qpsk", "p501_rx"))
 import qpsk_rx_fixed as Q
 import frame16 as F
 import qam_zc_fixed as Z
+sys.path.insert(0, os.path.join(HERE, "..", "qpsk", "p501_rx_fll"))
+import qpsk_fll_fixed as FL
 
 R_UNIT = 12953
 LV = 4096
@@ -170,10 +172,12 @@ def acq_schedule(events, nsw):
     return sched
 
 
-def receive16(xi, xq, regs=None, iterations=8, **kw):
+def receive16(xi, xq, regs=None, iterations=8, fll=None, **kw):
     """ADC counts -> front end -> synchroniser -> engine. The acquisition mode follows the synchroniser (acq_schedule): the front end and the synchroniser are run again until the schedule no longer changes (causality makes the
     prefix of the result final at every pass)."""
     R = regs16() if regs is None else regs
+    if fll is not None:                                                           # (GI, GP[, F0]) register values of the band-edge FLL in front of the front end
+        f = FL.fll_stage(xi, xq, fll[0], fll[1], F0=(fll[2] if len(fll) > 2 else 0)); xi, xq = f["yi"], f["yq"]
     sched = [(0, True)] if R.get("NSW", 0) else []
     for _ in range(iterations):
         fe = front16(xi, xq, R, acq_sched=sched)

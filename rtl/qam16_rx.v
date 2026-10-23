@@ -1,6 +1,6 @@
 // 16-QAM receiver with the Zadoff-Chu frame synchroniser (PLAN_QAM16.md; ID 0xDD520006). Bit-exact model: tutorial/qam16/qam16_rx_fixed.py (front16 + engine16) and qam_zc_fixed.py.
 //
-//   ADC samples (adc_clk, 3.84 MSPS) -> sample RAM -> engine (aclk, 100 MHz, once per symbol, about 70 of the 104 clock cycles):
+//   ADC samples (adc_clk, 3.84 MSPS) -> sample RAM -> band-edge FLL (qpsk_fll.v, derotation) -> engine (aclk, 100 MHz, once per symbol, about 70 of the 104 clock cycles):
 //     44-tap polyphase matched + derivative filter -> power AGC (rounded) -> timing error / loop (acquisition gains for the first ACQ symbols) -> mi2, mq2
 //       -> qam_zc_sync (the frame synchroniser, its own state machine) and a 16-deep delay line
 //     symbol j = n - 10 from the delay line: position counter pos (CP 0-7, word 8-70, payload 71-966; set by the synchroniser's events) -> derotation by the NCO (1024-entry table)
@@ -18,6 +18,8 @@
 //   0x6C EVM_ERR_LO  0x70 EVM_ERR_HI (the last complete frame: sum of |z - s|^2, 48 bit)   0x74 EVM_REF (sum of |s|^2 / 4096^2)   0x78 FRAME_ERR (symbol errors of the last frame)
 //   0x7C GAIN  0x80 RATE  0x84 OMEGA  0x88 WRCNT  0x8C OVERRUNS  0x90 N_PEAK  0x94 N_LOCK  0x98 N_HIT  0x9C N_MISS  0xA0 N_LOST  0xA4 SY_LATE  0xA8 EV_OVER  0xAC EV_LATE  0xB0 LOCK_W  0xB4 POS
 //   0xB8 NSW (index 0x2E, R/W): frames after a lock before the acquisition mode ends (4; 0 = only the ACQ symbol count); a lost lock starts it again
+//   FLL stage (qpsk_fll.v, between the sample RAM and the engine, as in qpsk_rx_fll.v): 0xBC FLL_CTRL (bit0 loop enabled, bit1 rising edge loads FLL_F0)  0xC0 FLL_GI  0xC4 FLL_GP  0xC8 FLL_F0 (turns x 2^32 per sample)
+//   0xCC FLL_FREQ (R)  0xD0 FLL_ERR (R)  0xD4 FLL_NBLK (R)  0xD8 FLL_LATE (R)
 //   0x1000 .. 0x1FFC: capture RAM (R), 1024 words {zq[15:0], zi[15:0]}
 `timescale 1ns/1ps
 module qam16_rx (
@@ -54,14 +56,14 @@ module qam16_rx (
 );
   localparam [31:0] D_DELAY = 32'd10;
   // ======================= registers =======================
-  reg [31:0] r_ctrl, r_ta, r_tb, r_ca, r_cb, r_mu, r_pref, r_g0, r_maxr, r_taa, r_tba, r_mua, r_acq, r_pcfg, r_thr, r_tol, r_win, r_missmax, r_nsw;
+  reg [31:0] r_ctrl, r_ta, r_tb, r_ca, r_cb, r_mu, r_pref, r_g0, r_maxr, r_taa, r_tba, r_mua, r_acq, r_pcfg, r_thr, r_tol, r_win, r_missmax, r_nsw, r_fll_ctrl, r_fll_gi, r_fll_gp, r_fll_f0;
   wire do_write = s_axi_awvalid & s_axi_wvalid & ~s_axi_bvalid;
   assign s_axi_awready = do_write;
   assign s_axi_wready  = do_write;
   always @(posedge aclk) begin
     if (!aresetn) begin
       r_ctrl <= 32'd0; r_ta <= 32'd729017; r_tb <= 32'd16195; r_ca <= 32'd15000000; r_cb <= 32'd425000; r_mu <= 32'd136; r_pref <= 32'd655391; r_g0 <= 32'd1024; r_maxr <= 32'd52429;
-      r_taa <= 32'd0; r_tba <= 32'd0; r_mua <= 32'd544; r_acq <= 32'd0; r_pcfg <= 32'h0000_0901; r_thr <= 32'h0000_739A; r_tol <= 32'd3; r_win <= 32'd4; r_missmax <= 32'd3; r_nsw <= 32'd4;
+      r_taa <= 32'd0; r_tba <= 32'd0; r_mua <= 32'd544; r_acq <= 32'd0; r_pcfg <= 32'h0000_0901; r_thr <= 32'h0000_739A; r_tol <= 32'd3; r_win <= 32'd4; r_missmax <= 32'd3; r_nsw <= 32'd4; r_fll_ctrl <= 32'd1; r_fll_gi <= 32'd1367131; r_fll_gp <= 32'd0; r_fll_f0 <= 32'd0;
       s_axi_bvalid <= 1'b0; s_axi_bresp <= 2'b00;
     end else begin
       if (do_write) begin
@@ -70,6 +72,7 @@ module qam16_rx (
           6'h06: r_mu <= s_axi_wdata;     6'h07: r_pref <= s_axi_wdata;   6'h08: r_g0 <= s_axi_wdata;     6'h0A: r_maxr <= s_axi_wdata;   6'h0B: r_taa <= s_axi_wdata;
           6'h0C: r_tba <= s_axi_wdata;    6'h0D: r_mua <= s_axi_wdata;    6'h0E: r_acq <= s_axi_wdata;    6'h0F: r_pcfg <= s_axi_wdata;   6'h10: r_thr <= s_axi_wdata;
           6'h11: r_tol <= s_axi_wdata;    6'h12: r_win <= s_axi_wdata;    6'h13: r_missmax <= s_axi_wdata;    6'h2E: r_nsw <= s_axi_wdata;
+          6'h2F: r_fll_ctrl <= s_axi_wdata; 6'h30: r_fll_gi <= s_axi_wdata; 6'h31: r_fll_gp <= s_axi_wdata; 6'h32: r_fll_f0 <= s_axi_wdata;
           default: ;
         endcase
         s_axi_bvalid <= 1'b1;
@@ -111,13 +114,18 @@ module qam16_rx (
   reg [31:0] n_sym;
   wire [31:0] t32 = p[51:20];
   wire [3:0]  arm = p[19:16];
-  wire [31:0] diff = wr_sync - base - t32;
+  wire [31:0] d_cnt, fll_freq, fll_nblk, fll_late; wire [15:0] fll_err;      // from the FLL stage below
+  wire [31:0] diff = d_cnt - base - t32;                  // derotated samples available
   wire        avail = (diff != 32'd0) && !diff[31];
 
-  // MAC (unchanged from qpsk_rx.v)
-  reg  [31:0] x_word;
+  // MAC (unchanged from qpsk_rx.v), reading the DEROTATED samples of the FLL stage
+  wire [31:0] x_word;
   wire [7:0]  ram_raddr = base[7:0] + t32[7:0] - {1'b0, ic};
-  always @(posedge aclk) x_word <= sram[ram_raddr];
+  reg  [31:0] raw_word;
+  wire [7:0]  raw_raddr;
+  always @(posedge aclk) raw_word <= sram[raw_raddr];
+  qpsk_fll u_fll (.aclk(aclk), .run(r_ctrl[0] & aresetn), .raw_cnt(wr_sync), .raw_raddr(raw_raddr), .raw_word(raw_word), .d_cnt(d_cnt), .e_raddr(ram_raddr), .e_word(x_word),
+                  .r_ctrl(r_fll_ctrl), .r_gi(r_fll_gi), .r_gp(r_fll_gp), .r_f0(r_fll_f0), .o_freq(fll_freq), .o_err(fll_err), .o_nblk(fll_nblk), .o_late(fll_late));
   wire signed [15:0] cm, cd;
   qpsk_rx_rom u_rom (.clk(aclk), .addr({arm, ic[5:0]}), .cm(cm), .cd(cd));
   wire signed [15:0] xi = x_word[15:0], xq = x_word[31:16];
@@ -408,6 +416,8 @@ module qam16_rx (
           6'h1F: s_axi_rdata <= {15'd0, g}; 6'h20: s_axi_rdata <= rate; 6'h21: s_axi_rdata <= omega; 6'h22: s_axi_rdata <= wr_sync; 6'h23: s_axi_rdata <= n_over;
           6'h24: s_axi_rdata <= sy_peak;  6'h25: s_axi_rdata <= sy_lock; 6'h26: s_axi_rdata <= sy_hit;  6'h27: s_axi_rdata <= sy_miss; 6'h28: s_axi_rdata <= sy_lost; 6'h29: s_axi_rdata <= sy_late;
           6'h2A: s_axi_rdata <= sy_evover; 6'h2B: s_axi_rdata <= ev_late; 6'h2C: s_axi_rdata <= w_last; 6'h2D: s_axi_rdata <= {22'd0, pos}; 6'h2E: s_axi_rdata <= r_nsw;
+          6'h2F: s_axi_rdata <= r_fll_ctrl; 6'h30: s_axi_rdata <= r_fll_gi; 6'h31: s_axi_rdata <= r_fll_gp; 6'h32: s_axi_rdata <= r_fll_f0;
+          6'h33: s_axi_rdata <= fll_freq; 6'h34: s_axi_rdata <= {{16{fll_err[15]}}, fll_err}; 6'h35: s_axi_rdata <= fll_nblk; 6'h36: s_axi_rdata <= fll_late;
           default: s_axi_rdata <= 32'd0;
         endcase
       end else if (s_axi_rvalid & s_axi_rready) s_axi_rvalid <= 1'b0;
