@@ -109,9 +109,9 @@ S = np.linspace(25, 520, 400); thermal = (8.1 / S) ** 2; bad = 0.0115 * (137 / S
 fig, ax = plt.subplots(figsize=(9.5, 5.2))
 ax.semilogx(S, 10 * np.log10(thermal), c=GREEN, label="good state: thermal noise only (8.1 counts in 1.3 MHz)"); ax.semilogx(S, 10 * np.log10(bad), c=RED, label="bad state, model of the link report (fixed floor + -19 dB multiplicative part)")
 ax.axhline(-10.3, c=BLUE, ls="--"); ax.text(26, -10.9, "QPSK: SER 1e-3 needs EVM -10.3 dB", color=BLUE, fontsize=8); ax.axhline(-17.6, c=ORANGE, ls="--"); ax.text(26, -18.2, "16-QAM: SER 1e-3 needs EVM -17.6 dB (white-noise theory)", color=ORANGE, fontsize=8)
-pts = [(137, -16.3, RED, "o"), (83, -14.1, RED, "o"), (55, -10.1, RED, "o"), (96, -17.5, RED, "o"), (80, -17.3, RED, "s"), (115, -22.4, GREEN, "o"), (110, -22.0, GREEN, "o"), (500, -22.7, GREEN, "^")]
+pts = [(137, -16.3, RED, "o"), (83, -14.1, RED, "o"), (55, -10.1, RED, "o"), (96, -17.5, RED, "o"), (80, -17.3, RED, "s"), (115, -22.4, GREEN, "o"), (110, -22.0, GREEN, "o"), (500, -22.7, GREEN, "^"), (250, -17.9, RED, "D")]
 for x_, y_, c_, m_ in pts: ax.scatter([x_], [y_], c=c_, marker=m_, s=45, zorder=5)
-ax.text(300, -22.0, "close range, live notebook", fontsize=8); ax.text(62, -9.4, "live notebook, weak link", fontsize=8)
+ax.text(300, -22.0, "close range, live notebook", fontsize=8); ax.text(62, -9.4, "live notebook, weak link", fontsize=8); ax.text(190, -16.4, "B210 at 85 dB gain", fontsize=8)
 ax.set(xlabel="received level (ADC counts rms at RX gain 76)", ylabel="EVM (dB)", ylim=(-28, -4), title="Measured EVM against the received level, B210 -> P501 (squares: 480 ksym/s)"); ax.legend(loc="lower left", fontsize=8); ax.grid(alpha=0.3, which="both"); save(fig, "qam16_fig_evm_level.png")
 
 # 8. the method ------------------------------------------------------------------------------------------------------------------------------------

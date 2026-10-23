@@ -118,6 +118,15 @@ The P501 as a spectrum scanner: RX gain index 76 (the highest), LO stepped from 
 * **Narrow lines at 833, 840.0, 850, 867, 875, 880.0, 900, 917.8, 939.5, 959 MHz** (5 to 32 dB): several are on round frequencies (840.0 and 880.0 are multiples of 40 MHz), so they are probably the receiver's own clock spurs; a scan with a 50 ohm load on RX1 would tell. None is inside the +-1.9 MHz window around 915 MHz (the nearest, 917.8 MHz, is outside it and is rejected by the AD9361's baseband filter).
 * **Conclusion:** at this location and time there is no blocker that a 902 to 928 MHz band-pass filter would remove, and the filter's insertion loss (1 to 2 dB) would add to the noise figure. It is not needed for this link; an LNA's value is the 2.5 to 4 dB of section 6 and only if the link is thermal-limited (the good state, section 5c). Repeat the scan where the P501 will be used if the site is different (a base station nearby changes it).
 
+### 5f. A real run in the live notebook (B210 at 85 dB gain; `img/qam16_real_notebook.png`, `img/qam16_real_grc_tx.png`, 2026-10-23)
+
+B210 flowgraph `qam16_b210_frame_tx.grc` with TX gain 85 dB and digital RMS 0.5; P501 live notebook with RX gain 70, FLL tracking (0.0001), PLL 0.02, pilot weight 3, aided, timing 2pi/400.
+
+* Cold start locked after 23 ms. **EVM -17.9 dB (last frame), -17.6 dB (picture); SER 3.0e-4 in the last 2 s**; AGC gain 3.14 (about 250 counts rms, counts about 790 / AGC gain); FLL -7800 Hz, PLL +1435 Hz, carrier offset +9235 Hz (PLL minus FLL), clock +26.2 ppm; 996 frames per second against 992.8 expected; no late events, no engine overruns.
+* **Since the start of the run** (208,089 frames): SER 0.39, BER 0.17, 101,424 bad frames (49 %), sync peaks 2187, locks 24, hits 207,556, misses 533, **lost 23**: the synchroniser found 99.7 % of the frames, but the carrier was lost during about half of them. The cumulative figures describe the whole run; the last-2-s figures and the graphs describe the present state (the symbol-error graph is near zero with two small bumps).
+* **Reading:** at about 250 counts thermal noise alone would give EVM -30 dB; the measured -17.9 dB is **12 dB worse**, so this is a bad state (section 5c) and/or the B210 at 85 dB gain, above the 76 dB limit found in section 3 (regrowth of its own spectrum above 78 dB). It lies between the two curves of the EVM figure of the tutorial (diamond). The GNU Radio window shows the *baseband input of the B210* (spectrum and envelope), not its RF output: its skirts at -80 dB are the RRC filter tails and quantisation, not compression.
+* The run is a case for the habits of section 5d: log the level and EVM with every result, restart the transmitter and compare, use 76 dB or less.
+
 ## 6. Power budget: 16-QAM against QPSK (`results_link_budget.txt`)
 
 **Theory (AWGN):** Es/N0 for SER 1e-3: QPSK 10.3 dB, 16-QAM 17.6 dB; for 1e-5: 12.9 dB and 20.1 dB. **16-QAM needs 7.1 to 7.4 dB more** at any SER from 1e-2 to 1e-6 (the same average power; the inner points are 6 dB closer).

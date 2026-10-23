@@ -141,6 +141,34 @@ python3 tutorial/qam16/qam16_frame_tx.py --tx-gain 76 --rms 0.5 --freq 914.995e6
 
 ![B210 constellation](img/qam16_b210_constellation.png)
 
+### A real run: the B210 at 85 dB, read from the live notebook
+
+The two windows of one session: the B210 transmitter flowgraph (`qam16_b210_frame_tx.grc`, TX gain 85 dB, digital RMS 0.5, Transmit ON) and the receiver's live notebook (RX gain 70, the P501's own transmitter off, FLL in tracking mode with gain 0.0001, PLL bandwidth 0.02, pilot weight 3, aided, timing 2pi/400).
+
+![the B210 transmitter window](img/qam16_real_grc_tx.png)
+
+The spectrum and the envelope in this window are the *baseband signal that goes into the B210* (the transmitter's RF output is not shown): the 16-QAM data peaks reach 0.8 and more, the constant 0.5 stretches are the two Zadoff-Chu words (a constant envelope equal to the RMS).
+
+![the P501 live notebook](img/qam16_real_notebook.png)
+
+How to read the notebook, field by field (values of this screenshot):
+
+| Field | Value | Meaning |
+|---|---|---|
+| cold start | LOCKED after 23 ms | `acquire()`: the FLL's 20 ms acquisition plus the synchroniser; as in the loopback |
+| frames | 208,089 (996/s of 992.8) | complete payloads checked since Start; the rate is the frame rate (1000 frames per second = a lock that has not been lost) |
+| bad frames | 101,424 | frames with more than 20 % symbol errors, **counted since Start** |
+| SER / BER | 3.9e-1 / 1.7e-1 since start, **3.0e-4 in the last 2 s** | the cumulative figure includes every period in which the loop was not locked or the carrier was lost; the last-2-s figure is the present state |
+| EVM | **-17.9 dB** (last frame), -17.6 dB (this picture) | the quality of the link now |
+| AGC gain | 3.14 | the signal is strong: about 250 counts rms (counts roughly 790 / AGC gain, estimated from earlier runs) |
+| clock | +26.2 ppm | the P501's estimate of the transmitter's sample-clock offset |
+| FLL / PLL / carrier offset | -7800 Hz / +1435 Hz / +9235 Hz | the carrier offset is PLL minus FLL (the FLL carries most of it, the PLL the rest); +9.2 kHz is the natural P501-B210 offset |
+| sync | peaks 2187, locks 24, hits 207,556, misses 533, lost 23 | the synchroniser found the word in 99.7 % of the frames, and lost the lock 23 times in the run |
+| late / overruns | all 0 | the engine kept up with every symbol |
+| graphs | frames per second flat at about 1000; symbol errors per second near zero with two small bumps | the last minute or so: a stable lock with a few error bursts |
+
+What this run shows: **the receiver locks, finds 99.7 % of the frames, and decodes the present state with SER 3e-4 at EVM -17.9 dB** (the constellation shows 16 clusters, with moderate scatter). It also shows two things to be careful about. (1) The cumulative figures (SER 0.39, 101,424 bad frames) are dominated by the periods of lost carrier; quote the last-2-s values together with the EVM and the length of the run. (2) The signal is strong (AGC gain 3.14, about 250 counts) and thermal noise alone would give an EVM of about -30 dB, so **-17.9 dB is 12 dB worse than the noise allows**: a bad state of the link and/or the B210 at 85 dB gain, which is above the 76 dB recommended here (the B210's own spectrum regrows above about 78 dB; D.3). The point is in the figure of D.3 (diamond).
+
 In a bad state the EVM is -10 to -17 dB; D.3 explains how to tell the two apart and what to do. The GNU Radio flowgraphs `qam16/qam16_b210_frame_tx.grc` and `qam16_b210_frame_rx.grc` do the same in GNU Radio (the receiver block embeds the model of the FPGA receiver).
 
 ## C.5 The registers and the driver
