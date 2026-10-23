@@ -30,7 +30,31 @@ The four QPSK receiver chains (FLL, 4th-power estimator, chain 3, frame sync) ar
 | 1. FFT / DDS | built, verified on the board, three tutorials and notebooks |
 | 2. QPSK | all five receiver variants built and run on the board (P501 to P501, B210 to P501 error-free at 80 dB B210 gain); tutorial document, GNU Radio flowgraphs, live notebooks |
 | 3. 16-QAM | receiver, transmitter and overlay verified in the digital loopback (EVM -30 dB, 0 errors in 1.75 M symbols) and over the air (P501 to P501 -22.8 dB, P501 to B210 -19.6 dB, B210 to P501 -22 dB in a good state and -10 to -17 dB in a bad state of the B210 transmitter: see the link report); live notebook, GNU Radio flowgraphs |
-| next | forward error correction for the 16-QAM frame: polar code (N = 4096 shortened to 3528, CRC-16, list decoding L = 8), chosen by simulation (`tutorial/qam16/results_fec.txt`); software path first, then a decoder in the FPGA |
+| next | chirp spread spectrum, OFDM, then forward error correction and an application (roadmap below); the FEC study is done in simulation (polar code with CRC-aided list decoding chosen, `tutorial/qam16/results_fec.txt`) and waits for its stage |
+
+### Roadmap: a lab course in digital modulation on the P501
+
+Each stage is an overlay plus a notebook, a bit-exact Python model, and a reference radio (B210 + GNU Radio) where one exists. Order of the stages:
+
+| # | Stage | State |
+|---|---|---|
+| 1 | FFT and DDS in the FPGA | done |
+| 2 | QPSK with the synchronisation variants (Costas, FLL, 4th-power estimator, m-sequence frame sync) | done |
+| 3 | 16-QAM with a Zadoff-Chu frame synchroniser (advanced: 7.3 dB more SNR than QPSK, see the link report) | done |
+| 4 | Chirp spread spectrum (LoRa-style): dechirp and FFT peak, the FFT block of stage 1 reused; low rate, very robust; separating timing from carrier offset with up- and down-chirps | planned |
+| 5 | OFDM: IFFT and cyclic prefix, Schmidl-Cox detection, carrier offset (the natural 9.7 kHz is a large part of a 15 kHz subcarrier spacing), channel estimate from a known symbol, BPSK pilots for phase tracking, QAM data subcarriers | planned |
+| 6 | Forward error correction, common to all of them (convolutional code with Viterbi; polar code with CRC-aided list decoding as the advanced version) | simulated (`tutorial/qam16/LINK_REPORT_QAM16.md` section 10) |
+| 7 | An application: chat (chirp spread spectrum or QPSK, low rate, software decoder) or picture / video (16-QAM or OFDM with FEC, about 1.9 Mb/s at rate 1/2) | planned |
+
+FEC comes last on purpose: students first see how each modulation fails on its own (EVM, constellation, error rate against level), and the code is then the fix; the same code serves every modulation because it only needs soft values.
+
+**Three things to settle before the new stages are built**
+
+1. **A common soft-output interface.** Every receiver should export one stream: a signed 8-bit soft value per coded bit plus a frame-start flag (soft symbols for QPSK and 16-QAM, FFT peak magnitudes for chirp spread spectrum, per-subcarrier values for OFDM). Today only the 1024-symbol capture RAM exists, which is too little for streaming FEC.
+2. **A data-interface stage before the application.** The transmitters send a fixed PRBS payload. An application needs real data in and out: a packet format (header, length, CRC, sequence number) and a path from the processor (registers for a chat, DMA for video). The convolutional decoder is about real time in software (1 ms per frame on a PC); the polar list decoder (about 20 ms per frame) would need the FPGA for video.
+3. **The application chooses the modulation:** chat on chirp spread spectrum or QPSK, picture or video on 16-QAM or OFDM with FEC.
+
+**Wired lab setup.** The B210 over the air is not reproducible: its transmitter state changes between restarts and sessions (EVM -17 to -23 dB at the same level, `tutorial/qam16/LINK_REPORT_QAM16.md` sections 5c and 5d). The labs should therefore run on, in this order, (a) the AD9361's internal digital loopback (EVM -30 dB, works every time), (b) a cable from the P501's TX to its RX through a fixed attenuator, (c) the B210 and antennas as an optional step. Every step shows the received level and the EVM so that a student can tell a good link from a bad one; the uncoded labs measure constellations, EVM and error rate against level, not error-free transfer.
 
 One Tcl script creates a Vivado 2024.1 project that contains
 
