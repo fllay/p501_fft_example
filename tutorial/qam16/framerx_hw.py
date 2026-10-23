@@ -79,7 +79,7 @@ class FrameRxHW:
         pk = self.peaks(rho, m, self.thr_s)
         r = Result(); r.frames = r.locks = r.hits = r.misses = r.lost = 0
         r.sym_err = r.sym_cnt = r.bit_err = r.bad_frames = 0
-        r.lock_starts = []; r.lock_om = []; r.frame_starts = []; r.evm = []; r.om_end = []
+        r.lock_starts = []; r.lock_om = []; r.frame_starts = []; r.evm = []; r.om_end = []; r.frame_errs = []
         r.n_peaks = len(pk); r.out = []
         self.rho_all, self.m_all = rho, m
         pos0 = 0
@@ -135,7 +135,7 @@ class FrameRxHW:
                 r.out.append(data)
                 if ref_idx is not None:
                     ri = ref_idx if ref_idx.ndim == 1 else ref_idx[min(len(r.out) - 1 + 0, len(ref_idx) - 1)]
-                    d = np.asarray(idx) != ri; ne = int(d.sum()); r.sym_err += ne; r.sym_cnt += N_PAY
+                    d = np.asarray(idx) != ri; ne = int(d.sum()); r.sym_err += ne; r.sym_cnt += N_PAY; r.frame_errs.append(ne)
                     xb = np.asarray(idx) ^ ri; r.bit_err += int(sum(bin(v).count("1") for v in xb[d]))
                     if ne > 0.2 * N_PAY: r.bad_frames += 1
                 s_prev = s; first = False
