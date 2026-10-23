@@ -50,6 +50,17 @@ class P501Qam16Tx:
         from p501_dds import P501Dds
         self._dds = P501Dds(ip, fs_hz)
 
+    @property
+    def enabled(self):
+        return self._dds.enabled
+
+    @property
+    def amp(self):
+        return self._dds.amp
+
+    def set(self, amp=None, enable=None, timeout_s=1.0):
+        self._dds.set(amp=amp, enable=enable, timeout_s=timeout_s)
+
     def start(self, amp=0.25, timeout_s=1.0):
         self._dds.off(timeout_s=timeout_s); self._dds.set(amp=amp, enable=True, timeout_s=timeout_s)
 
@@ -87,6 +98,24 @@ class P501Qam16Rx:
         self.ip.write(REG["FLL_F0"], int(round(f_hz / FS * 2 ** 32)) & 0xFFFFFFFF)
         c = self.ip.read(REG["FLL_CTRL"]) & 1
         self.ip.write(REG["FLL_CTRL"], c | 2); self.ip.write(REG["FLL_CTRL"], c)
+
+    def set_pll(self, loop_bw=0.02, aided=True, pilot_weight=3):
+        """the carrier PLL, live: loop bandwidth (rad per symbol; 0.015 to 0.03 are equivalent with the quiet FLL, 0.04 and above are worse), the known CP / word symbols in the loop, the pilot weight (1, 3, 5)"""
+        r = regs16(loop_bw=loop_bw, aided=aided, pilot_weight=pilot_weight)
+        for k in ("CA", "CB", "PCFG"): self.ip.write(REG[k], int(r[k]) & 0xFFFFFFFF)
+
+    def set_timing(self, timing_bw=2 * np.pi / 400):
+        r = regs16(timing_bw=timing_bw)
+        for k in ("TA", "TB"): self.ip.write(REG[k], int(r[k]) & 0xFFFFFFFF)
+
+    def set_sync(self, thr_s=154, thr_l=115, tol=3, window=4, missmax=3, nsw=4):
+        r = regs16(thr_s=thr_s, thr_l=thr_l, tol=tol, window=window, missmax=missmax, nsw=nsw)
+        for k in ("THR", "TOL", "WIN", "MISSMAX", "NSW"): self.ip.write(REG[k], int(r[k]) & 0xFFFFFFFF)
+
+    def hold_fll(self, n=50, dt=0.002):
+        """load the FLL with its mean frequency over n readings and stop its loop (a constant derotation: no more tracking noise); returns the frequency in Hz"""
+        f = self.fll_hz(n=n, dt=dt); self.fll_load(f); self.fll_enable(False)
+        return f
 
     def start(self):
         self.ip.write(REG["CTRL"], 1)

@@ -192,5 +192,17 @@ per point; new options `data_weight` and `dd_gate`), results `results_pll_lowsnr
   So the decoding limit moved from an EVM of -15 dB to -12 dB (3 dB, about 1.5 dB of attenuation steps on this link).
 * The B210's EVM floor in the weak session (-13.5 dB at 82 to 84 dB, against -22 to -24 dB at the same AGC gain in the strong session) says that the noise in the P501's receiver input was 9 to 11 dB higher in that session at the same signal level (another transmitter in the band, or the B210's own noise / LO leakage: not identified).
 
-## 13. Next
-9. A notebook for the live view; the two open points of section 8 (a lock one symbol off near 6 kHz at low SNR, 3 to 4 bad frames after a gap); a check of the noise in the band during the weak-link session (a spectrum with the receiver's capture or with the B210 receiving).
+## 13. Step 9: the live notebook `notebook/P501_QAM16_Live.ipynb`
+
+Built by `make_notebook_qam16.py` (18 cells, like `P501_QPSK_SYNC_Live`), deployed to `/home/xilinx/jupyter_notebooks/p501_qam16/` next to `p501_qam16_trx.{bit,hwh}` and `p501_qam16_rx.py` (the driver gained `set_pll`, `set_timing`, `set_sync`, `hold_fll` and the transmitter's `enabled`, `amp`, `set`).
+
+* **Self-tests in the digital loopback** (29 checks, all PASS when the notebook is executed on the board with `jupyter nbconvert --execute`): the overlay and the AD9361 come up; **no false lock without a transmitter**; at three transmitter amplitudes (0.15, 0.25, 0.4) the receiver locks in 23 ms, finds every frame (1,491 in 1.5 s for 1,489 expected, no miss),
+  decodes **1.3 million symbols per amplitude with 0 errors**, EVM -31.0 / -30.3 / -29.0 dB, nothing late anywhere; the live machinery (21 pictures in 3 s, locked, soft EVM -30.5 dB); the controls moved from Python (PLL and timing gains, pilot weight, thresholds and NSW follow the controls in the registers, FLL **hold** stops the FLL at a constant frequency and decoding goes on without an error, FLL **off** and **track** start and lock).
+* **The live picture**: the 16-point constellation of the data symbols with the ideal points, LOCKED / not locked, frames (per second against 992.8), symbols checked and errors, SER and BER since the start and over the last 2 s, EVM of the last frame (from the hardware sums) and of the picture, AGC gain, clock offset in ppm, the frequencies of the FLL and the PLL and the carrier offset (their difference), the synchroniser's counters and every lateness / overrun counter, and strips of the frequencies, of the frames per second and of the symbol errors per second.
+  **Controls**: Start receiver (cold start with the FLL acquiring then tracking), FLL mode (track / hold / off), FLL acquiring and tracking gain, Hold FLL now, PLL bandwidth, aided word, pilot weight, timing loop, search and lock thresholds, frames before the acquisition mode ends, RX gain, digital loopback, FPGA transmits (frames), TX attenuation and amplitude, Apply (all live). A cell sweeps the TX attenuation over the air (`RUN_AIR = False` until you set it).
+* The B210 as the transmitter: `qam16_frame_tx.py` on the host, as described in the notebook.
+
+![The live picture](../img/qam16_live_picture.png)
+
+## 14. Next
+10. The two open points of section 8 (a lock one symbol off near 6 kHz at low SNR, 3 to 4 bad frames after a gap); the noise in the band during the weak-link session; a tutorial chapter that tells the story of the 16-QAM receiver (the model-first method, the bugs found, the board results) for `TUTORIAL_QPSK` or its own file.
