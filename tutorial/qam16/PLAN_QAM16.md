@@ -216,6 +216,8 @@ Built by `make_notebook_qam16.py` (18 cells, like `P501_QPSK_SYNC_Live`), deploy
 
 ## 15. Step 11: why the B210 -> P501 link is poor at the moment (`results_b210_diagnosis.txt`)
 
+> **Superseded in part (2026-10-23, see `LINK_REPORT_QAM16.md`):** the claim below that the -10 dB EVM "does not depend on the received level" is wrong. Those sweeps held the received level constant or changed only the P501's RX gain (the AGC compensates it), so none of them changed the SNR. With the P501's ADC captured at a fixed RX gain, EVM follows the received level (-16.1 dB at 137 counts, -13.5 dB at 84 counts, -10.1 dB at about 55 counts); the earlier "good session" was a link 6 to 9 dB stronger. What is open is the origin of a signal-proportional floor near -19 dB (section 16).
+
 Reported by the user from the live notebook: B210 transmitting, EVM -12.6 dB and SER 0.22 although the AGC gain (3.5) says the signal is strong.
 * The P501 side is fine: P501 transmitter -> P501 receiver over the air, the same minutes: EVM -22.8 dB at 20 dB TX attenuation, SER 0; P501 transmitter -> B210 with the GNU Radio receiver: -19.6 dB.
 * **The B210 transmitter compresses at high gain.** The B210 recorded its own transmission (`test_b210_record.py`, no processing during the recording, analysed offline with `analyse_rec.py`, the integer model of the FPGA receiver):
@@ -234,5 +236,9 @@ Raw ADC capture of the P501 (FFT overlay, one contiguous DMA transfer of 1.57 M 
 * Two points (RMS 0.5 and 0.3) separate the error into a part that scales with the signal (about -19 dB) and a fixed floor (about 5 dB above the TX-off noise of the receiver). The lower RMS is worse, so **the B210's digital clipping is not the cause**. The EVM at this distance is limited by the received level: more signal (closer, directional antennas, RMS 0.5) helps, an LNA would only lower the receiver's own part (about 1 to 2 dB).
 * This resolves the "-10 dB at every level" of section 15 only in part: the earlier sweeps changed the received level by changing the TX gain at constant antenna distance; the new numbers say the EVM depends on the received level in the 55 to 140 count range. The 5 dB excess of the fixed floor over the TX-off noise is still not explained.
 
+* **Structure of the error (`analyse_avg.py`, offline on the RMS 0.5 / 0.3 captures; the B210 repeats one frame, so soft symbols of N frames can be averaged):** EVM -16.1 dB (1 frame), -17.3 (2), -20.9 (4), -29.8 (8), -31.8 (32); RMS 0.3: -13.3, -14.8, -17.9, -26.3, -28.9. The part that is the same in every frame (TX non-linearity, static ISI) is below -30 dB, so **the B210 transmitter is clean at gain 76 / RMS 0.5**. The error that remains is not white: it is proportional to the symbol magnitude (inner / mid / outer: 0.28 / 0.49 / 0.64 level units), radial = tangential, and its correlation between frames is +0.55 (lag 1), -0.7 (lag 3 to 4), +0.67 (lag 8): a modulation near 137 Hz (the complex gain of the capture has lines at 137 Hz and its aliases, only 2 % / 2 degrees rms, too small to explain -16 dB). It is not the timing loop (bandwidth 2pi/400 to 2pi/1600 gives the same EVM) and not the receiver's clock-offset handling (synthetic signal at 40 dB SNR and 0 to 42 ppm: -31 dB). Origin not found.
+
 ## 17. Next
+(The full report of the over-the-air investigation, the P501 and B210 front ends and the 16-QAM against QPSK power budget is `LINK_REPORT_QAM16.md`.)
+
 12. A cable with attenuators between the B210 TX and the P501 RX1 (no antennas) and a capture of the P501's ADC data to see what it receives from the B210; the two open points of section 8; the tutorial chapter.

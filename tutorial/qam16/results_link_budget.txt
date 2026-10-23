@@ -1,0 +1,36 @@
+1. Theory (AWGN, ideal receiver): Es/N0 needed for a symbol error rate
+   SER      QPSK     16-QAM   difference
+   1e-02     8.2 dB   15.7 dB    7.4 dB
+   1e-03    10.3 dB   17.6 dB    7.3 dB
+   1e-04    11.8 dB   19.0 dB    7.2 dB
+   1e-05    12.9 dB   20.1 dB    7.2 dB
+   1e-06    13.8 dB   20.9 dB    7.1 dB
+
+2. The measured link: EVM as a function of the received level (counts rms in the ADC at RX gain 76; 137 counts = the RMS 0.5 capture)
+   level   rel. to 137   EVM (model)   QPSK SER (white-noise theory at that SNR)   16-QAM SER: theory / measured
+     30    -13.2 dB       -6.0 dB      4.6e-02                                     4.8e-01 / -
+     40    -10.7 dB       -8.3 dB      9.3e-03                                     3.3e-01 / -
+     55     -7.9 dB      -10.7 dB      5.8e-04                                     1.8e-01 / 0.18 (live notebook, EVM -10.1)
+     84     -4.2 dB      -13.6 dB      1.7e-06                                     4.8e-02 / 4.9e-2
+    137     +0.0 dB      -16.1 dB      1.7e-10                                     6.4e-03 / 1.2e-3
+    200     +3.3 dB      -17.4 dB      1.7e-13                                     1.5e-03 / -
+    280     +6.2 dB      -18.0 dB      1.6e-15                                     5.5e-04 / -
+    400     +9.3 dB      -18.4 dB      6.9e-17                                     2.8e-04 / -
+
+3. Received level needed (counts rms), model of section 2
+   QPSK  SER 1e-3 (needs EVM -10.3 dB)                52 counts    +0.0 dB over QPSK 1e-3
+   QPSK  SER 1e-5 (EVM -12.9 dB)                      75 counts    +3.2 dB over QPSK 1e-3
+   16-QAM SER 1e-3 as measured (EVM -16.1 dB)        137 counts    +8.4 dB over QPSK 1e-3
+   16-QAM EVM -17 dB                                 176 counts   +10.6 dB over QPSK 1e-3
+   16-QAM EVM -18 dB                                 275 counts   +14.5 dB over QPSK 1e-3
+   16-QAM EVM -18.8 dB                              1087 counts   +26.4 dB over QPSK 1e-3
+   16-QAM EVM -20 dB                                 not reachable (floor B = -18.9 dB)   
+
+4. What the extra dB mean in range (free space, same antennas): range ratio = 10^(-dB/20)
+    3.0 dB more power needed -> range x 0.71
+    6.0 dB more power needed -> range x 0.50
+    7.8 dB more power needed -> range x 0.41
+    9.0 dB more power needed -> range x 0.35
+   12.0 dB more power needed -> range x 0.25
+   15.0 dB more power needed -> range x 0.18
+   20.0 dB more power needed -> range x 0.10

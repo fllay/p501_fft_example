@@ -54,6 +54,16 @@ class Qam16FrameTx(gr.top_block):
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--tx-gain", type=float, default=80.0); p.add_argument("--rms", type=float, default=0.18); p.add_argument("--freq", type=float, default=915.0e6); p.add_argument("--seconds", type=float, default=30)
+    p.add_argument("--symbol-rate", type=float, default=960e3, help="symbols per second (default 960000: 4 samples per symbol at the B210's 3.84 MS/s; 480000 plays the same 4-sps frame at 1.92 MS/s, half the bandwidth, the P501 then sees 8 samples per symbol)")
+    p.add_argument("--hop", type=str, default="", help="comma-separated carrier frequencies in Hz: the transmitter steps through them every --dwell seconds (A/B test of the TX frequency in one session)")
+    p.add_argument("--dwell", type=float, default=8.0)
     a = p.parse_args()
-    tx = Qam16FrameTx(a.tx_gain, a.rms, a.freq); tx.start(); print("transmitting 16-QAM frames (967 symbols, 1.007 ms) for %g s, TX gain %g dB" % (a.seconds, a.tx_gain), flush=True)
-    time.sleep(a.seconds); tx.stop(); tx.wait()
+    tx = Qam16FrameTx(a.tx_gain, a.rms, a.freq, samp_rate=4 * a.symbol_rate); tx.start()
+    print("transmitting 16-QAM frames (967 symbols, %.3f ms, %g ksym/s, %g MS/s) for %g s, TX gain %g dB, RMS %g, %.6f MHz" % (967e3 / a.symbol_rate, a.symbol_rate / 1e3, 4 * a.symbol_rate / 1e6, a.seconds, a.tx_gain, a.rms, a.freq / 1e6), flush=True)
+    if a.hop:
+        fl = [float(v) for v in a.hop.split(",")]; t0 = time.time(); k = 0
+        while time.time() - t0 < a.seconds:
+            f = fl[k % len(fl)]; tx.set_freq(f); print("%.1f s: carrier %.6f MHz" % (time.time() - t0, f / 1e6), flush=True); k += 1; time.sleep(a.dwell)
+    else:
+        time.sleep(a.seconds)
+    tx.stop(); tx.wait()
