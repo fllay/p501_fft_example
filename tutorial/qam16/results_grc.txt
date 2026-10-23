@@ -1,0 +1,19 @@
+GNU Radio flowgraphs of the 16-QAM link, 2026-10-23
+
+1. test_stream_rx.py: StreamRx (the receiver block's core) against FrameRxHW, random chunk sizes (1 to 6000 symbols), 4 records (20 dB +3 kHz, 15 dB -4 kHz, 25 dB, 30 dB +5.5 kHz):
+   the data symbols of every common frame identical to 1e-9, the symbol errors per frame identical (the last frame of a record is not delivered: the window after it is missing)
+
+2. test_grc_loopback.py 3 25 9600: the two embedded blocks in software (no radio), +9.6 kHz offset, 25 dB: AGC -> limiter -> FLL band-edge (2 pi/1600) -> polyphase clock sync (2 pi/400) -> "16-QAM ZC receiver":
+   2975 frames, 0 symbol errors of 2,623,950 (SER 0), 1 lock, 0 lost, EVM -24.5 dB, the PLL left with -190 .. +270 Hz
+
+3. qam16_b210_frame_tx.grc (B210 transmits, digital RMS 0.35) -> P501 FPGA receiver (run_qam16_b210.py --grc ... --rx-gain 70), a weak-link session (the Python transmitter gave the same in the same session):
+   gain  frames found  SER (GRC)   EVM (GRC)   | SER (python transmitter)  EVM
+   86    2982 of 2978  0.27        -11.2 dB    | 0.29                      -11.3 dB
+   84    2981          0.33        -10.5 dB    | 0.30                      -10.4 dB
+   82    2982          0.37        -10.7 dB
+   80    2982          0.35        -11.0 dB
+   (offset measured +9.1 .. +9.7 kHz; every frame found, 0 misses, 0 lost)
+
+4. P501 FPGA transmitter (amp 0.25) -> B210 -> qam16_b210_frame_rx.grc (run_qam16_grc_rx.py --rx-gain 40, FLL 2 pi/1600, timing 2 pi/400):
+   TX atten 20 dB: 7,447 frames in 8 s, SER 0 in 7.0 M symbols, EVM -19.6 dB, 1 lock, 0 misses, 994 frames/s of 992.8, carrier offset left for the PLL -60 .. -300 Hz
+   TX atten 26 dB: SER 2.6e-05 (EVM -17.3 dB), 30 dB: SER 3.5e-05 (EVM -17.4 dB), both 1 lock, 0 misses, 0 lost

@@ -11,10 +11,28 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from qam16_frame_tx import Qam16FrameTx
 
+
+class GrcTx:
+    """the compiled flowgraph qam16_b210_frame_tx.grc (headless: Qt offscreen) behind the same few methods as Qam16FrameTx"""
+    def __init__(self, tx_gain, rms, freq):
+        import tempfile, importlib
+        tmp = tempfile.mkdtemp(prefix="qam16_fg_")
+        subprocess.run(["grcc", "-o", tmp, os.path.join(HERE, "qam16_b210_frame_tx.grc")], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+        sys.path.insert(0, tmp)
+        from PyQt5 import Qt
+        self.app = Qt.QApplication(sys.argv)
+        self.tb = importlib.import_module("qam16_b210_frame_tx").qam16_b210_frame_tx()
+        self.tb.set_tx_gain(tx_gain); self.tb.set_tx_amp(rms); self.tb.set_freq(freq); self.tb.set_tx_on(1)
+    def start(self): self.tb.start()
+    def set_gain(self, g): self.tb.set_tx_gain(g); self.app.processEvents()
+    def stop(self): self.tb.set_tx_on(0); self.tb.stop()
+    def wait(self): self.tb.wait()
+
 SSH = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR", "-o", "BatchMode=yes", "xilinx@192.168.2.1"]
 p = argparse.ArgumentParser()
 p.add_argument("--out", default="/tmp/qam16_b210"); p.add_argument("--gains", default="80,82,84,86"); p.add_argument("--rx-gain", type=int, default=70); p.add_argument("--rx-gains", default="")
-p.add_argument("--seconds", type=float, default=3.0); p.add_argument("--rms", type=float, default=0.18); p.add_argument("--freq", type=float, default=915.0e6); p.add_argument("--tx-delay", type=float, default=2.0)
+p.add_argument("--grc", action="store_true", help="transmit with the compiled qam16_b210_frame_tx.grc instead of qam16_frame_tx.py"); p.add_argument("--seconds", type=float, default=3.0); p.add_argument("--rms", type=float, default=0.18); p.add_argument("--freq", type=float, default=915.0e6); p.add_argument("--tx-delay", type=float, default=2.0)
 a = p.parse_args()
 gains = [float(g) for g in a.gains.split(",")]
 rxg = [int(g) for g in a.rx_gains.split(",")] if a.rx_gains else []
@@ -27,7 +45,7 @@ t0 = time.time()
 while "WAITING" not in open(logf).read():
     if time.time() - t0 > 240 or board.poll() is not None: print("the P501 did not get ready:\n" + open(logf).read()); sys.exit(1)
     time.sleep(0.5)
-tx = Qam16FrameTx(tx_gain=gains[0], rms=a.rms, freq=a.freq); tx.start(); print("B210 transmitting 16-QAM frames at %.4f MHz, TX gain %g dB first" % (a.freq / 1e6, gains[0]), flush=True); time.sleep(a.tx_delay)
+tx = (GrcTx if a.grc else Qam16FrameTx)(gains[0], a.rms, a.freq) if a.grc else Qam16FrameTx(tx_gain=gains[0], rms=a.rms, freq=a.freq); tx.start(); print("B210 transmitting 16-QAM frames at %.4f MHz, TX gain %g dB first" % (a.freq / 1e6, gains[0]), flush=True); time.sleep(a.tx_delay)
 try:
     for k, g in enumerate(gains):
         tx.set_gain(g); time.sleep(0.5)
