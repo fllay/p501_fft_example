@@ -1,0 +1,22 @@
+P501 transmitter -> P501 receiver over the air with the quiet FLL (tracking gain 0.0001), amp 0.25, RX gain 70, 2 s per level (1,988 frames), 2026-10-23
+atten  SER       EVM(dB)  AGC gain  locks hits miss lost
+22     3.71e-05  -15.8    4.5       1 2228 0 0
+26     3.99e-03  -15.4    7.1       1 2228 0 0
+28     1.84e-02  -14.6    9.0       1 2228 0 0
+30     8.84e-02  -12.4    11.1      1 2228 0 0
+32     4.28e-01  -10.6    13.6      1 2228 0 0
+34     5.79e-01  -10.0    16.3      1 2228 0 0
+36     5.96e-01  -10.5    20.5      1 2227 0 0
+38     6.88e-01  -10.2    25.9      1 2228 0 0
+40     7.85e-01  -9.8     29.2      1 2227 0 0
+44     8.47e-01  -9.3     42.1      1 2228 0 0
+
+B210 -> P501 (digital RMS 0.35, RX gain 70, quiet FLL), the session with the weaker link (AGC gain 5.8 at 86 dB, 5.7 at 80 dB in the strong session)
+tx gain  SER       EVM(dB)  AGC gain  offset(Hz)  locks hits miss lost
+86       5.81e-02  -12.6    5.8       +9872       1 3321 0 0
+84       9.85e-02  -13.4    7.0       +9569       1 3321 0 0
+82       1.32e-01  -13.5    8.0       +9423       1 3322 0 0
+80       2.86e-01  -12.0    10.2      +9755       1 3322 0 0
+76       5.57e-01  -10.6    13.3      +9022       1 3321 0 0
+72       9.09e-01  -8.7     37.2      -18623      2 3233 30 1
+68       9.32e-01  -8.8     39.0      -5307       5 3006 234 4

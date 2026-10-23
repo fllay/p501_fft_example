@@ -138,11 +138,15 @@ class P501Qam16Rx:
         zi = (w & 0xFFFF).astype(np.uint16).view(np.int16).astype(float); zq = (w >> 16).astype(np.uint16).view(np.int16).astype(float)
         return (zi + 1j * zq) / R_UNIT
 
-    def acquire(self, acq_gi=0.002, trk_gi=0.0003, fll_acq_s=0.02, timeout_s=1.5, **kw):
-        """Start from cold: registers, the FLL with its acquiring gain for fll_acq_s seconds, then its tracking gain; wait for the lock. Returns a dict {locked, seconds, fll_hz}."""
+    def acquire(self, acq_gi=0.002, trk_gi=0.0001, fll_acq_s=0.02, timeout_s=1.5, hold=False, **kw):
+        """Start from cold: registers, the FLL with its acquiring gain for fll_acq_s seconds, then its tracking gain; wait for the lock. Returns a dict {locked, seconds, fll_hz}.
+        trk_gi: the FLL's tracking gain. 0.0001 (the default) keeps its frequency noise low enough for the 16-QAM PLL down to about 12 dB SNR; 0.0003 jitters by 1 to 4 kHz and loses the carrier below about 14 dB
+        (tutorial/qam16/results_pll_lowsnr.txt). hold=True then loads the FLL with its mean frequency and stops its loop (a constant derotation; the PLL tracks the rest, +-4 kHz)."""
         t0 = time.time()
         self.stop(); self.configure(**kw)
         self.ip.write(REG["FLL_F0"], 0); self.fll_enable(True); self.set_fll(acq_gi)
         self.start(); time.sleep(fll_acq_s); self.set_fll(trk_gi)
         ok = self.wait_lock(timeout_s)
+        if hold and ok:
+            time.sleep(0.05); f = self.fll_hz(n=50, dt=0.002); self.fll_load(f); self.fll_enable(False)
         return dict(locked=ok, seconds=time.time() - t0, fll_hz=self.fll_hz())

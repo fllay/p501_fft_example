@@ -1,0 +1,14 @@
+variant (SER / bad frames of N)          12 dB (ideal 1e-01)   13 dB (ideal 7e-02)   14 dB (ideal 4e-02)   16 dB (ideal 7e-03)
+baseline DD bw 0.02                        3.9e-01 / 71 of120     2.6e-01 / 41 of120     1.1e-01 / 14 of120     1.5e-02 /  1 of120
+DD bw 0.01                                 7.8e-01 /117 of120     7.9e-01 /118 of120     7.3e-01 /115 of120     6.2e-01 / 97 of120
+DD bw 0.03                                 2.2e-01 / 37 of120     1.2e-01 /  9 of120     5.6e-02 /  1 of120     1.1e-02 /  0 of120
+DD bw 0.04                                 2.4e-01 / 45 of120     1.2e-01 / 10 of120     5.6e-02 /  0 of120     1.1e-02 /  0 of120
+data weight 0.5, bw 0.02                   5.5e-01 /109 of120     4.7e-01 / 85 of120     3.9e-01 / 70 of120     1.7e-01 / 30 of120
+data weight 0.25, bw 0.03                  3.7e-01 /101 of120     2.8e-01 / 76 of120     2.0e-01 / 42 of120     5.7e-02 /  6 of120
+known only (dw 0), bw 0.02                 7.0e-01 /120 of120     6.5e-01 /119 of120     6.5e-01 /119 of120     5.9e-01 /115 of120
+known only (dw 0), bw 0.05                 4.2e-01 /118 of120     3.7e-01 /113 of120     3.0e-01 / 98 of120     2.0e-01 / 49 of120
+known only (dw 0), bw 0.10                 8.1e-01 /120 of120     8.2e-01 /120 of120     7.9e-01 /120 of120     7.8e-01 /120 of120
+known only, bw 0.05, pilot weight 6        6.5e-01 /120 of120     6.4e-01 /120 of120     5.8e-01 /120 of120     5.3e-01 /119 of120
+DD gated 0.5, bw 0.02                      6.7e-01 /120 of120     6.6e-01 /118 of120     6.4e-01 /116 of120     5.0e-01 / 98 of120
+DD gated 0.7, bw 0.03                      3.5e-01 / 93 of120     2.2e-01 / 52 of120     1.1e-01 / 18 of120     1.3e-02 /  0 of120
+DD gated 0.7 + known, bw 0.04, pw 4        3.2e-01 / 96 of120     1.9e-01 / 38 of120     9.1e-02 /  7 of120     1.4e-02 /  0 of120

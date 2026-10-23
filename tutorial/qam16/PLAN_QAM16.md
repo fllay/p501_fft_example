@@ -175,5 +175,22 @@ B210 TX gain 80, 82, 84 and 86 dB (as requested; the transmitter's own limit in 
 * What this means for the design: (1) the Zadoff-Chu synchroniser and the FLL are not the limit, the carrier PLL is: 16-QAM data needs an EVM of -15 dB or better, and the decision-directed loop loses the carrier below -12 dB. The ZC word could keep the PLL alive at low SNR (data-aided loop on the word and the pilots only, hold the NCO frequency over the data): a design option for a rate-adaptive link
   (QPSK-fallback payload at low SNR with the same ZC word); (2) the loop bandwidth: 0.04 helped under phase noise in the float study, and costs 0.7 dB at 14 dB; the hardware registers (CA, CB) can be changed without a rebuild.
 
-## 12. Next
-8. A notebook for the live view; the two open points of section 8 (a lock one symbol off near 6 kHz at low SNR, and 3 to 4 bad frames after a gap); a PLL that survives lower SNR (pilot-weighted / data-aided loop), tried in the model first with the float study (`study_qam16_rx.py`) at 12 to 14 dB, then in the register values (CA / CB / pilot weight) on the board.
+## 12. Step 8: a PLL that survives 12 to 14 dB: the finding is the FLL's tracking gain, not the PLL
+
+`study_pll_lowsnr.py` (the integer receiver with the FLL cold-starting on +9.7 kHz as on the board: acquiring gain 0.002 for 20 ms, then the tracking gain), `study_pll_variants.py`, `study_pll_fll.py`, `study_pll_fine.py` (the float PLL `FrameRxHW` on the integer front end's symbols, 3 to 4 realisations
+per point; new options `data_weight` and `dd_gate`), results `results_pll_lowsnr.txt`, `results_pll_variants.txt`, `results_pll_fll.txt`, `results_pll_fine.txt`.
+
+* **The board's loss of the carrier below about 14 dB is reproduced in the integer model** (FLL tracking gain 0.0003 as used on the board): SER 0.11 at 14 dB (ideal 0.037), 0.21 at 13 dB, 0.36 at 12 dB, bad frames 5, 9 and 21 of 39.
+* **PLL variants do not cure it:** bandwidth 0.01: total loss; 0.03 / 0.04: twice better than 0.02 at 12 to 14 dB but 0.06 and 0.015 worse; data-aided only (pilots, CP, word, frequency held over the data), with any bandwidth 0.02 to 0.10: SER 0.3 to 0.8 (the NCO cannot hold the frequency, the carrier wanders in 67 us between the pilots);
+  half-weight data symbols, gated decision-directed (only symbols near a decision point), ring weighting: all the same or worse. **The phase of the carrier is not what fails; the frequency noise the FLL puts into the signal is.**
+* **The cause is the FLL's tracking noise** (band-edge detector at 960 ksym/s: +-1 to 4 kHz of frequency jitter at gain 0.0003, seen in `study_fll16.py` as std 1 kHz, maximum 4.5 kHz). With the tracking gain **0.0001** (or 0.00003, or the FLL held after the acquisition) the same PLL (bandwidth 0.02, pilot weight 3, aided word) is within 1.2 to 1.5 x of the ideal SER at every SNR from 12 to 20 dB
+  and has no bad frame down to 13 dB (integer receiver, `results_pll_lowsnr.txt`: 12 dB 0.13 against 0.11, 13 dB 0.085 against 0.067, 14 dB 0.047 against 0.037, 16 dB 9.7e-3 against 7.2e-3; with 0.0003: 0.36, 0.21, 0.11, 1.9e-2). Bandwidths 0.015 to 0.03 are then equivalent; 0.04 and above are worse.
+  Known-word aiding matters (freezing the loop over CP and word: 0.21 against 0.083 at 13 dB); pilot weight 6 is a little better than 3 at 10 to 11 dB (not significant).
+* **No RTL change is needed**: the FLL gain is a register (`FLL_GI`). The driver's `acquire()` now uses `trk_gi=0.0001` (and `hold=True` loads the FLL with its mean frequency and stops it); the overlay and the models are as before.
+* **On the board** (`results_board_quietfll.txt`): P501 transmitter over the air: TX attenuation 22 dB SER 3.7e-5, 26 dB 4.0e-3 (EVM -15.4 dB), 28 dB 1.8e-2 (-14.6 dB), **30 dB 8.8e-2 (-12.4 dB, ideal at that SNR 0.09)**, 32 dB 0.43; before (0.0003): 28 dB 6e-2, 32 dB and above no carrier at all.
+  B210 -> P501 in the weaker-link session (the EVM floor of the B210 path was -13.5 dB in this session): at 86 dB SER 5.8e-2 instead of 0.43 with the same signal level, 84 dB 0.10, 82 dB 0.13, 80 dB 0.29 (before 0.57 to 0.66).
+  So the decoding limit moved from an EVM of -15 dB to -12 dB (3 dB, about 1.5 dB of attenuation steps on this link).
+* The B210's EVM floor in the weak session (-13.5 dB at 82 to 84 dB, against -22 to -24 dB at the same AGC gain in the strong session) says that the noise in the P501's receiver input was 9 to 11 dB higher in that session at the same signal level (another transmitter in the band, or the B210's own noise / LO leakage: not identified).
+
+## 13. Next
+9. A notebook for the live view; the two open points of section 8 (a lock one symbol off near 6 kHz at low SNR, 3 to 4 bad frames after a gap); a check of the noise in the band during the weak-link session (a spectrum with the receiver's capture or with the B210 receiving).

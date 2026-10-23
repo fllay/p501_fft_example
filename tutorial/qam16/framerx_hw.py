@@ -31,12 +31,13 @@ class Result:
 
 class FrameRxHW:
     def __init__(self, loop_bw=0.02, thr_search=0.6, thr_lock=0.45, window=4, max_miss=3, tol_verify=3, pilot_weight=3.0,
-                 word_mode="freeze", word_weight=1.0, anchor="every", pd="plain", norm="mag", approx=True, amp_mode="agc"):
+                 word_mode="freeze", word_weight=1.0, anchor="every", pd="plain", norm="mag", approx=True, amp_mode="agc", data_weight=1.0, dd_gate=None):
         zeta = 0.7071
         den = 1 + 2 * zeta * loop_bw + loop_bw ** 2
         self.alpha, self.beta = 4 * zeta * loop_bw / den, 4 * loop_bw ** 2 / den
         self.thr_s, self.thr_l, self.win, self.max_miss, self.tolv = thr_search, thr_lock, window, max_miss, tol_verify
         self.pw, self.ww = pilot_weight, word_weight
+        self.dw, self.gate = data_weight, dd_gate           # data_weight 0: the loop is data-aided only (pilots, CP and word); dd_gate g: a data symbol drives the loop only if both components are within g x (level spacing / 2) of the decision
         self.word_mode, self.anchor, self.pd, self.norm, self.approx, self.amp_mode = word_mode, anchor, pd, norm, approx, amp_mode
 
     # ---------------------------------------------------------------- the metric (index i = start of the 63-symbol window)
@@ -176,6 +177,8 @@ class FrameRxHW:
                     p2 = rr * rr + ri * ri; w = 4.0 if p2 < 0.5 else (1.0 if p2 < 1.4 else 0.5)
                 elif pd == "corner":
                     w = 1.0 if (rr * rr + ri * ri) > 1.4 else 0.0
+                w *= self.dw
+                if self.gate is not None and (abs(zr - rr) > self.gate / S10 or abs(zi - ri) > self.gate / S10): w = 0.0
             e = (zi * rr - zr * ri) * w
             om += be * e; theta += om + al * e
         return theta, om, np.array(data, dtype=complex), idx, 10 * math.log10(max(err2, 1e-12) / max(ref2, 1e-12))
