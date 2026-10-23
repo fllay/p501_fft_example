@@ -19,7 +19,7 @@ def case(nfr=120, snr=22, cfo=3000, ppm=10.4, mu=136, timing_bw=2 * np.pi / 400,
     return dict(level=level, g_std=np.std(fe["g"][st]) / np.mean(fe["g"][st]), ppm=-fe["rate"][st].mean() / 2 ** 16 / X.NF / X.SPS * 1e6, locks=r.locks, frames=r.frames,
                 ser=r.sym_err / max(r.sym_cnt, 1), ser_ss=fe_[skip:].sum() / max((len(fe_) - skip) * F.N_PAY, 1) if len(fe_) > skip else float("nan"),
                 evm_ss=float(np.mean(r.evm[skip:])) if len(r.evm) > skip else float("nan"), bad=r.bad_frames, first_good=next((i for i, v in enumerate(r.frame_errs) if v == 0), -1),
-                w_hz=r.lock_w[0] / 2 ** 32 * 960e3 if r.lock_w else float("nan"), late=min(r.lates) if r.lates else None, fe=fe, sy=sy, r=r)
+                w_hz=r.lock_w[0] / 2 ** 32 * 960e3 if r.lock_w else float("nan"), late=None, fe=fe, sy=sy, r=r)
 
 
 def show(title, **kw):
@@ -27,6 +27,13 @@ def show(title, **kw):
     print("%-26s level %+5.2f dB gain scatter %.3f clock %+6.1f ppm | locks %d frames %3d SER %.1e (after 15: %.1e) EVM %.1f dB bad %2d first clean frame %2d lock w %+6.0f Hz" %
           (title, c["level"], c["g_std"], c["ppm"], c["locks"], c["frames"], c["ser"], c["ser_ss"], c["evm_ss"], c["bad"], c["first_good"], c["w_hz"]))
     return c
+
+
+def leadin():
+    print("== the signal starts after idle noise (acquisition mode until NSW = 4 frames have followed the lock): bad frames / first clean frame / symbol at which the acquisition ends")
+    for lead in (0, 200, 500, 1000, 1500, 2500):
+        c = case(nfr=60, lead=lead)
+        print("  lead %4d: bad %d, first clean frame %d, SER after 15 frames %.1e, acquisition ends at symbol %s" % (lead, c["bad"], c["first_good"], c["ser_ss"], [t for t, on in c["fe"]["acq_sched"] if not on][:1]))
 
 
 def compare_float(cases=((25, 3000), (20, -4000), (18, 1500), (16, 0))):
@@ -61,5 +68,6 @@ if __name__ == "__main__":
             show("PLL bw %.2f" % bw, loop_bw=bw)
         show("freeze word", rx_kw=dict(word_mode="freeze"))
         show("lead-in 500 symbols", lead=500)
-        show("no acquisition mode", timing_bw_acq=2 * np.pi / 400, mu_acq=136, acq_symbols=0)
+        show("no acquisition mode", timing_bw_acq=2 * np.pi / 400, mu_acq=136, acq_symbols=0, nsw=0)
+        leadin()
         compare_float()

@@ -1,31 +1,38 @@
-22 dB, 3 kHz, 10.4 ppm     level -0.02 dB gain scatter 0.011 clock  +10.4 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +2902 Hz
-SNR 16 dB                  level -0.00 dB gain scatter 0.012 clock  +10.6 ppm | locks 1 frames 119 SER 1.1e-02 (after 15: 9.5e-03) EVM -15.9 dB bad  0 first clean frame -1 lock w  +3491 Hz
-SNR 18 dB                  level -0.00 dB gain scatter 0.012 clock  +10.3 ppm | locks 1 frames 119 SER 1.3e-03 (after 15: 9.4e-04) EVM -17.8 dB bad  0 first clean frame 10 lock w  +3232 Hz
-SNR 20 dB                  level -0.01 dB gain scatter 0.012 clock  +10.3 ppm | locks 1 frames 119 SER 7.6e-05 (after 15: 0.0e+00) EVM -19.7 dB bad  0 first clean frame  1 lock w  +3031 Hz
-SNR 25 dB                  level -0.03 dB gain scatter 0.012 clock  +10.3 ppm | locks 1 frames 119 SER 0.0e+00 (after 15: 0.0e+00) EVM -24.2 dB bad  0 first clean frame  0 lock w  +2767 Hz
-SNR 30 dB                  level -0.05 dB gain scatter 0.012 clock  +10.4 ppm | locks 1 frames 119 SER 0.0e+00 (after 15: 0.0e+00) EVM -27.9 dB bad  0 first clean frame  0 lock w  +2752 Hz
+22 dB, 3 kHz, 10.4 ppm     level -0.02 dB gain scatter 0.012 clock  +10.3 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +2902 Hz
+SNR 16 dB                  level -0.00 dB gain scatter 0.012 clock  +10.5 ppm | locks 1 frames 119 SER 1.1e-02 (after 15: 9.5e-03) EVM -15.9 dB bad  0 first clean frame -1 lock w  +3491 Hz
+SNR 18 dB                  level -0.00 dB gain scatter 0.012 clock  +10.3 ppm | locks 1 frames 119 SER 1.1e-03 (after 15: 8.9e-04) EVM -17.8 dB bad  0 first clean frame  8 lock w  +3232 Hz
+SNR 20 dB                  level -0.01 dB gain scatter 0.012 clock  +10.4 ppm | locks 1 frames 119 SER 7.6e-05 (after 15: 1.1e-05) EVM -19.7 dB bad  0 first clean frame  1 lock w  +3031 Hz
+SNR 25 dB                  level -0.03 dB gain scatter 0.012 clock  +10.2 ppm | locks 1 frames 119 SER 0.0e+00 (after 15: 0.0e+00) EVM -24.2 dB bad  0 first clean frame  0 lock w  +2767 Hz
+SNR 30 dB                  level -0.05 dB gain scatter 0.012 clock  +10.3 ppm | locks 1 frames 119 SER 0.0e+00 (after 15: 0.0e+00) EVM -27.9 dB bad  0 first clean frame  0 lock w  +2752 Hz
 SNR 40 dB                  level -0.07 dB gain scatter 0.012 clock  +10.3 ppm | locks 1 frames 119 SER 0.0e+00 (after 15: 0.0e+00) EVM -31.5 dB bad  0 first clean frame  0 lock w  +2661 Hz
-CFO -5000 Hz               level -0.02 dB gain scatter 0.011 clock  +10.2 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  -5306 Hz
-CFO 0 Hz                   level -0.02 dB gain scatter 0.012 clock  +10.2 ppm | locks 1 frames 119 SER 3.8e-05 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w    +96 Hz
-CFO 1500 Hz                level -0.02 dB gain scatter 0.011 clock  +10.5 ppm | locks 1 frames 119 SER 0.0e+00 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  0 lock w  +1120 Hz
-CFO 5000 Hz                level -0.02 dB gain scatter 0.012 clock  +10.5 ppm | locks 1 frames 119 SER 0.0e+00 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  0 lock w  +4729 Hz
-CFO 6500 Hz                level -0.02 dB gain scatter 0.012 clock  +10.4 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +6558 Hz
-AGC MU 17                  level +0.15 dB gain scatter 0.007 clock  +10.5 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.3 dB bad  0 first clean frame  1 lock w  +2902 Hz
-AGC MU 34                  level -0.11 dB gain scatter 0.003 clock  +10.4 ppm | locks 1 frames 119 SER 1.9e-05 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +2902 Hz
-AGC MU 136                 level -0.02 dB gain scatter 0.011 clock  +10.4 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +2902 Hz
-AGC MU 272                 level -0.00 dB gain scatter 0.017 clock  +10.3 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.4 dB bad  0 first clean frame  1 lock w  +2902 Hz
-timing loop 2pi/200        level -0.02 dB gain scatter 0.012 clock  +10.3 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +2902 Hz
-timing loop 2pi/800        level -0.02 dB gain scatter 0.011 clock  +10.3 ppm | locks 1 frames 119 SER 1.5e-04 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +2902 Hz
-clock -40 ppm              level -0.02 dB gain scatter 0.011 clock  -40.3 ppm | locks 1 frames 119 SER 1.6e-04 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  2 lock w  +3283 Hz
+CFO -5000 Hz               level -0.02 dB gain scatter 0.011 clock  +10.4 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  -5306 Hz
+CFO 0 Hz                   level -0.02 dB gain scatter 0.012 clock  +10.3 ppm | locks 1 frames 119 SER 3.8e-05 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w    +96 Hz
+CFO 1500 Hz                level -0.02 dB gain scatter 0.011 clock  +10.5 ppm | locks 1 frames 119 SER 7.6e-05 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  0 lock w  +1120 Hz
+CFO 5000 Hz                level -0.02 dB gain scatter 0.012 clock  +10.4 ppm | locks 1 frames 119 SER 0.0e+00 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  0 lock w  +4729 Hz
+CFO 6500 Hz                level -0.02 dB gain scatter 0.012 clock  +10.5 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +6558 Hz
+AGC MU 17                  level +0.15 dB gain scatter 0.007 clock  +10.4 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.3 dB bad  0 first clean frame  1 lock w  +2902 Hz
+AGC MU 34                  level -0.11 dB gain scatter 0.003 clock  +10.4 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +2902 Hz
+AGC MU 136                 level -0.02 dB gain scatter 0.012 clock  +10.3 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +2902 Hz
+AGC MU 272                 level -0.00 dB gain scatter 0.017 clock  +10.4 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.4 dB bad  0 first clean frame  1 lock w  +2902 Hz
+timing loop 2pi/200        level -0.02 dB gain scatter 0.012 clock  +10.4 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +2902 Hz
+timing loop 2pi/800        level -0.02 dB gain scatter 0.012 clock  +10.2 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +2902 Hz
+clock -40 ppm              level -0.02 dB gain scatter 0.011 clock  -40.3 ppm | locks 1 frames 119 SER 1.9e-04 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  2 lock w  +3283 Hz
 clock 0 ppm                level -0.02 dB gain scatter 0.008 clock   -0.1 ppm | locks 1 frames 119 SER 7.6e-05 (after 15: 0.0e+00) EVM -21.8 dB bad  0 first clean frame  1 lock w  +3144 Hz
 clock 40 ppm               level -0.02 dB gain scatter 0.011 clock  +40.0 ppm | locks 1 frames 119 SER 5.7e-05 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +3169 Hz
-PLL bw 0.01                level -0.02 dB gain scatter 0.011 clock  +10.4 ppm | locks 1 frames 119 SER 1.9e-05 (after 15: 0.0e+00) EVM -21.6 dB bad  0 first clean frame  1 lock w  +2902 Hz
-PLL bw 0.04                level -0.02 dB gain scatter 0.011 clock  +10.4 ppm | locks 1 frames 119 SER 2.9e-05 (after 15: 0.0e+00) EVM -21.4 dB bad  0 first clean frame  1 lock w  +2902 Hz
-freeze word                level -0.02 dB gain scatter 0.011 clock  +10.4 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +2902 Hz
-lead-in 500 symbols        level -0.02 dB gain scatter 0.011 clock  +10.3 ppm | locks 1 frames 119 SER 1.7e-03 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  4 lock w  +1598 Hz
+PLL bw 0.01                level -0.02 dB gain scatter 0.012 clock  +10.3 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.6 dB bad  0 first clean frame  1 lock w  +2902 Hz
+PLL bw 0.04                level -0.02 dB gain scatter 0.012 clock  +10.3 ppm | locks 1 frames 119 SER 2.9e-05 (after 15: 0.0e+00) EVM -21.4 dB bad  0 first clean frame  1 lock w  +2902 Hz
+freeze word                level -0.02 dB gain scatter 0.012 clock  +10.3 ppm | locks 1 frames 119 SER 9.5e-06 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  1 lock w  +2902 Hz
+lead-in 500 symbols        level -0.02 dB gain scatter 0.011 clock  +10.6 ppm | locks 1 frames 119 SER 8.6e-03 (after 15: 0.0e+00) EVM -21.5 dB bad  2 first clean frame 10 lock w  +1598 Hz
 no acquisition mode        level -0.02 dB gain scatter 0.011 clock  +10.3 ppm | locks 1 frames 119 SER 2.0e-03 (after 15: 0.0e+00) EVM -21.5 dB bad  0 first clean frame  5 lock w  +3249 Hz
+== the signal starts after idle noise (acquisition mode until NSW = 4 frames have followed the lock): bad frames / first clean frame / symbol at which the acquisition ends
+  lead    0: bad 0, first clean frame 1, SER after 15 frames 0.0e+00, acquisition ends at symbol [4906]
+  lead  200: bad 0, first clean frame 2, SER after 15 frames 0.0e+00, acquisition ends at symbol [5106]
+  lead  500: bad 0, first clean frame 3, SER after 15 frames 0.0e+00, acquisition ends at symbol [5406]
+  lead 1000: bad 0, first clean frame 2, SER after 15 frames 0.0e+00, acquisition ends at symbol [5906]
+  lead 1500: bad 0, first clean frame 0, SER after 15 frames 0.0e+00, acquisition ends at symbol [6406]
+  lead 2500: bad 0, first clean frame 1, SER after 15 frames 0.0e+00, acquisition ends at symbol [7403]
 == integer engine against FrameRxHW (aided / first, bw 0.02) on the same symbols mi2, mq2 of the integer front end
   25 dB +3000 Hz: integer SER after 15 frames 0.0e+00 EVM -24.2 dB | float SER 0.0e+00 EVM -24.2 dB
   20 dB -4000 Hz: integer SER after 15 frames 1.7e-05 EVM -19.7 dB | float SER 1.7e-05 EVM -19.7 dB
-  18 dB +1500 Hz: integer SER after 15 frames 8.4e-04 EVM -17.8 dB | float SER 8.3e-04 EVM -17.8 dB
-  16 dB    +0 Hz: integer SER after 15 frames 8.6e-03 EVM -15.9 dB | float SER 8.6e-03 EVM -15.9 dB
+  18 dB +1500 Hz: integer SER after 15 frames 8.7e-04 EVM -17.8 dB | float SER 8.7e-04 EVM -17.8 dB
+  16 dB    +0 Hz: integer SER after 15 frames 8.6e-03 EVM -15.9 dB | float SER 8.7e-03 EVM -15.9 dB

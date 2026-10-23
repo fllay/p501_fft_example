@@ -20,8 +20,10 @@ def tx_samples(sym):
     return np.convolve(up, h)[len(h) // 2:len(h) // 2 + len(up)]
 
 
-def synth16(nfr, snr_db=22.0, cfo_hz=3000.0, ppm=10.4, rms_counts=100.0, seed=1, phase0=0.4, payload="prbs15", lead=0):
+def synth16(nfr, snr_db=22.0, cfo_hz=3000.0, ppm=10.4, rms_counts=100.0, seed=1, phase0=0.4, payload="prbs15", lead=0, gap=None):
+    """gap = (first frame, number of frames): that stretch is silent (noise only)"""
     sym, ids = F.make_frames(nfr, payload, seed=seed)
+    if gap: sym = sym.copy(); sym[gap[0] * F.FRAME:(gap[0] + gap[1]) * F.FRAME] = 0
     x = tx_samples(np.concatenate([np.zeros(lead, dtype=complex), sym, np.zeros(60, dtype=complex)]))
     n_out = int((len(x) - 3) / (1 + abs(ppm) * 1e-6))
     if ppm:                                                    # the receiver's sample clock is ppm faster / slower: linear interpolation

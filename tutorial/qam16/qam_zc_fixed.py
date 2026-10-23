@@ -7,9 +7,12 @@ Input per symbol: (mi, mq), 16-bit signed, the symbols after the AGC, before the
   C = A + B + D,   M = max(|Cr|,|Ci|) + min(|Cr|,|Ci|)/2   (units of 2^-14 counts),   E = sum of the same magnitude of the 63 symbols (counts, a running sum)
   candidate(THR):   E > 0 and 256 M >= THR 2^14 E          (THR in 1/256: 154 = 0.60, 115 = 0.45)
   peak at n:        candidate(n) and M(n) >= M(n-1) and M(n) > M(n+1)       (decided at n+1: one symbol of look-ahead)
-  tracker:          SEARCH: a peak with THR_S, and a peak with THR_L within FL +- TOL later -> LOCKED, frame reference = the second peak (the last symbol of the word).
-                    LOCKED: around the expected position ref + FL the best metric among the candidates (THR_L) within +-WINDOW; none: miss (dead reckoning, ref + FL), more than MISSMAX misses in a row -> SEARCH.
-  carrier from the word at a lock (A and D of the peak):
+  tracker (evaluated when the symbol n has been processed; a peak q = n - 1 is decided here):
+                    SEARCH: a peak with THR_L at q (q > search_from): if a peak with THR_S was seen at lastp and |q - lastp - FL| <= TOL -> LOCK (ref = q, the last symbol of the word, known = n = q + 1);
+                            else if q is also a THR_S candidate: lastp = q.
+                    LOCKED: with ee = ref + FL: for the symbols n in ee-W..ee+W the first strict maximum of M among the THR_L candidates; at n = ee+W: found -> frame event (e = that n, known = n), ref = e, misses = 0;
+                            none -> miss: ref = ee, a frame event with miss = 1, more than MISSMAX misses in a row -> LOST event (known = n), SEARCH with search_from = n, lastp forgotten.
+  carrier from the word at a lock (A and D of the peak, first scaled by a common right shift to 18 bits so that every product fits 36 bits):
       w   = signed(atan2(Im(D conj A), Re(D conj A)) turns x 2^20) << 12 >> 5            frequency in turns / symbol x 2^32 (the OMEGA unit); unambiguous to +-15 kHz
       th0 = atan2(A e^{+j16w} + D e^{-j16w}) << 12  +  32 w                               phase of the first payload symbol, turns x 2^32 (e^{+-j16w} from the engine's 1024-entry Q15 table)
   atan2: the 18-iteration CORDIC of rtl/qpsk_sync.v (inputs reduced to 24 bit, angle in turns x 2^20).
@@ -59,6 +62,8 @@ def signed(v, bits):
 
 def carrier_from_word(Ar, Ai, Dr, Di):
     """(w, th0): frequency (signed) and first-payload phase (unsigned 32 bit), turns x 2^32, from the half sums A = Ar + j Ai and D = Dr + j Di (Python ints)"""
+    sa = max(0, max(abs(Ar), abs(Ai), abs(Dr), abs(Di)).bit_length() - 17)             # one common shift: |values| < 2^17
+    Ar, Ai, Dr, Di = Ar >> sa, Ai >> sa, Dr >> sa, Di >> sa
     pr = Dr * Ar + Di * Ai                                                          # D conj(A)
     pi_ = Di * Ar - Dr * Ai
     w = signed(cordic_turns20(pr, pi_) << 12, 32) >> 5
@@ -82,9 +87,9 @@ def _sums(cx, L, lo, hi):
 
 
 def sync(mi, mq, thr_s=154, thr_l=115, tol=3, window=4, missmax=3):
-    """The synchroniser over a record of symbols (the tracker is a loop over the peaks, the sums are exact integer arrays). Returns an object with
-       frames: list of dicts {e: index of the last word symbol, known: the symbol index at which the decision is available, lock: first frame after a lock, w / th0 (lock only), miss: dead reckoning}
-       lost: symbol indices where a lock was lost;  M, E, cand_s, cand_l, peaks_s: the metric arrays, indexed by the window END"""
+    """The synchroniser over a record of symbols. Returns an object with
+       events: list of dicts {kind: 'lock' | 'frame' | 'lost', e: index of the last word symbol, known: the symbol index at which the decision is made, miss, w / th0 (lock)}
+       M, E, cand_s, cand_l, Ar, Ai, Dr, Di: per-symbol arrays indexed by the window END n (M = -1 and E = 0 before the first complete window)"""
     xr = np.asarray(mi, dtype=np.int64); xi = np.asarray(mq, dtype=np.int64); L = len(xr)
     cx = (xr + 1j * xi).astype(np.complex128)
     Ar, Ai = _sums(cx, L, 0, 31); Br, Bi = _sums(cx, L, 31, 32); Dr, Di = _sums(cx, L, 32, 63)
@@ -99,31 +104,35 @@ def sync(mi, mq, thr_s=154, thr_l=115, tol=3, window=4, missmax=3):
     cand_l = (En > 0) & ((Mn << 8) >= thr_l * En * 2 ** 14)
     pk = np.zeros(L, dtype=bool)
     pk[1:-1] = (Mn[1:-1] >= Mn[:-2]) & (Mn[1:-1] > Mn[2:])
-    peaks_s = np.nonzero(pk & cand_s)[0]; peaks_l = np.nonzero(pk & cand_l)[0]
-    r = Sync(); r.M, r.E, r.cand_s, r.cand_l, r.peaks_s, r.frames, r.lost = Mn, En, cand_s, cand_l, peaks_s, [], []
-    r.Ar, r.Ai, r.Dr, r.Di = Arn, Ain, Drn, Din                                        # the half sums, indexed by the window end
-    pos = 0
+    peaks_l = np.nonzero(pk & cand_l)[0]
+    r = Sync(); r.M, r.E, r.cand_s, r.cand_l, r.events = Mn, En, cand_s, cand_l, []
+    r.Ar, r.Ai, r.Dr, r.Di = Arn, Ain, Drn, Din
+    state, lastv, lastp, search_from, ref, miss, i = 0, False, 0, -1, 0, 0, 0
     while True:
-        lock_at = None                                                               # SEARCH: a peak, and a second one a frame later
-        for p in peaks_s[peaks_s >= pos]:
-            q = peaks_l[(peaks_l >= p + FRAME - tol) & (peaks_l <= p + FRAME + tol)]
-            if len(q): lock_at = int(q[0]); break
-        if lock_at is None: break
-        w, th0 = carrier_from_word(int(Arn[lock_at]), int(Ain[lock_at]), int(Drn[lock_at]), int(Din[lock_at]))
-        r.frames.append(dict(e=lock_at, known=lock_at + 1, lock=True, w=w, th0=th0, miss=False))
-        ref, miss = lock_at, 0
-        while True:                                                                  # LOCKED
+        if state == 0:
+            while i < len(peaks_l) and peaks_l[i] <= search_from: i += 1
+            if i >= len(peaks_l): break
+            q = int(peaks_l[i]); i += 1
+            if lastv and abs(q - lastp - FRAME) <= tol:
+                w, th0 = carrier_from_word(int(Arn[q]), int(Ain[q]), int(Drn[q]), int(Din[q]))
+                r.events.append(dict(kind="lock", e=q, known=q + 1, w=w, th0=th0, miss=False))
+                state, ref, miss = 1, q, 0
+            elif cand_s[q]:
+                lastp, lastv = q, True
+        else:
             ee = ref + FRAME
             lo, hi = ee - window, ee + window
-            if hi >= L - 1: pos = L; break
+            if hi >= L: break
             win = np.nonzero(cand_l[lo:hi + 1])[0]
             if len(win):
-                j = lo + int(win[np.argmax(Mn[lo + win])]); ref, miss = j, 0
-                r.frames.append(dict(e=j, known=hi, lock=False, miss=False))
+                j = lo + int(win[np.argmax(Mn[lo + win])])
+                ref, miss = j, 0
+                r.events.append(dict(kind="frame", e=j, known=hi, miss=False))
             else:
                 ref, miss = ee, miss + 1
                 if miss > missmax:
-                    r.lost.append(hi); pos = hi + 1; break
-                r.frames.append(dict(e=ee, known=hi, lock=False, miss=True))
-        if pos >= L: break
+                    r.events.append(dict(kind="lost", e=ee, known=hi, miss=True))
+                    state, lastv, search_from = 0, False, hi
+                    continue
+                r.events.append(dict(kind="frame", e=ee, known=hi, miss=True))
     return r
