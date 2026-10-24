@@ -1,0 +1,10 @@
+First board test of the OFDM receiver (overlay p501_ofdm_rx_sc, 2026-10-24): the host frame (make_ofdm_frame.py: S&C symbol, T1, T2, 44 data symbols, 1 ms) through the DAC DMA as a cyclic buffer,
+the AD9361's digital loopback, nothing radiated (TX attenuation 89.75 dB). One process per level: the counters are cumulative, the numbers are the differences over 2 s after the third frame.
+Build: FFT=0 OFDMRXSC=1, Vivado 2024.1: 31,353 LUT (26.8 %), 27,570 FF (11.8 %), 9 BRAM tiles (6.3 %), 176 DSP (14.1 %); setup WNS +0.417 ns, hold WHS +0.011 ns, one pulse-width endpoint -0.002 ns (the one of the base design, as in every overlay).
+
+buffer level  ADC level (from the detector's gain)  frames in 2 s   found  rejected  bad  symbol errors            EVM of the last frame   carrier   late  overflow flags
+   300           194 counts rms (gain 2.06)           2003           2003     0       0     0 of 2,115,168          -45.5 dB                +10 Hz    0     none
+   100            65 counts rms (gain 6.15)           2003           2003     0       0     0 of 2,115,168          -41.9 dB                +10 Hz    0     none
+   600           389 counts rms (gain 1.03)           2003           2003     0       0     0 of 2,115,168          -46.6 dB                +10 Hz    0     none
+(about 1000 frames per second: 1.0015 ms per frame; the carrier word reads +10 Hz, the coarse estimate +16 Hz: no offset in the digital loopback.)
+In a first run that changed the DMA buffer between the levels inside one process, the cumulative counters showed 6 and 8 rejected frames, 2 and 4 bad frames and one data-overflow flag: they belong to the instants of the changes of the buffer (the receiver sees a frame cut in two), not to the steady state.
