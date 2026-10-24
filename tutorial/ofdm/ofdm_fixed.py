@@ -150,7 +150,7 @@ def receive_fixed(xi, xq, track_win=5, check=True):
             cr_, ci_ = (ir * c - ii * s + 16384) >> 15, (ir * s + ii * c + 16384) >> 15
             zr, zi = int(Zr[l, D_IDX[j]]), int(Zi[l, D_IDX[j]])
             out_r[l, j], out_i[l, j] = (zr * cr_ - zi * ci_ + 8192) >> 14, (zr * ci_ + zi * cr_ + 8192) >> 14
-    return dict(s0=s0, w_c=w_c, w_f=w_f, w=w, G=G, Zr=out_r, Zi=out_i, H=(Hr, Hi), noise=noise, n0=n0, plateau=(first, last), g=gs, slope=ss, hz=signed(w, 32) / 2 ** 32 * Fm.FS)
+    return dict(s0=s0, w_c=w_c, w_f=w_f, w=w, G=G, Zr=out_r, Zi=out_i, H=(Hr, Hi), W=(Wr, Wi), T1=(a_r, a_i), T2=(b_r, b_i), noise=noise, n0=n0, plateau=(first, last), g=gs, slope=ss, hz=signed(w, 32) / 2 ** 32 * Fm.FS)
 
 
 LEVEL = lambda z: np.where(z < -8192, -3, np.where(z < 0, -1, np.where(z < 8192, 1, 3)))
