@@ -50,7 +50,7 @@ PIL_V = np.array([1 + 1j, 1 - 1j, -1 + 1j, -1 - 1j]) / np.sqrt(2)
 SC_K = np.array([k for k in USED if k % 2 == 0])                                                    # Schmidl and Cox: one symbol with only the even subcarriers loaded: two identical halves of 32 samples
 SC_V = qpsk(np.random.default_rng(13), len(SC_K)) * np.sqrt(len(USED) / len(SC_K))
 SC_LEN = SYM                                                                                         # 80 samples (CP 16 + 64)
-PRE_LEN = {"sts16": STS_LEN, "sc": SC_LEN}
+PRE_LEN = {"sts16": STS_LEN, "sc": SC_LEN, "scu": SC_LEN}
 
 
 def pilot_polarity(n):
@@ -73,7 +73,7 @@ def tx_frame(bits=None, rms=None, preamble="sts16"):
     if preamble == "sts16": sts = np.tile(to_time((STS_K, STS_V)), 2)[:STS_LEN]
     else:
         u = to_time((SC_K, SC_V)); sts = np.concatenate([u[-CP:], u])                                 # one symbol with a prefix: 80 samples, periodic with 32 over its whole length
-    T = to_time((USED, TRAIN)); lts = np.concatenate([T[-2 * CP:], T, T])
+    T = to_time((USED, TRAIN)); lts = np.concatenate([T[-CP:], T, T[-CP:], T]) if preamble == "scu" else np.concatenate([T[-2 * CP:], T, T])      # scu: every training symbol has its own prefix: the frame is 47 equal symbols
     syms = []
     for l in range(L_SYM):
         X = np.zeros(N, complex); X[bin_of(DATA)] = d[l]; X[bin_of(PIL)] = PIL_V * POL[l]
@@ -135,18 +135,18 @@ def receive(x, track="complex", genie=None, thr=0.5, return_all=False, gsmooth=1
     """x: received samples (noise, then a frame). genie = (s0, cfo_hz): skip the detection. track: none | phase | complex | complex+slope (what the pilots correct per symbol).
     gsmooth: the pilot gain (and slope) estimates are averaged over this many symbols (centred moving average; 1 = none)"""
     if genie is None:
-        d = detect(x, thr) if sync == "sts16" else detect_sc(x, thr, "argmax" if sync == "sc_argmax" else "plateau")
+        d = detect(x, thr) if sync == "sts16" else detect_sc(x, thr, "argmax" if sync.endswith("argmax") else "plateau")
         if d is None: return None
         s0, f_c, _ = d
     else: s0, f_c = genie
-    PL = PRE_LEN["sts16" if sync == "sts16" else "sc"]
+    uni = sync.startswith("scu"); PL = PRE_LEN["sts16" if sync == "sts16" else "sc"]; T_LAG = 80 if uni else N
     n = np.arange(len(x)); xr = x * np.exp(-2j * np.pi * f_c / FS * (n - s0))                            # coarse correction
-    t1 = s0 + PL + 2 * CP - BACK
-    if t1 < 0 or t1 + 2 * N > len(x): return None
-    T1, T2 = xr[t1:t1 + N], xr[t1 + N:t1 + 2 * N]
-    f_f = np.angle(np.sum(T2 * np.conj(T1))) / (2 * np.pi * N / FS)
+    t1 = s0 + PL + (CP if uni else 2 * CP) - BACK
+    if t1 < 0 or t1 + T_LAG + N > len(x): return None
+    T1, T2 = xr[t1:t1 + N], xr[t1 + T_LAG:t1 + T_LAG + N]
+    f_f = np.angle(np.sum(T2 * np.conj(T1))) / (2 * np.pi * T_LAG / FS)
     xr = xr * np.exp(-2j * np.pi * f_f / FS * (n - s0))                                                   # fine correction
-    A = np.fft.fft(xr[t1:t1 + N]) / np.sqrt(N); B = np.fft.fft(xr[t1 + N:t1 + 2 * N]) / np.sqrt(N); kb = bin_of(USED)
+    A = np.fft.fft(xr[t1:t1 + N]) / np.sqrt(N); B = np.fft.fft(xr[t1 + T_LAG:t1 + T_LAG + N]) / np.sqrt(N); kb = bin_of(USED)
     H = 0.5 * (A[kb] + B[kb]) * np.conj(TRAIN)                                                           # |TRAIN| = 1
     sig2 = np.mean(np.abs(A[kb] - B[kb]) ** 2) / 2                                                       # noise variance per bin from the two equal symbols
     Hd = dict(zip(USED, H)); Hdat = np.array([Hd[k] for k in DATA]); Hpil = np.array([Hd[k] for k in PIL])

@@ -1,6 +1,6 @@
 # Plan: a 16-QAM OFDM link on the P501, with QPSK training and pilot symbols
 
-Stage 4 of the lab roadmap (README). This document is the design, written before any RTL, with a float model that checks every choice: `ofdm_model.py` (transmitter, channel, receiver), `ofdm_study.py` (the studies, results in `results_ofdm.txt`), `make_figures_ofdm.py` (the figures). Nothing here has run on the board yet. Method as in the 16-QAM project: float model, then a bit-exact integer model, then RTL checked against it in simulation, then the overlay and the board (digital loopback first, then a cable, then the B210).
+Stage 4 of the lab roadmap (README). **Decision (2026-10-24): both detectors will be implemented, as the QPSK lab has several synchronisation overlays; Schmidl and Cox comes first (section 12).** This document is the design, written before any RTL, with a float model that checks every choice: `ofdm_model.py` (transmitter, channel, receiver), `ofdm_study.py` (the studies, results in `results_ofdm.txt`), `make_figures_ofdm.py` (the figures). Nothing here has run on the board yet. Method as in the 16-QAM project: float model, then a bit-exact integer model, then RTL checked against it in simulation, then the overlay and the board (digital loopback first, then a cable, then the B210).
 
 ## 1. What was asked, and the answer in one table
 
@@ -161,3 +161,29 @@ Points the integer model must settle: the FFT scaling (a 64-point FFT grows nois
 | `ofdm_study.py` | the studies E1 to E8, writes `results_ofdm.txt` |
 | `ofdm_sync_compare.py` | the detector of this plan against Schmidl and Cox (section 4b), writes `results_sync_compare.txt` |
 | `make_figures_ofdm.py` | the figures in `tutorial/img/ofdm_fig_*.png` |
+
+## 12. Implementation: Schmidl and Cox first (decided 2026-10-24)
+
+**Frame of the first overlay (uniform variant, `preamble="scu"` in the model):** S&C symbol (even subcarriers, 80 samples), T1 and T2 (the QPSK training symbol twice, each with its own 16-sample prefix), 44 data symbols, one idle slot of 80 samples: 47 symbols of 80 samples + 80 = 3840 samples = 1 ms. Every symbol goes through the same IFFT and cyclic-prefix path in the transmitter. Compared with the 128-sample STS frame the uniform frame costs nothing in accuracy (EVM -19.6 dB at 22 dB for all three frames; the carrier estimate is better, 111 Hz against 143 Hz, because the fine estimate uses lag 80).
+
+**Overlays, like the QPSK lab:** the receiver options of `create_project.tcl` get two new names that cannot be combined (they share the address 0x9C470000): `OFDMRXSC=1` -> `p501_ofdm_trx_sc` (this step) and later `OFDMRXSTS=1` -> `p501_ofdm_trx_sts` (the 128-sample STS detector, lag 16, 48 products: the same blocks with another delay, window and preamble). Common to both: the FFT, the channel estimate, the equaliser, the pilot tracker, the checker and the registers.
+
+**The integer model is done** (`ofdm_fixed.py`, the specification of the RTL; `test_ofdm_fixed.py`, `results_ofdm_fixed.txt`): every stage is integer arithmetic. Against the float receiver on the same frames (120 per point, carrier +-20 kHz, delay 0 to 12, 10 ppm, the frames quantised to 12 bits):
+
+| Es/N0 | float EVM / SER | integer EVM / SER |
+|---|---|---|
+| 16 dB | -13.5 dB / 4.8e-2 | -13.5 dB / 6.8e-2 |
+| 20 dB | -17.6 dB / 2.6e-3 | -17.3 dB / 5.6e-3 |
+| 24 dB | -21.6 dB / 7.9e-6 | -21.4 dB / 0 |
+| 28 dB | -25.4 dB / 0 | -25.4 dB / 0 |
+
+The loss of the integer chain is 0.1 to 0.3 dB. The ADC level from 40 to 900 counts rms makes no difference (the block gain `G` from the energy of the S&C symbol brings every frame to 400 counts rms: G = 2612 at 40 counts, 114 at 900, Q8). Noise only, 2000 frames: the detector alone triggers twice at threshold 0.65, **the check that T1 and T2 repeat removes both: 0 false alarms**. The start of the preamble is estimated 0.8 to 1.3 samples late with a spread of 0.3 to 2.5 samples; the carrier to 62 Hz at 28 dB.
+
+**Numeric choices** (all in the model, all asserted there): 12-bit input; gain in Q8, samples 15 bits after the gain and the rotation (cos / sin table of 1024 entries, Q15, phase 32 bit); detector sums in 29 bits, compared after a shift of 8 bits (`256 S'^2 >= THR E'^2`, THR = 166 = 0.65), 16-bit fraction of `M` for the plateau (31 of 32 ... 29/32 of the maximum); CORDIC of the ZC receiver (turns x 2^20); FFT 64 radix-2, **no scaling, 20-bit data path** (the model asserts that it never overflows over the tests), twiddles Q15 with rounding; training: sign operations and 181/256 for 1/sqrt 2; weights `W = conj(H) R 2^14 / |H|^2` by an integer division (28 per frame); equalised values in the 16-QAM units of the single-carrier receiver (unit RMS R = 12953, levels +-4096 and +-12288, thresholds 0 and +-8192, so the slicer and the checker are the ones already built); pilot gain and slope from the four QPSK pilots, averaged over 5 symbols (a window of 2 symbols of latency).
+
+**Open decisions for the RTL:**
+1. **The FFT.** The model has its own radix-2 FFT with rounding after each butterfly multiply. Writing this FFT in Verilog (one butterfly, a few hundred clocks per symbol out of 2083) keeps the RTL bit-exact against the model, shows students the butterfly, and needs about 4 DSP; the Xilinx FFT 9.1 (used in the FFT overlay) would need a model of its rounding. Recommendation: **own FFT for the first overlay**; the IP stays as the alternative.
+2. **Gain.** The model computes `G` from the energy at the plateau (an integer square root and a divide: a serial unit, about 60 clocks); the alternative is a gain register written by the processor.
+3. **Transmitter.** The host (the B210, as `qam16_frame_tx.py`) first; the FPGA transmitter (IFFT = the same FFT with conjugated input, prefix buffer, symbol ROM) second.
+
+**RTL steps:** (1) `ofdm_sync.v`: detector, plateau, CORDIC, gain, NCO; xsim against the model on the same frames. (2) `ofdm_fft.v`. (3) channel estimate, weights (serial divider), equaliser. (4) pilot gain and slope, per-subcarrier correction, slicer, checker, EVM. (5) AXI registers and capture RAM (soft symbols and `|H|`). (6) overlay `OFDMRXSC=1`, driver, notebook. (7) transmitter. (8) board: digital loopback, cable, B210. Each step is checked against `ofdm_fixed.py`.
