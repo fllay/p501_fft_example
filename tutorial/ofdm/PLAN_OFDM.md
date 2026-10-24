@@ -187,3 +187,11 @@ The loss of the integer chain is 0.1 to 0.3 dB. The ADC level from 40 to 900 cou
 3. **Transmitter.** The host (the B210, as `qam16_frame_tx.py`) first; the FPGA transmitter (IFFT = the same FFT with conjugated input, prefix buffer, symbol ROM) second.
 
 **RTL steps:** (1) `ofdm_sync.v`: detector, plateau, CORDIC, gain, NCO; xsim against the model on the same frames. (2) `ofdm_fft.v`. (3) channel estimate, weights (serial divider), equaliser. (4) pilot gain and slope, per-subcarrier correction, slicer, checker, EVM. (5) AXI registers and capture RAM (soft symbols and `|H|`). (6) overlay `OFDMRXSC=1`, driver, notebook. (7) transmitter. (8) board: digital loopback, cable, B210. Each step is checked against `ofdm_fixed.py`.
+
+**RTL step 1 done (2026-10-24): `rtl/ofdm_detect.v`, `rtl/ofdm_cordic.v`, `rtl/ofdm_derot.v`, bit-exact against `ofdm_fixed.py`** (`sim/run_sync.sh`, vectors `sim/gen_sync_vectors.py`, testbenches `tb_ofdm_sync.v`, `tb_ofdm_derot.v`):
+
+* **Detector, plateau, coarse carrier, gain** (`ofdm_detect.v` with the CORDIC): five frames (Es/N0 16 to 28 dB, carrier -15 kHz to +31 kHz, delay 0.2 to 11 samples, ADC level 60 to 1200 counts rms) and a noise-only record: **every window agrees (373 to 380 windows per frame: the running sums S and E and the decision), and the results agree to the last bit**: n0, first and last of the plateau, the position of the maximum, s0, the coarse carrier word w_c, the gain G, the energy at the maximum, the sums of S, the peak. The noise-only record gives no detection in both (1437 windows compared). **No late sample at 26 clocks per sample** (9 clocks per window, 25 when collecting).
+* **Derotator** (`ofdm_derot.v`, gain, 32-bit phase, the 1024-entry table of the QPSK receiver, rounding): 4000 random vectors (all signs, gains from 0 to 65535 including the clip, carriers over the whole range), 0 mismatches. Latency 7 clocks, one sample per clock.
+* Changes of the model made for the RTL: the 10-bit fraction of the metric (two 20-bit operands, 11 division steps), 30-bit sums; the performance of the receiver is unchanged (`results_ofdm_fixed.txt`).
+* Next: step 2, the FFT (`ofdm_fft.v`: one radix-2 butterfly, about 900 clocks per 64 points, rounding as in `fft64`), then the channel estimate (step 3).
+

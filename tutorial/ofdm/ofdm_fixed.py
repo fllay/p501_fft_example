@@ -1,7 +1,7 @@
 """Bit-exact integer model of the Schmidl-and-Cox OFDM receiver (the specification of the future rtl/ofdm_rx.v). Frame: PLAN_OFDM.md (uniform variant: S&C symbol, T1, T2 and 44 data symbols, each with a 16-sample prefix).
 
 Input: ADC counts xi, xq (12 bit signed), a recorded frame with noise in front. Every number is an integer; right shifts are arithmetic.
-  1 detector     c[n] = x[n+32] conj(x[n]);  S[n] = sum of 32 c;  E[n] = sum of 32 |x[n+32]|^2;  S' = S >> 8, E' = E >> 8;  M = S'^2 / E'^2  (16-bit fraction mq = (S'^2 << 16) // E'^2)
+  1 detector     c[n] = x[n+32] conj(x[n]);  S[n] = sum of 32 c;  E[n] = sum of 32 |x[n+32]|^2;  S' = S >> 8, E' = E >> 8;  M = S'^2 / E'^2  (10-bit fraction: both squares shifted right by max(0, bitlen(E'^2) - 20), mq = min((S2s << 10) // E2s, 2047))
                  first n0 with E' >= 4 and 256 S'^2 >= THR E'^2 (THR in 1/256: 166 = 0.65); plateau = the positions in n0 .. n0+71 with mq >= 29/32 of the maximum; start of the S&C symbol s0 = n0 + ((first + last + 1) >> 1) - 8
                  coarse carrier: angle of the sum of S over the plateau (CORDIC, turns x 2^20) x 2^12 / 32 = w_c in turns x 2^32 per sample
   2 gain         G (Q8) = 256 TARGET / isqrt(E_peak >> 5):  the rms of the samples after the gain is TARGET (400) counts;   y = (x G + 128) >> 8
@@ -78,19 +78,29 @@ def metric(xi, xq):
     cs = lambda a: np.concatenate([[0], np.cumsum(a)]); Cr, Ci, Ee = cs(cr), cs(ci), cs(e)
     Sr, Si, E = Cr[32:] - Cr[:-32], Ci[32:] - Ci[:-32], Ee[32:] - Ee[:-32]
     Sr1, Si1, E1 = Sr >> 8, Si >> 8, E >> 8; S2 = Sr1 * Sr1 + Si1 * Si1; E2 = E1 * E1
-    cond = (E1 >= 4) & (S2 * 256 >= THR256 * E2); mq = np.minimum((S2 << 16) // np.maximum(E2, 1), 2 ** 17 - 1)
+    cond = (E1 >= 4) & (S2 * 256 >= THR256 * E2)
+    bl = np.array([int(v).bit_length() for v in E2]); sh = np.maximum(bl - 20, 0)                       # the quotient needs 20 bits of the divisor only
+    S2s, E2s = S2 >> sh, E2 >> sh; mq = np.minimum((S2s << 10) // np.maximum(E2s, 1), 2047)
     return cond, mq, Sr, Si, E
+
+
+def detect_info(xi, xq):
+    """the detector, the plateau, the coarse carrier and the gain (the part of the receiver that rtl/ofdm_detect.v implements); None if nothing is found"""
+    cond, mq, Sr, Si, E = metric(xi, xq); idx = np.nonzero(cond)[0]
+    if len(idx) == 0 or idx[0] + 72 > len(mq): return None
+    n0 = int(idx[0]); seg = mq[n0:n0 + 72]; pk = int(seg.max()); t90 = (pk * 29) >> 5; pl = np.nonzero(seg >= t90)[0]
+    first, last = int(pl[0]), int(pl[-1]); s0 = n0 + ((first + last + 1) >> 1) - 8
+    sr, si = int(Sr[n0 + first:n0 + last + 1].sum()), int(Si[n0 + first:n0 + last + 1].sum())
+    w_c = signed(Zc.cordic_turns20(sr, si), 20) * 128
+    Epk = int(E[n0 + int(np.argmax(seg))]); G = min(65535, (TARGET * 256) // max(isqrt(Epk >> 5), 1))
+    return dict(n0=n0, first=first, last=last, s0=s0, w_c=w_c, G=G, Epk=Epk, sr=sr, si=si, pk=pk, cond=cond, mq=mq, Sr=Sr, Si=Si, E=E)
 
 
 def receive_fixed(xi, xq, track_win=5, check=True):
     xi, xq = np.asarray(xi, dtype=np.int64), np.asarray(xq, dtype=np.int64)
-    cond, mq, Sr, Si, E = metric(xi, xq); idx = np.nonzero(cond)[0]
-    if len(idx) == 0: return None
-    n0 = int(idx[0]); seg = mq[n0:n0 + 72]; pk = int(seg.max()); t90 = (pk * 29) >> 5; pl = np.nonzero(seg >= t90)[0]
-    s0 = n0 + ((int(pl[0]) + int(pl[-1]) + 1) >> 1) - 8
-    sr, si = int(Sr[n0 + pl[0]:n0 + pl[-1] + 1].sum()), int(Si[n0 + pl[0]:n0 + pl[-1] + 1].sum())
-    w_c = signed(Zc.cordic_turns20(sr, si), 20) * 128
-    Epk = int(E[n0 + int(np.argmax(seg))]); G = min(65535, (TARGET * 256) // max(isqrt(Epk >> 5), 1))
+    d = detect_info(xi, xq)
+    if d is None: return None
+    n0, s0, w_c, G, first, last = d["n0"], d["s0"], d["w_c"], d["G"], d["first"], d["last"]; pl = (first, last)
     t1 = s0 + SYM + CP - BACK; t2 = t1 + SYM
     if s0 < 0 or t2 + N > len(xi) or s0 + 240 + 44 * SYM > len(xi): return None
     a_r, a_i = derotate(xi, xq, t1, N, s0, w_c, G); b_r, b_i = derotate(xi, xq, t2, N, s0, w_c, G)
@@ -140,7 +150,7 @@ def receive_fixed(xi, xq, track_win=5, check=True):
             cr_, ci_ = (ir * c - ii * s + 16384) >> 15, (ir * s + ii * c + 16384) >> 15
             zr, zi = int(Zr[l, D_IDX[j]]), int(Zi[l, D_IDX[j]])
             out_r[l, j], out_i[l, j] = (zr * cr_ - zi * ci_ + 8192) >> 14, (zr * ci_ + zi * cr_ + 8192) >> 14
-    return dict(s0=s0, w_c=w_c, w_f=w_f, w=w, G=G, Zr=out_r, Zi=out_i, H=(Hr, Hi), noise=noise, n0=n0, plateau=(int(pl[0]), int(pl[-1])), g=gs, slope=ss, hz=signed(w, 32) / 2 ** 32 * Fm.FS)
+    return dict(s0=s0, w_c=w_c, w_f=w_f, w=w, G=G, Zr=out_r, Zi=out_i, H=(Hr, Hi), noise=noise, n0=n0, plateau=(first, last), g=gs, slope=ss, hz=signed(w, 32) / 2 ** 32 * Fm.FS)
 
 
 LEVEL = lambda z: np.where(z < -8192, -3, np.where(z < 0, -1, np.where(z < 8192, 1, 3)))
