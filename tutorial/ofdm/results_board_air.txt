@@ -23,3 +23,11 @@ C. the same settings after six repeated AD9361 bring-ups (20 dB, 2 s each)
 
 D. the same radiated power from different digital drive (4 s windows): attenuation 22 dB with buffer level 500 / 16 dB with 250 / 10 dB with 125:
  SER 5.3e-3 / 4.4e-3 / 6.8e-3; EVM -17.3 / -16.9 / -16.3 dB; SNR 20.6 / 19.9 / 18.5 dB: no difference: the floor is not the digital clipping of the frame (peaks at 0.84 of full scale at level 500).
+
+E. B210 -> P501, 850 MHz, antennas a few cm apart, B210 TX gain 85 dB, rms 0.25, P501 RX gain 70, 10 windows of 2 s (p501_ofdm_b210.py 70 10 2 850e6):
+ 915 MHz at gain 76/78 dB: level 9-25 counts (SNR 1-10 dB), no usable frames (ADC capture: flat OFDM spectrum, 7.5 dB over the out-of-band noise).
+ 850 MHz with zeros in the idle slot: level 174 counts rms in the ADC capture (22 dB over noise, no clipping), but 0 frames decoded: the detector (energy guard E>>8 >= 4 only) fires on the falling edge of the signal into the receiver noise of the idle slot, 3400-3800 rejections per window.
+ The integer model decodes the same capture once the detector has an energy guard of 80 counts rms (carrier 9.1 kHz). Workaround without RTL change: ofdm_frame_tx.py --fill (noise of the signal rms in the 80 idle samples).
+ 850 MHz with --fill: 2003-2004 frames found per window, 0 rejected; level 121-132 counts; EVM -18.0 to -21.5 dB; SNR 22.6 to 25.7 dB; carrier +8.9 to +9.5 kHz;
+ symbol errors per 2.1 M: 29162, 30534 (the first two windows, bad frames 5 and 10: the B210 had just started), then 5382, 1168, 256, 519, 217, 246, 6, 510 (SER 2.8e-6 to 2.5e-3, median ~2.4e-4), bad frames 0-3.
+ To do: a relative energy guard in rtl/ofdm_detect.v (next overlay build) so the idle slot may stay empty.
