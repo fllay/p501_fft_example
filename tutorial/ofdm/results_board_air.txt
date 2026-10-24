@@ -31,3 +31,19 @@ E. B210 -> P501, 850 MHz, antennas a few cm apart, B210 TX gain 85 dB, rms 0.25,
  850 MHz with --fill: 2003-2004 frames found per window, 0 rejected; level 121-132 counts; EVM -18.0 to -21.5 dB; SNR 22.6 to 25.7 dB; carrier +8.9 to +9.5 kHz;
  symbol errors per 2.1 M: 29162, 30534 (the first two windows, bad frames 5 and 10: the B210 had just started), then 5382, 1168, 256, 519, 217, 246, 6, 510 (SER 2.8e-6 to 2.5e-3, median ~2.4e-4), bad frames 0-3.
  To do: a relative energy guard in rtl/ofdm_detect.v (next overlay build) so the idle slot may stay empty.
+
+F. the relative energy guard in the detector (rtl/ofdm_detect.v: a window counts only if EA <= 2 E, EA = the energy of the 32 multiplied samples; ofdm_fixed.metric; case q in sim/gen_sync_vectors.py), new overlay p501_ofdm_rx_sc (31,426 LUT, 27,599 FF, 9 BRAM, WNS +0.417, WHS +0.011, pulse width -0.002 as before):
+ digital loopback, levels 65 / 194 / 389 counts: 2003 frames found, 0 rejected, 0 bad, 0 symbol errors in 2,115,168 symbols each; EVM -38.4 / -46.2 / -45.6 dB.
+ B210 -> P501, 850 MHz, TX gain 85, rms 0.25, idle slot EMPTY (no --fill), RX gain 70, three runs of 10 windows of 2 s: every frame found in every window (2001-2004 per window), 0 rejected (before the guard: 0 decoded, 3400-3800 rejections per window).
+ Symbol error rate (bring-up levels differ: 100-139 counts in runs 1-2, 186-216 counts in run 3): run 1 2.3e-3 to 1.7e-1 (bad frames 7-669 per window, EVM -15 to -21 dB); run 2 1.4e-6 to 1.7e-1 (four windows with 500-730 bad frames, then 2.2e-3, 1.4e-6, 1.2e-4); run 3 4.7e-7 to 3.2e-2, median 6e-3 (EVM -19 to -23 dB, SNR 23-27 dB).
+ An ADC capture in the same session shows a steady signal (rms 103, frame-to-frame correlation 0.985, no bursts), and the integer model decodes it with SER 9.5e-4 (median; max 7.6e-3), EVM -16 to -19 dB.
+ Not understood: with an SNR of 25 dB the 16-QAM symbol error rate should be 1e-5, not 6e-3, and the bad windows come and go within one bring-up. Candidates: the B210 TX compressing at 85 dB gain (the 16-QAM link compressed above ~78 dB), the AD9361 RX state (level differs 2x between bring-ups), interference near 850 MHz (the uplink band of mobile phones ends at 849 MHz). Next: B210 gain 78-80 at 850 MHz.
+
+G. B210 -> P501, 850 MHz, TX gain 79 (was 85), rms 0.25, idle slot empty, RX gain 70, 10 windows of 2 s:
+ windows 0-3: 2003-2004 frames each, 0 rejected, 0 bad, 0 symbol errors in 8,462,000 symbols (EVM -21.1 to -24.1 dB, SNR 25.3 to 28.4 dB, level 198-233 counts, carrier +8.8 to +9.1 kHz); window 4: 1 bad frame, SER 6.6e-4.
+ from window 5 the level is 8-11 counts (noise): the signal is gone (almost every detection is rejected, overflow flag set by the flood of false detections); the B210 output stopped or failed during the run, not checked at the time (B210 terminal output needed).
+ At gain 85 the same link had SER 6e-3 (median) at a similar SNR: the 85 dB setting compresses the B210, 79 dB does not.
+
+H. the same, second run at gain 79 (the B210 stayed up for all 10 windows): 2003-2004 frames found per window, 0 rejected; level 97-110 counts; EVM -18.8 to -22.9 dB; SNR 22.5 to 26.4 dB; carrier +8.8 to +9.3 kHz;
+ SER per window 3.9e-3, 0, 0, 3.3e-4, 1.5e-4, 1.8e-4, 9.8e-5, 9.1e-5, 7.7e-4, 4.2e-3 (median 1.7e-4; bad frames 0-8 per window); at gain 85 the median was 6e-3.
+ Summary 850 MHz with the empty idle slot (relative energy guard): detection solid (no frame missed or rejected in 40 windows with signal); symbol errors 0 to 4e-3 per window, median about 2e-4, as in the P501 -> P501 test at 23 dB SNR.

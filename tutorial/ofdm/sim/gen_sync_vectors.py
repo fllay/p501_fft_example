@@ -11,6 +11,9 @@ for name, c in cases.items():
     rng = np.random.default_rng(c["seed"]); x, d = Fm.tx_frame(preamble="scu"); y = Fm.channel(x, c["snr"], cfo_hz=c["cfo"], tau=c["tau"], ppm=10.0, rng=rng, lead=300)
     xi, xq = X.to_adc(y, c["rms"]); n = 900
     open("sc_%s.hex" % name, "w").write("\n".join(hexline(a, b) for a, b in zip(xi[:n], xq[:n])) + "\n")
+rng = np.random.default_rng(21); x, d = Fm.tx_frame(preamble="scu")                                               # case q: the tail of the previous frame (320 active samples + the 80 quiet ones, 24 dB) in front of the frame: the falling edge must not fire the detector
+y = Fm.channel(np.concatenate([x[-400:], x]), 24, cfo_hz=9700.0, tau=4.3, ppm=10.0, rng=rng, lead=0); xi, xq = X.to_adc(y, 170)
+open("sc_q.hex", "w").write("\n".join(hexline(a, b) for a, b in zip(xi[:1000], xq[:1000])) + "\n")
 rng = np.random.default_rng(9)                                                                                  # noise only, 14 counts rms: no detection
 xi = np.clip(np.round(rng.standard_normal(1500) * 14), -2047, 2047); xq = np.clip(np.round(rng.standard_normal(1500) * 14), -2047, 2047)
 open("sc_n.hex", "w").write("\n".join(hexline(a, b) for a, b in zip(xi, xq)) + "\n")

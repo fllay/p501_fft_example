@@ -78,7 +78,8 @@ def metric(xi, xq):
     cs = lambda a: np.concatenate([[0], np.cumsum(a)]); Cr, Ci, Ee = cs(cr), cs(ci), cs(e)
     Sr, Si, E = Cr[32:] - Cr[:-32], Ci[32:] - Ci[:-32], Ee[32:] - Ee[:-32]
     Sr1, Si1, E1 = Sr >> 8, Si >> 8, E >> 8; S2 = Sr1 * Sr1 + Si1 * Si1; E2 = E1 * E1
-    cond = (E1 >= 4) & (S2 * 256 >= THR256 * E2)
+    Ea = np.concatenate([np.zeros(32, dtype=np.int64), E[:-32]])[:len(E)]                                # the energy of the multiplied samples = E of the window 32 earlier (0 before): a strong signal ending in a quiet slot is not a plateau
+    cond = (E1 >= 4) & (S2 * 256 >= THR256 * E2) & (Ea <= 2 * E)
     bl = np.array([int(v).bit_length() for v in E2]); sh = np.maximum(bl - 20, 0)                       # the quotient needs 20 bits of the divisor only
     S2s, E2s = S2 >> sh, E2 >> sh; mq = np.minimum((S2s << 10) // np.maximum(E2s, 1), 2047)
     return cond, mq, Sr, Si, E

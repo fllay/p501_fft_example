@@ -2,7 +2,9 @@
 //
 // One ADC sample per s_valid, at least 26 clocks apart (3.84 MS/s at 100 MHz): the processing takes 9 clocks, 25 in the collecting mode (`late` if a sample comes sooner).
 //   c[n] = x[n+32] conj x[n];  S = sum of 32 c;  E = sum of 32 |x[n+32]|^2 (running sums over rings of 32);  the window of the sample m is n = m - 63
-//   S' = S >> 8, E' = E >> 8, S2 = S'r^2 + S'i^2, E2 = E'^2;  cond = (E' >= EMIN) and (256 S2 >= THR E2)
+//   S' = S >> 8, E' = E >> 8, S2 = S'r^2 + S'i^2, E2 = E'^2;  cond = (E' >= EMIN) and (256 S2 >= THR E2) and (EA <= 2 E)
+//   EA = the energy of the 32 samples that are multiplied by conj (= the E of the window 32 samples earlier, 0 before the window 32): without this guard a strong signal that ends in a quiet
+//   slot (receiver noise, DC) fires the detector: |S|^2 / E^2 is about (EA / E) / 32 for uncorrelated samples, above THR once the signal is 13 dB stronger than the quiet slot
 //   the first window with cond is n0; the 72 windows n0 .. n0 + 71 are stored: mq = min((S2s << 10) / E2s, 2047) (S2s, E2s: both shifted right by max(0, bitlen(E2) - 20)), S and E
 //   plateau: pk = max mq (first maximum at pkidx), t90 = pk 29 >> 5, first / last = the first and the last stored window with mq >= t90;  s0 = n0 + ((first + last + 1) >> 1) - 8 (start of the S&C symbol)
 //   coarse carrier: CORDIC (ofdm_cordic.v) of the sum of S over first .. last, turns x 2^20, x 128 = w_c (turns x 2^32 per sample)
@@ -38,6 +40,7 @@ module ofdm_detect (
   reg signed [11:0] ring_r [0:31], ring_i [0:31];
   reg signed [24:0] cring_r [0:31], cring_i [0:31];
   reg [23:0]        ering [0:31];
+  reg [28:0]        sering [0:31];                // sum_e of the sample 32 earlier = EA of this window
   reg [4:0]  wp;
   reg [31:0] cnt;
   reg signed [29:0] sum_r, sum_i;
@@ -51,7 +54,7 @@ module ofdm_detect (
                    A_PK = 13, A_T = 14, A_FL = 15, A_SUM = 16, A_CORDIC = 17, A_CW = 18, A_SQ = 19, A_DIV0 = 20, A_DIV = 21, A_FIN = 22, S_DONE = 23;
   reg [4:0]  st;
   reg signed [11:0] x_r, x_i, o_r, o_i;
-  reg signed [24:0] oc_r, oc_i; reg [23:0] oe;
+  reg signed [24:0] oc_r, oc_i; reg [23:0] oe; reg [28:0] ea, se_new;
   reg signed [24:0] p0, p1, p2, p3; reg [23:0] pe0, pe1;
   reg signed [24:0] c_re, c_im; reg [23:0] e_new;
   reg signed [21:0] sp_r, sp_i; reg [20:0] ep;
@@ -88,7 +91,7 @@ module ofdm_detect (
         P_IDLE: if (s_valid) begin
                   x_r <= xi; x_i <= xq;
                   o_r <= (cnt >= 32) ? ring_r[wp] : 12'sd0; o_i <= (cnt >= 32) ? ring_i[wp] : 12'sd0;
-                  oc_r <= (cnt >= 64) ? cring_r[wp] : 25'sd0; oc_i <= (cnt >= 64) ? cring_i[wp] : 25'sd0; oe <= (cnt >= 64) ? ering[wp] : 24'd0;
+                  oc_r <= (cnt >= 64) ? cring_r[wp] : 25'sd0; oc_i <= (cnt >= 64) ? cring_i[wp] : 25'sd0; oe <= (cnt >= 64) ? ering[wp] : 24'd0; ea <= (cnt >= 95) ? sering[wp] : 29'd0;
                   st <= P_PROD;
                 end
         P_PROD: begin
@@ -98,13 +101,13 @@ module ofdm_detect (
         P_ACC:  begin
                   c_re = p0 + p1; c_im = p2 - p3; e_new = (cnt >= 32) ? (pe0 + pe1) : 24'd0;
                   cring_r[wp] <= c_re; cring_i[wp] <= c_im; ering[wp] <= e_new;
-                  sum_r <= sum_r + c_re - oc_r; sum_i <= sum_i + c_im - oc_i; sum_e <= sum_e + e_new - oe;
+                  sum_r <= sum_r + c_re - oc_r; sum_i <= sum_i + c_im - oc_i; se_new = sum_e + e_new - oe; sum_e <= se_new; sering[wp] <= se_new;
                   st <= P_SH;
                 end
         P_SH:   begin sp_r <= sum_r >>> 8; sp_i <= sum_i >>> 8; ep <= sum_e >> 8; st <= P_SQ; end
         P_SQ:   begin s2a <= sp_r * sp_r; s2b <= sp_i * sp_i; e2 <= ep * ep; st <= P_SUM; end
         P_SUM:  begin s2 <= s2a + s2b; st <= P_CMP; end
-        P_CMP:  begin lhs <= {s2, 8'd0}; rhs <= r_thr * e2; gate_e <= (ep >= {13'd0, r_emin}); st <= P_COND; end
+        P_CMP:  begin lhs <= {s2, 8'd0}; rhs <= r_thr * e2; gate_e <= (ep >= {13'd0, r_emin}) && ({1'b0, ea} <= {sum_e, 1'b0}); st <= P_COND; end
         P_COND: begin cond <= gate_e && (lhs >= rhs); st <= P_DEC; end
         P_DEC:  begin
                   w_cond <= cond; w_sr <= sum_r; w_si <= sum_i; w_e <= sum_e; w_n <= m_now - 32'd63;
