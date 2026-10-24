@@ -121,10 +121,10 @@ def receive_fixed(xi, xq, track_win=5, check=True):
         den = int(Hr[i]) ** 2 + int(Hi[i]) ** 2
         if den: Wr[i] = rdiv(int(Hr[i]) * K, den); Wi[i] = rdiv(-int(Hi[i]) * K, den)
     # data symbols
-    L = 44; Zr = np.zeros((L, len(USED)), dtype=np.int64); Zi = np.zeros_like(Zr); g = np.zeros((L, 2), dtype=np.int64); sl = np.zeros(L, dtype=np.int64)
+    L = 44; Zr = np.zeros((L, len(USED)), dtype=np.int64); Zi = np.zeros_like(Zr); g = np.zeros((L, 2), dtype=np.int64); sl = np.zeros(L, dtype=np.int64); wins = []
     for l in range(L):
         ws = s0 + 240 + l * SYM + CP - BACK
-        yr, yi = derotate(xi, xq, ws, N, s0, w, G); Yr, Yi = fft64(yr, yi); Yr, Yi = Yr[KB], Yi[KB]
+        yr, yi = derotate(xi, xq, ws, N, s0, w, G); wins.append((yr, yi)); Yr, Yi = fft64(yr, yi); Yr, Yi = Yr[KB], Yi[KB]
         Zr[l] = (Yr * Wr - Yi * Wi + 8192) >> 14; Zi[l] = (Yr * Wi + Yi * Wr + 8192) >> 14
         pol = Fm.POL[l]; ps = int(pol)
         qr = np.zeros(4, dtype=np.int64); qi = np.zeros(4, dtype=np.int64)
@@ -137,7 +137,8 @@ def receive_fixed(xi, xq, track_win=5, check=True):
         d11 = norm14(int(qr[3]) * int(qr[0]) + int(qi[3]) * int(qi[0]), int(qi[3]) * int(qr[0]) - int(qr[3]) * int(qi[0]))
         dr, di = d4[0] * d11[0] - d4[1] * d11[1], d4[0] * d11[1] + d4[1] * d11[0]
         sl[l] = (signed(Zc.cordic_turns20(dr, di), 20) * 139811) >> 10
-    half = track_win // 2; gs = np.zeros_like(g); ss = np.zeros_like(sl)
+    assert np.abs(Zr).max() < 2 ** 23 and np.abs(Zi).max() < 2 ** 23, "Z does not fit 24 bits"
+    half = track_win // 2; gs = np.zeros_like(g); ss = np.zeros_like(sl); g_raw, sl_raw = g.copy(), sl.copy()
     for l in range(L):
         lo, hi = max(0, l - half), min(L, l + half + 1); cnt = hi - lo; rc = (65536 + cnt // 2) // cnt
         gs[l] = ((g[lo:hi, 0].sum() * rc + 32768) >> 16, (g[lo:hi, 1].sum() * rc + 32768) >> 16); ss[l] = (sl[lo:hi].sum() * rc + 32768) >> 16
@@ -148,9 +149,10 @@ def receive_fixed(xi, xq, track_win=5, check=True):
         for j, kk in enumerate(DATA):
             th = (-int(ss[l]) * int(kk)) & 0xFFFFFFFF; c, s = int(COS_L[th >> 22]), int(SIN_L[th >> 22])
             cr_, ci_ = (ir * c - ii * s + 16384) >> 15, (ir * s + ii * c + 16384) >> 15
+            assert abs(cr_) < 2 ** 19 and abs(ci_) < 2 ** 19, "correction does not fit 20 bits"
             zr, zi = int(Zr[l, D_IDX[j]]), int(Zi[l, D_IDX[j]])
             out_r[l, j], out_i[l, j] = (zr * cr_ - zi * ci_ + 8192) >> 14, (zr * ci_ + zi * cr_ + 8192) >> 14
-    return dict(s0=s0, w_c=w_c, w_f=w_f, w=w, G=G, Zr=out_r, Zi=out_i, H=(Hr, Hi), W=(Wr, Wi), T1=(a_r, a_i), T2=(b_r, b_i), noise=noise, n0=n0, plateau=(first, last), g=gs, slope=ss, hz=signed(w, 32) / 2 ** 32 * Fm.FS)
+    return dict(s0=s0, w_c=w_c, w_f=w_f, w=w, G=G, Zr=out_r, Zi=out_i, H=(Hr, Hi), W=(Wr, Wi), T1=(a_r, a_i), T2=(b_r, b_i), wins=wins, Zeq=(Zr, Zi), g_raw=g_raw, sl_raw=sl_raw, noise=noise, n0=n0, plateau=(first, last), g=gs, slope=ss, hz=signed(w, 32) / 2 ** 32 * Fm.FS)
 
 
 LEVEL = lambda z: np.where(z < -8192, -3, np.where(z < 0, -1, np.where(z < 8192, 1, 3)))
