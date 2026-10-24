@@ -52,6 +52,33 @@ Unit average power per loaded subcarrier (the data, the pilots and the training 
 
 ![channel](../img/ofdm_fig_channel.png)
 
+### 4b. The detector against Schmidl and Cox (`ofdm_sync_compare.py`, `results_sync_compare.txt`)
+
+Schmidl and Cox (1997) use **one** OFDM symbol whose two halves are identical (only the even subcarriers are loaded), the correlation `P(d)` of the two halves (lag N/2 = 32, 32 products), the same energy normalisation `M = |P|^2/R^2`, and a plateau of the length of the cyclic prefix. The detector of section 4 is the Wi-Fi form of the same idea (a training field repeating every 16 samples, 48 products). Both were simulated in the same frame, channel (carrier +-20 kHz, delay 0 to 12 samples, 10 ppm) and receiver, with 80 samples (S&C) or 128 samples (STS) of preamble; the model option is `sync="sc_plateau"` (their 90 %-of-maximum plateau rule) or `"sc_argmax"` (the largest M); the frame stays 3840 samples.
+
+![detection compared](../img/ofdm_fig_sync_compare.png)
+
+| | STS, lag 16 (this plan) | Schmidl and Cox, plateau rule | S&C, argmax |
+|---|---|---|---|
+| Preamble length | 128 samples | **80 samples** (48 less) | 80 |
+| Plateau (positions with M near 1) | 65 | 17 (the cyclic prefix + 1) | - |
+| Start error std at 14 / 18 / 22 dB | 1.4 / 0.8 / 0.65 samples | 2.6 / 1.5 / 0.66 | 5.8 / 5.6 / 5.5 |
+| Frames outside the FFT-window tolerance (-10, +6) at 14 / 18 dB | 1.0 % / 0 | 3.6 % / 0.2 % | 26 % / 25 % |
+| EVM and SER at 22 dB (the receiver after it is the same) | -19.6 dB, 4e-5 | -19.6 dB, 4e-5 | -17.8 dB, 3e-2 |
+| False alarms on noise only (3000 frames), threshold 0.4 / 0.5 / 0.6 | 0 / 0 / 0 | 85 / 14 / 1 | 81 / 8 / 0 |
+| Carrier offset range (coarse estimate) | **+-120 kHz** (found and decoded to +115 kHz) | +-60 kHz = one subcarrier spacing (fails at +65 kHz and beyond: the estimate wraps) | same |
+| Detection at 14 dB and above | 100 % | 100 % | 100 % |
+| Timing bias with an echo of 0.5 / 0.7 at 8 samples | +1.8 / +3.5 samples | +2.6 / +3.0 | +3.5 / +3.8 |
+| First threshold crossing seen after | 59 samples | 58 samples | 58 |
+
+What it says:
+
+* **Schmidl and Cox works for this link and is as good as the STS at 22 dB and above** (identical EVM and SER), **if the plateau rule is used**: taking the largest M gives a start error of +-5.6 samples, a quarter of the frames fall outside the window tolerance and the link is lost (3e-2 SER). This is the "plateau problem" of the original paper: with a cyclic prefix the metric is flat over the prefix, and the position of the maximum is random inside it.
+* **Its advantage is the short preamble**: 48 samples fewer (1.3 % of the frame, 0.6 symbols), and one preamble symbol that is itself an OFDM symbol, which is neat to teach.
+* **The STS is more robust**: the longer plateau and the 48-product window give a smaller timing spread at 14 to 20 dB (0.8 to 1.4 against 1.5 to 2.6 samples; both far inside the 16-sample prefix), **no false alarm even at threshold 0.4** (S&C needs 0.6 to 0.7: 32 products give a noisier metric), and **twice the carrier range**. None of these matters for the natural offset of 9.7 kHz; the range matters if a transmitter is not locked to a good reference.
+* **The plan keeps the STS** for the first implementation and makes S&C the first alternative (`HALF`-style switch: `sync`/`preamble` in the model; a register selecting the lag, 16 or 32, and the window, 48 or 32, in the RTL costs nothing: the same detector with a different delay). Teach both: the lab compares them on the same recordings.
+* Both estimate the start about 0.3 samples late on average; the window offset `BACK` = 6 absorbs it.
+
 ## 5. What the float model says (`results_ofdm.txt`)
 
 | Study | Result |
@@ -132,4 +159,5 @@ Points the integer model must settle: the FFT scaling (a 64-point FFT grows nois
 |---|---|
 | `ofdm_model.py` | transmitter, channel, receiver (float); run it for a self test |
 | `ofdm_study.py` | the studies E1 to E8, writes `results_ofdm.txt` |
+| `ofdm_sync_compare.py` | the detector of this plan against Schmidl and Cox (section 4b), writes `results_sync_compare.txt` |
 | `make_figures_ofdm.py` | the figures in `tutorial/img/ofdm_fig_*.png` |

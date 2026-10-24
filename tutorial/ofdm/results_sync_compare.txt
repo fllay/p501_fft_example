@@ -1,0 +1,62 @@
+Detection compared: our delay-and-correlate on the 128-sample STS (lag 16, 48 products) against Schmidl and Cox (one 80-sample symbol, lag 32, 32 products), 500 trials per point, carrier +-20 kHz, delay 0 to 12 samples, 10 ppm, the same LTS, receiver and pilots after the detection
+The FFT window tolerates a start error between -10 and +6 samples (CP 16, BACK 6): 'outside' = the fraction of the frames beyond that.
+
+== T1: against the SNR per subcarrier
+Es/N0  method          detected  start error mean / std   outside   carrier err std   EVM       SER         first crossing seen after (samples from the preamble start)
+   6   sts16 (ours)     63.4 %    +7.73 / 17.09           68.1 %      1371 Hz           1.8 dB  7.3e-01     88.0
+   6   S&C, plateau     51.2 %    +0.57 /  5.56           22.7 %      1077 Hz          -2.2 dB  6.2e-01     67.1
+   6   S&C, argmax      51.2 %    -0.20 /  6.23           25.8 %      1092 Hz          -2.2 dB  6.3e-01     67.1
+
+  10   sts16 (ours)    100.0 %    +0.80 /  5.94           16.4 %       615 Hz          -6.8 dB  3.9e-01     61.0
+  10   S&C, plateau     99.6 %    +0.19 /  3.84            8.8 %       622 Hz          -7.2 dB  3.7e-01     61.4
+  10   S&C, argmax      99.6 %    +0.30 /  5.82           26.1 %       643 Hz          -6.9 dB  3.9e-01     61.4
+
+  14   sts16 (ours)    100.0 %    +0.40 /  1.41            1.0 %       361 Hz         -11.5 dB  1.1e-01     59.8
+  14   S&C, plateau    100.0 %    +0.20 /  2.60            3.6 %       375 Hz         -11.5 dB  1.2e-01     59.5
+  14   S&C, argmax     100.0 %    +0.35 /  5.77           26.2 %       396 Hz         -10.9 dB  1.6e-01     59.5
+
+  18   sts16 (ours)    100.0 %    +0.34 /  0.81            0.0 %       225 Hz         -15.6 dB  8.7e-03     59.3
+  18   S&C, plateau    100.0 %    +0.09 /  1.46            0.2 %       232 Hz         -15.6 dB  9.7e-03     58.4
+  18   S&C, argmax     100.0 %    +0.48 /  5.60           25.4 %       253 Hz         -14.4 dB  5.2e-02     58.4
+
+  22   sts16 (ours)    100.0 %    +0.32 /  0.65            0.0 %       143 Hz         -19.6 dB  4.2e-05     59.1
+  22   S&C, plateau    100.0 %    +0.05 /  0.66            0.0 %       146 Hz         -19.6 dB  4.0e-05     57.7
+  22   S&C, argmax     100.0 %    +0.53 /  5.55           24.2 %       168 Hz         -17.8 dB  3.4e-02     57.7
+
+  26   sts16 (ours)    100.0 %    +0.36 /  0.48            0.0 %        90 Hz         -23.5 dB  0.0e+00     59.0
+  26   S&C, plateau    100.0 %    +0.06 /  0.56            0.0 %        92 Hz         -23.5 dB  0.0e+00     57.4
+  26   S&C, argmax     100.0 %    +0.51 /  5.59           23.4 %       126 Hz         -20.9 dB  3.1e-02     57.4
+
+== T2: false alarms on noise only (3000 frames of 3840 samples)
+   sts16 (ours)   threshold 0.3: 1   0.4: 0   0.5: 0   0.6: 0   0.7: 0
+   S&C, plateau   threshold 0.3: 674   0.4: 85   0.5: 14   0.6: 1   0.7: 0
+   S&C, argmax    threshold 0.3: 704   0.4: 81   0.5: 8   0.6: 0   0.7: 0
+
+== T3: carrier offset range (Es/N0 22 dB, 150 trials each; found / EVM)
+offset    sts16 (ours)                  S&C, plateau                  S&C, argmax                   
+     +0   150 of 150, -19.6 dB          150 of 150, -19.5 dB          150 of 150, -17.7 dB          
+ +20000   150 of 150, -19.6 dB          150 of 150, -19.6 dB          150 of 150, -17.9 dB          
+ +40000   150 of 150, -19.6 dB          150 of 150, -19.5 dB          150 of 150, -17.9 dB          
+ +55000   150 of 150, -19.5 dB          150 of 150, -19.5 dB          150 of 150, -17.1 dB          
+ +65000   150 of 150, -19.5 dB          150 of 150, 22.9 dB           150 of 150, 22.7 dB           
+ +90000   150 of 150, -19.6 dB          150 of 150, 23.2 dB           150 of 150, 23.2 dB           
++115000   150 of 150, -19.6 dB          150 of 150, 22.8 dB           150 of 150, 22.4 dB           
+
+== T4: an echo (second tap) at 8 samples: the detector's timing bias and the EVM (Es/N0 22 dB, 150 trials)
+   echo 0.0  sts16 (ours)   start error  +0.32 /  0.63   outside   0.0 %   EVM  -19.5 dB  SER 3.2e-05
+   echo 0.0  S&C, plateau   start error  +0.01 /  0.67   outside   0.0 %   EVM  -19.5 dB  SER 3.2e-05
+   echo 0.0  S&C, argmax    start error  +0.43 /  5.61   outside  24.0 %   EVM  -17.6 dB  SER 3.6e-02
+   echo 0.5  sts16 (ours)   start error  +1.75 /  0.50   outside   0.0 %   EVM  -18.1 dB  SER 4.6e-03
+   echo 0.5  S&C, plateau   start error  +2.57 /  0.68   outside   0.0 %   EVM  -18.0 dB  SER 5.3e-03
+   echo 0.5  S&C, argmax    start error  +3.47 /  3.26   outside  30.7 %   EVM  -15.6 dB  SER 5.6e-02
+   echo 0.7  sts16 (ours)   start error  +3.46 /  0.83   outside   0.7 %   EVM  -16.4 dB  SER 2.3e-02
+   echo 0.7  S&C, plateau   start error  +2.97 /  0.55   outside   0.0 %   EVM  -16.3 dB  SER 2.4e-02
+   echo 0.7  S&C, argmax    start error  +3.77 /  3.04   outside  32.7 %   EVM  -13.6 dB  SER 9.8e-02
+
+== T5: detection probability against the threshold at 14 dB and 18 dB (500 trials): the price of a threshold high enough for the false-alarm rate
+   14 dB  sts16 (ours)   thr 0.5: 100.0 %   0.6: 100.0 %   0.7: 100.0 %
+   14 dB  S&C, plateau   thr 0.5: 100.0 %   0.6: 100.0 %   0.7: 100.0 %
+   18 dB  sts16 (ours)   thr 0.5: 100.0 %   0.6: 100.0 %   0.7: 100.0 %
+   18 dB  S&C, plateau   thr 0.5: 100.0 %   0.6: 100.0 %   0.7: 100.0 %
+
+(19 s)

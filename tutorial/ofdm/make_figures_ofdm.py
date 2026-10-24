@@ -93,3 +93,31 @@ names = ["none", "slow 137 Hz", "slow 5 kHz", "slow 30 kHz", "white"]; vals = {"
 fig, ax = plt.subplots(figsize=(9.5, 4.4)); w = 0.27
 for i, (k, v) in enumerate(vals.items()): ax.bar(np.arange(5) + (i - 1) * w, v, w, label=k)
 ax.set_xticks(range(5)); ax.set_xticklabels(names); ax.set(ylabel="EVM (dB)", title="Multiplicative modulation of variance 0.013 (-18.9 dB): the pilots remove the slow part"); ax.legend(fontsize=8); ax.grid(alpha=0.3, axis="y"); save(fig, "ofdm_fig_modulation.png")
+
+# 7. detection compared: our STS with lag 16 against Schmidl and Cox -----------------------------------------------------------------------------------------
+import ofdm_sync_compare as C
+fig, ax = plt.subplots(1, 3, figsize=(16.5, 4.4))
+for snr, ls in ((20, "-"), (12, ":")):
+    for (name, pre, sync), col in zip(C.METHODS[:2], (BLUE, ORANGE)):
+        xx, _ = M.tx_frame(preamble=pre); y = M.channel(xx, snr, cfo_hz=9700, tau=0.0, rng=np.random.default_rng(3), lead=300)
+        m, _ = M.timing_metric(y, 16, 48) if sync == "sts16" else M.timing_metric(y, 32, 32); ax[0].plot(np.arange(len(m))[200:480] - 300, m[200:480], ls, c=col, lw=1, label="%s, %d dB" % (name, snr))
+ax[0].set(xlabel="window start relative to the preamble start (samples)", ylabel="metric |S|^2 / E^2", title="the plateau: 65 positions (STS, lag 16) against 17 (S&C, lag 32)"); ax[0].legend(fontsize=7); ax[0].grid(alpha=0.3)
+pool = C.Pool(14); snrs = [8, 10, 12, 14, 16, 18, 20, 22]
+for (name, pre, sync), col in zip(C.METHODS, (BLUE, ORANGE, GREY)):
+    sd = []
+    for s in snrs:
+        res = [r for r in pool.map(C.trial, [(pre, sync, s, 100 + i, {}) for i in range(200)], chunksize=4) if r]; sd.append(np.std([r[0] for r in res]))
+    ax[1].semilogy(snrs, sd, "o-", c=col, label=name)
+ax[1].axhline(6, c=RED, ls="--"); ax[1].text(8.2, 6.5, "tolerance of the FFT window (+6 / -10)", color=RED, fontsize=7)
+ax[1].set(xlabel="Es/N0 per subcarrier (dB)", ylabel="start error, standard deviation (samples)", title="timing: S&C needs the plateau rule, argmax is too noisy"); ax[1].legend(fontsize=7); ax[1].grid(alpha=0.3, which="both")
+rng = np.random.default_rng(5); thr = [0.3, 0.4, 0.5, 0.6, 0.7]
+for (name, pre, sync), col in zip(C.METHODS[:2], (BLUE, ORANGE)):
+    fa = []
+    for t in thr:
+        n_fa = 0
+        for i in range(1500):
+            y = np.sqrt(0.5 * 10 ** (-20 / 10)) * (rng.standard_normal(3840) + 1j * rng.standard_normal(3840)); n_fa += (M.detect(y, t) if sync == "sts16" else M.detect_sc(y, t, "plateau")) is not None
+        fa.append(max(n_fa, 0.3) / 1500)
+    ax[2].semilogy(thr, fa, "o-", c=col, label=name)
+ax[2].set(xlabel="detection threshold", ylabel="false alarm per 3840-sample frame (noise only)", title="false alarms: S&C needs a threshold of 0.6 or more"); ax[2].legend(fontsize=7); ax[2].grid(alpha=0.3, which="both")
+fig.tight_layout(); save(fig, "ofdm_fig_sync_compare.png")

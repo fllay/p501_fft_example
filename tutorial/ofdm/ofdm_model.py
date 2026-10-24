@@ -47,6 +47,10 @@ def best_qpsk(n_search=4000, seed=7, ks=USED):
 PAPR_T, TRAIN = best_qpsk()
 STS_V = qpsk(np.random.default_rng(11), len(STS_K)) * np.sqrt(len(USED) / len(STS_K))        # same power per sample as a data symbol
 PIL_V = np.array([1 + 1j, 1 - 1j, -1 + 1j, -1 - 1j]) / np.sqrt(2)
+SC_K = np.array([k for k in USED if k % 2 == 0])                                                    # Schmidl and Cox: one symbol with only the even subcarriers loaded: two identical halves of 32 samples
+SC_V = qpsk(np.random.default_rng(13), len(SC_K)) * np.sqrt(len(USED) / len(SC_K))
+SC_LEN = SYM                                                                                         # 80 samples (CP 16 + 64)
+PRE_LEN = {"sts16": STS_LEN, "sc": SC_LEN}
 
 
 def pilot_polarity(n):
@@ -62,17 +66,20 @@ def qam_syms(bits):
     b = bits.reshape(-1, 4).astype(int); return F.qam(b[:, 0] * 8 + b[:, 1] * 4 + b[:, 2] * 2 + b[:, 3])
 
 
-def tx_frame(bits=None, rms=None):
+def tx_frame(bits=None, rms=None, preamble="sts16"):
     """-> samples (FRAME), the data symbols sent (L_SYM x 24)"""
     bits = payload_bits() if bits is None else bits
     d = qam_syms(bits).reshape(L_SYM, len(DATA)) * np.sqrt(10) / np.sqrt(10)          # F.qam is unit power already
-    sts = np.tile(to_time((STS_K, STS_V)), 2)[:STS_LEN]
+    if preamble == "sts16": sts = np.tile(to_time((STS_K, STS_V)), 2)[:STS_LEN]
+    else:
+        u = to_time((SC_K, SC_V)); sts = np.concatenate([u[-CP:], u])                                 # one symbol with a prefix: 80 samples, periodic with 32 over its whole length
     T = to_time((USED, TRAIN)); lts = np.concatenate([T[-2 * CP:], T, T])
     syms = []
     for l in range(L_SYM):
         X = np.zeros(N, complex); X[bin_of(DATA)] = d[l]; X[bin_of(PIL)] = PIL_V * POL[l]
         x = np.fft.ifft(X) * np.sqrt(N); syms.append(np.concatenate([x[-CP:], x]))
-    x = np.concatenate([sts, lts] + syms + [np.zeros(GAP, complex)])
+    gap = FRAME - len(sts) - LTS_LEN - L_SYM * SYM                                                      # the frame stays 3840 samples
+    x = np.concatenate([sts, lts] + syms + [np.zeros(gap, complex)])
     return x, d
 
 
@@ -111,16 +118,30 @@ def detect(x, thr=0.5, lag=16):
     return s0, f, M
 
 
-def receive(x, track="complex", genie=None, thr=0.5, return_all=False, gsmooth=1):
+def detect_sc(x, thr=0.5, rule="plateau"):
+    """Schmidl and Cox: M(d) = |P(d)|^2 / R(d)^2 with P = sum of 32 products at lag 32 (the two halves of the training symbol). The window fits inside the periodic symbol for the 17 positions of the cyclic prefix: the plateau.
+    rule 'argmax': the position of the largest M; 'plateau': the centre of the positions where M is above 90 % of its maximum (their own proposal). The plateau is [u - 16, u] for the start u of the 64-sample part: symbol start = centre - 8."""
+    M, S = timing_metric(x, 32, 32)
+    idx = np.nonzero(M > thr)[0]
+    if len(idx) == 0: return None
+    n0 = idx[0]; seg = M[n0:n0 + 70]; pk = seg.max()
+    c = n0 + (int(np.argmax(seg)) if rule == "argmax" else 0.5 * (np.nonzero(seg >= 0.9 * pk)[0][0] + np.nonzero(seg >= 0.9 * pk)[0][-1]))
+    s0 = int(round(c - 8))
+    pl = np.nonzero(seg >= 0.9 * pk)[0]; f = np.angle(np.sum(S[n0 + pl[0]:n0 + pl[-1] + 1])) / (2 * np.pi * 32 / FS)
+    return s0, f, M
+
+
+def receive(x, track="complex", genie=None, thr=0.5, return_all=False, gsmooth=1, sync="sts16"):
     """x: received samples (noise, then a frame). genie = (s0, cfo_hz): skip the detection. track: none | phase | complex | complex+slope (what the pilots correct per symbol).
     gsmooth: the pilot gain (and slope) estimates are averaged over this many symbols (centred moving average; 1 = none)"""
     if genie is None:
-        d = detect(x, thr)
+        d = detect(x, thr) if sync == "sts16" else detect_sc(x, thr, "argmax" if sync == "sc_argmax" else "plateau")
         if d is None: return None
         s0, f_c, _ = d
     else: s0, f_c = genie
+    PL = PRE_LEN["sts16" if sync == "sts16" else "sc"]
     n = np.arange(len(x)); xr = x * np.exp(-2j * np.pi * f_c / FS * (n - s0))                            # coarse correction
-    t1 = s0 + STS_LEN + 2 * CP - BACK
+    t1 = s0 + PL + 2 * CP - BACK
     if t1 < 0 or t1 + 2 * N > len(x): return None
     T1, T2 = xr[t1:t1 + N], xr[t1 + N:t1 + 2 * N]
     f_f = np.angle(np.sum(T2 * np.conj(T1))) / (2 * np.pi * N / FS)
@@ -129,7 +150,7 @@ def receive(x, track="complex", genie=None, thr=0.5, return_all=False, gsmooth=1
     H = 0.5 * (A[kb] + B[kb]) * np.conj(TRAIN)                                                           # |TRAIN| = 1
     sig2 = np.mean(np.abs(A[kb] - B[kb]) ** 2) / 2                                                       # noise variance per bin from the two equal symbols
     Hd = dict(zip(USED, H)); Hdat = np.array([Hd[k] for k in DATA]); Hpil = np.array([Hd[k] for k in PIL])
-    base = s0 + STS_LEN + LTS_LEN
+    base = s0 + PL + LTS_LEN
     if base + L_SYM * SYM > len(xr): return None
     Zd, Zp, g, sl = [], [], np.zeros(L_SYM, complex), np.zeros(L_SYM)
     for l in range(L_SYM):
