@@ -27,6 +27,7 @@ module ofdm_detect (
   output reg  signed [39:0] o_sr, o_si,
   output reg  [10:0] o_pk,
   output reg         late,
+  output wire        ready,                  // the processing of the last sample is finished (the next sample may come)
   output reg         w_pulse,
   output reg  [31:0] w_n,
   output reg         w_cond,
@@ -75,6 +76,7 @@ module ofdm_detect (
   reg [24:0] gd_rem; reg [23:0] gd_num; reg [11:0] gd_den; reg [4:0] gd_it; reg [23:0] gd_q;
   wire [11:0] isq_c = (isq == 0) ? 12'd1 : isq;
 
+  assign ready = (st == P_IDLE) && run;
   initial begin st = P_IDLE; cnt = 0; wp = 0; collecting = 0; late = 0; sum_r = 0; sum_i = 0; sum_e = 0; end
   always @(posedge clk) begin
     found <= 1'b0; w_pulse <= 1'b0; cord_start <= 1'b0;

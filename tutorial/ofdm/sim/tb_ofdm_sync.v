@@ -6,7 +6,7 @@ module tb_ofdm_sync;
   wire found, late, w_pulse, w_cond; wire [31:0] o_n0, w_n; wire [6:0] o_first, o_last, o_pkidx; wire signed [31:0] o_s0, o_wc; wire [15:0] o_gain; wire [28:0] o_epk, w_e; wire signed [39:0] o_sr, o_si; wire [10:0] o_pk;
   wire signed [29:0] w_sr, w_si;
   ofdm_detect dut (.clk(clk), .run(run), .s_valid(valid), .xi(xi), .xq(xq), .r_thr(8'd166), .r_emin(8'd4), .r_target(16'd400), .found(found), .o_n0(o_n0), .o_first(o_first), .o_last(o_last), .o_pkidx(o_pkidx),
-    .o_s0(o_s0), .o_wc(o_wc), .o_gain(o_gain), .o_epk(o_epk), .o_sr(o_sr), .o_si(o_si), .o_pk(o_pk), .late(late), .w_pulse(w_pulse), .w_n(w_n), .w_cond(w_cond), .w_sr(w_sr), .w_si(w_si), .w_e(w_e));
+    .o_s0(o_s0), .o_wc(o_wc), .o_gain(o_gain), .o_epk(o_epk), .o_sr(o_sr), .o_si(o_si), .o_pk(o_pk), .late(late), .ready(), .w_pulse(w_pulse), .w_n(w_n), .w_cond(w_cond), .w_sr(w_sr), .w_si(w_si), .w_e(w_e));
   parameter NS = 2000;
   reg [31:0] samples [0:NS-1];
   integer fw, fr, k, spacing, nsym, waited; reg [1023:0] hexname; reg got = 0;
