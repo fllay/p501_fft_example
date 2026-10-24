@@ -30,7 +30,7 @@ The four QPSK receiver chains (FLL, 4th-power estimator, chain 3, frame sync) ar
 | 1. FFT / DDS | built, verified on the board, three tutorials and notebooks |
 | 2. QPSK | all five receiver variants built and run on the board (P501 to P501, B210 to P501 error-free at 80 dB B210 gain); tutorial document, GNU Radio flowgraphs, live notebooks |
 | 3. 16-QAM | receiver, transmitter and overlay verified in the digital loopback (EVM -30 dB, 0 errors in 1.75 M symbols) and over the air (P501 to P501 -22.8 dB, P501 to B210 -19.6 dB, B210 to P501 -22 dB in a good state and -10 to -17 dB in a bad state of the B210 transmitter: see the link report); live notebook, GNU Radio flowgraphs |
-| next | chirp spread spectrum, OFDM, then forward error correction and an application (roadmap below); the FEC study is done in simulation (polar code with CRC-aided list decoding chosen, `tutorial/qam16/results_fec.txt`) and waits for its stage |
+| next | OFDM (the design is done), chirp spread spectrum, then forward error correction and an application (roadmap below); the FEC study is done in simulation (polar code with CRC-aided list decoding chosen, `tutorial/qam16/results_fec.txt`) and waits for its stage |
 
 ### Roadmap: a lab course in digital modulation on the P501
 
@@ -41,8 +41,8 @@ Each stage is an overlay plus a notebook, a bit-exact Python model, and a refere
 | 1 | FFT and DDS in the FPGA | done |
 | 2 | QPSK with the synchronisation variants (Costas, FLL, 4th-power estimator, m-sequence frame sync) | done |
 | 3 | 16-QAM with a Zadoff-Chu frame synchroniser (advanced: 7.3 dB more SNR than QPSK, see the link report) | done |
-| 4 | Chirp spread spectrum (LoRa-style): dechirp and FFT peak, the FFT block of stage 1 reused; low rate, very robust; separating timing from carrier offset with up- and down-chirps | planned |
-| 5 | OFDM: IFFT and cyclic prefix, Schmidl-Cox detection, carrier offset (the natural 9.7 kHz is a large part of a 15 kHz subcarrier spacing), channel estimate from a known symbol, BPSK pilots for phase tracking, QAM data subcarriers | planned |
+| 4 | OFDM, 16-QAM data with QPSK training and pilots: IFFT and cyclic prefix, detection by delay-and-correlate, carrier offset (the natural 9.7 kHz is 0.16 of the 60 kHz spacing), channel estimate from known QPSK training symbols, per-symbol pilot correction; N = 64 at 3.84 MS/s, 28 used subcarriers, 4.2 Mb/s | designed and checked in a float model: [plan](tutorial/ofdm/PLAN_OFDM.md), nothing built yet |
+| 5 | Chirp spread spectrum (LoRa-style): dechirp and FFT peak, the FFT block of stage 1 reused; low rate, very robust; separating timing from carrier offset with up- and down-chirps | planned (after OFDM) |
 | 6 | Forward error correction, common to all of them (convolutional code with Viterbi; polar code with CRC-aided list decoding as the advanced version) | simulated (`tutorial/qam16/LINK_REPORT_QAM16.md` section 10) |
 | 7 | An application: chat (chirp spread spectrum or QPSK, low rate, software decoder) or picture / video (16-QAM or OFDM with FEC, about 1.9 Mb/s at rate 1/2) | planned |
 

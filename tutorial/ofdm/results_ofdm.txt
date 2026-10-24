@@ -1,0 +1,77 @@
+OFDM design studies: N=64, CP=16, 28 used subcarriers (24 16-QAM data, 4 QPSK pilots), 44 data symbols per frame, training QPSK (PAPR 3.62 dB)
+
+== E1: symbol error rate and EVM against the SNR per subcarrier (Es/N0), 300 frames per point (genie: perfect timing and carrier; full: random carrier +-15 kHz, delay 0 to 12 samples, 10 ppm, detection and estimation)
+Es/N0   theory SER   genie SER   genie EVM   full SER   full EVM   missed
+   12   1.09e-01     2.50e-01      -9.1 dB   2.61e-01     -8.8 dB   0
+   14   3.72e-02     1.29e-01     -11.2 dB   1.34e-01    -11.0 dB   0
+   16   7.15e-03     4.92e-02     -13.2 dB   5.14e-02    -13.1 dB   0
+   18   5.73e-04     1.21e-02     -15.3 dB   1.29e-02    -15.2 dB   0
+   20   1.16e-05     1.56e-03     -17.3 dB   1.83e-03    -17.2 dB   0
+   22   2.70e-08     8.52e-05     -19.3 dB   9.15e-05    -19.1 dB   0
+   24   2.04e-12     0.00e+00     -21.3 dB   3.16e-06    -21.1 dB   0
+   26   6.80e-19     0.00e+00     -23.3 dB   0.00e+00    -23.0 dB   0
+   28   4.19e-29     0.00e+00     -25.3 dB   0.00e+00    -24.9 dB   0
+
+== E1b: the estimation loss and what reduces it (genie, 300 frames; EVM in dB, SNR per subcarrier 20 dB: ideal receiver would give -20.0 dB)
+pilot correction                       EVM        SER
+complex gain, per symbol                -17.2 dB   1.64e-03
+complex gain, average of 3 symbols      -17.6 dB   9.28e-04
+complex gain, average of 5 symbols      -17.7 dB   8.02e-04
+phase only, per symbol                  -17.7 dB   1.17e-03
+phase only, average of 5                -18.0 dB   6.63e-04
+none                                     -7.4 dB   4.26e-01
+
+== E2: detection and estimation against the SNR (500 frames each, carrier +-20 kHz, delay 0 to 12 samples, threshold 0.5)
+Es/N0   detected   STS start error (samples) mean / std   carrier error std (Hz)
+    4     8.0 %    +0.68 / 16.73                            1347
+    8    99.4 %    +1.80 / 9.42                             866
+   12   100.0 %    +0.43 / 2.70                             507
+   16   100.0 %    +0.36 / 0.93                             314
+   20   100.0 %    +0.37 / 0.73                             196
+   24   100.0 %    +0.32 / 0.55                             125
+false alarms on noise only (3840 samples, 3000 trials): 0
+
+== E3: peak-to-average power ratio (CCDF): power above the mean at the given probability
+   OFDM data symbols (28 used)        1e-2: 6.5 dB   1e-3: 8.2 dB   1e-4: 9.4 dB   max: 10.7 dB
+   single-carrier 16-QAM, RRC 0.35    1e-2: 4.4 dB   1e-3: 5.1 dB   1e-4: 5.6 dB   max: 5.9 dB
+
+== E4: the training symbol: QPSK against BPSK
+   PAPR of the 64-sample training symbol over 4000 random sequences: QPSK mean 6.5 dB, best 4.0 dB;  BPSK mean 6.0 dB, best 2.8 dB;  the chosen QPSK sequence: 3.62 dB
+   channel estimate error (two training symbols averaged, Es/N0 15 dB): QPSK 1.58e-02, BPSK 1.57e-02 (theory sigma^2/2 = 1.58e-02): equal, the same energy per subcarrier
+
+== E5: multipath inside and outside the cyclic prefix (Es/N0 24 dB, 150 frames): two taps, the second at the given delay with -6 dB
+delay (samples)   EVM        SER
+       0           -21.1 dB   1.26e-05   (150 of 150 frames found)
+       2           -19.7 dB   1.10e-03   (150 of 150 frames found)
+       5           -20.0 dB   7.77e-04   (150 of 150 frames found)
+       8           -19.4 dB   1.17e-03   (150 of 150 frames found)
+      10           -19.7 dB   7.07e-04   (150 of 150 frames found)
+      12           -18.6 dB   4.05e-03   (150 of 150 frames found)
+      16           -13.7 dB   1.38e-01   (150 of 150 frames found)
+      24            -8.0 dB   2.76e-01   (150 of 150 frames found)
+
+== E6: multiplicative modulation of the signal of variance 0.013 (-18.9 dB, the 'bad state' of the link report), Es/N0 35 dB, carrier 9.7 kHz, 150 frames: EVM by the pilots' correction
+modulation                     none       phase      complex    complex+slope   complex, 5-symbol average
+none (reference)              -22.6 dB   -30.9 dB   -30.7 dB   -31.5 dB       -31.1 dB
+slow, 137 Hz                  -21.3 dB   -27.0 dB   -30.7 dB   -31.4 dB       -31.0 dB
+slow, 5 kHz                    -1.3 dB   -18.8 dB   -28.2 dB   -28.0 dB       -24.4 dB
+slow, 30 kHz                    2.5 dB   -16.4 dB   -16.5 dB   -16.1 dB       -15.0 dB
+white (every sample)           -9.0 dB   -19.9 dB   -19.5 dB   -19.2 dB       -19.9 dB
+
+== E7: sample clock offset (Es/N0 35 dB, 150 frames)
+ppm     EVM, phase    complex    complex+slope
+   0     -32.6 dB     -32.2 dB     -31.7 dB
+  30     -25.2 dB     -25.4 dB     -30.2 dB
+ 100     -15.3 dB     -15.2 dB     -25.9 dB
+ 300      -5.7 dB      -4.0 dB     -27.7 dB
+
+== E8: carrier offset range (Es/N0 25 dB, 100 frames each)
+        +0 Hz: found 100 of 100, EVM -22.1 dB, SER 0.00e+00
+    +10000 Hz: found 100 of 100, EVM -22.1 dB, SER 0.00e+00
+    +25000 Hz: found 100 of 100, EVM -22.0 dB, SER 0.00e+00
+    +50000 Hz: found 100 of 100, EVM -22.0 dB, SER 0.00e+00
+    +80000 Hz: found 100 of 100, EVM -22.1 dB, SER 0.00e+00
+   +110000 Hz: found 100 of 100, EVM -22.0 dB, SER 0.00e+00
+   +130000 Hz: found 100 of 100, EVM 12.2 dB, SER 9.38e-01
+
+(9 s)
