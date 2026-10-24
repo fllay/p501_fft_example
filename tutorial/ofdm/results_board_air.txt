@@ -1,0 +1,25 @@
+OFDM receiver over the air, P501 TX1 -> RX1 (2026-10-24), overlay p501_ofdm_rx_sc, 915 MHz, RX gain index 70, antennas a few cm apart. The frame (make_ofdm_frame.py) goes out through the DAC DMA as a cyclic buffer, buffer level 500
+(rms of the 16-bit DAC values / 16: peaks at 0.84 of the DAC full scale). Counters are cumulative: the numbers are the differences over the window, after the third frame and 0.3 s. EVM, SNR, carrier, level: the last frame of the window
+(SNR: from the two training symbols, additive noise only; level: from the detector's gain, rms counts at the ADC).
+
+A. TX attenuation 20, 30, 40 dB (2 s windows)
+ atten  frames  found  rejected  bad   symbol errors          SER       EVM      SNR      level
+  20     2003    2003     0       2    1045 of 2,116,224     4.9e-4   -19.0 dB  23.7 dB   65 counts
+  30     1984    1995    11     1968  651,318 of 2,095,104   3.1e-1    -8.3 dB   8.5 dB   24 counts
+  40      226    8950  8723     226  195,788 of 238,656      8.2e-1    +0.3 dB   2.8 dB   13 counts   (no usable lock: 8723 rejected)
+
+B. finer sweep (5 s windows)
+ 20     5006    5006     0       3    2375 of 5,286,336      4.5e-4   -17.9 dB  22.8 dB   64 counts
+ 22     5002    5002     0      33   25,690 of 5,282,112     4.9e-3   -17.4 dB  20.9 dB   52 counts
+ 24     5006    5006     0      94  117,850 of 5,286,336     2.2e-2   -11.0 dB  18.8 dB   40 counts   (the last frame happened to be a bad one)
+ 26     5004    5004     0     250  387,367 of 5,284,224     7.3e-2   -13.9 dB  15.9 dB   32 counts
+ 28     5006    5006     0     835  896,123 of 5,286,336     1.7e-1   -12.4 dB  14.0 dB   27 counts
+ The frame rate is 1001 per second and every frame is found at 28 dB and above in level; the errors follow the SNR: the AWGN model of PLAN_OFDM.md (SER 1e-3 at about 19.8 dB per subcarrier, 5e-2 at 16 dB, 0.13 at 14 dB) is matched to within 1 dB
+ at SNR 14 to 21 dB (measured SER 0.17, 7.3e-2, 2.2e-2, 4.9e-3 at SNR 14.0, 15.9, 18.8, 20.9); at 20 dB attenuation (SNR 23) the EVM is -18 to -19 dB, about 2.5 dB worse than the model's -20.4 dB: a signal-proportional floor of about -20 dB.
+
+C. the same settings after six repeated AD9361 bring-ups (20 dB, 2 s each)
+ EVM -19.3, -18.8, -18.3, -19.1, -16.2 dB; SNR 22.4, 23.4, 21.9, 24.0, 18.4 dB; level 60, 62, 63, 61, 46 counts; symbol errors 7.5e-4, 1.1e-3, 4.1e-4, 1.2e-3, 1.2e-2 (bad frames 3, 5, 1, 5, 21 of 2003).
+ The received level varies by up to 2.5 dB between bring-ups (the analog state of the AD9361 is random after every start); the link at 20 dB attenuation works every time with SER 4e-4 to 1.2e-3 except in the bring-up with the lowest level.
+
+D. the same radiated power from different digital drive (4 s windows): attenuation 22 dB with buffer level 500 / 16 dB with 250 / 10 dB with 125:
+ SER 5.3e-3 / 4.4e-3 / 6.8e-3; EVM -17.3 / -16.9 / -16.3 dB; SNR 20.6 / 19.9 / 18.5 dB: no difference: the floor is not the digital clipping of the frame (peaks at 0.84 of full scale at level 500).
