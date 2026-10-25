@@ -50,6 +50,18 @@ class P501OfdmRx:
     def arm_capture(self):
         c = self.ip.read(REG["CTRL"]); self.ip.write(REG["CTRL"], c & ~2); self.ip.write(REG["CTRL"], c | 2)
 
+    def poll_capture(self, rearm_s=0.25):
+        """(z, h) of a new frame, or None if there is none yet: z the first 1024 corrected data symbols (as capture()), h the channel estimate (as channel()[1]); a capture is armed again straight after it was read.
+        The receiver consumes an arm at the start of the next detected frame: if that frame is then rejected (a false detection, a weak signal) the capture never completes and capture_done stays 0,
+        so an arm that has not delivered within rearm_s seconds is made again (a plain 'if capture_done: read; arm' loop freezes the constellation for good after one rejected frame)."""
+        now = time.time()
+        if self.r("STATUS") & 2:
+            z = self.capture(); h = self.channel()[1]; self.arm_capture(); self._t_arm = now
+            return z, h
+        if now - getattr(self, "_t_arm", 0.0) > rearm_s:
+            self.arm_capture(); self._t_arm = now
+        return None
+
     def wait_frames(self, n=1, timeout_s=2.0):
         f0 = self.r("FRAMES"); t0 = time.time()
         while self.r("FRAMES") - f0 < n:
