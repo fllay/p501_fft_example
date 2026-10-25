@@ -77,6 +77,20 @@ blocks:
   name: capture_file
   id: variable
 - parameters:
+    value: '0.1'
+    comment: 'energy guard: a window counts only if its energy is at least this fraction of the long-term average (0.1 = -10 dB). A constant, a DC offset or noise that is not much weaker than the signal looks like a periodic signal to the S&C metric (M reaches 1 in the idle slot) whatever its level; the FPGA has the same guard as an absolute level (EMIN)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 250
+    rotation: 0
+    state: enabled
+  name: guard_level
+  id: variable
+- parameters:
     num_tabs: '6'
     label0: 1 Received signal
     label1: 2 Frame detection (Schmidl-Cox)
@@ -683,14 +697,46 @@ blocks:
   name: rx_in
   id: blocks_copy
 - parameters:
+    type: complex
+    alpha: 1e-4
     vlen: '1'
-    comment: '|x|: the frames (3760 active samples of 3840) with the idle slot between them'
+    comment: 'the DC offset (the local oscillator leakage of the B210, the spike at 0 Hz of the spectrum) as a very slow low-pass: the time constant is 10000 samples'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
     coordinate:
-    - 300
+    - 760
+    - 700
+    rotation: 0
+    state: enabled
+  name: dc_iir
+  id: single_pole_iir_filter_xx
+- parameters:
+    type: complex
+    num_inputs: '2'
+    vlen: '1'
+    comment: x minus its DC. Without this the idle slot (80 samples with only noise and the DC) looks like a periodic signal to the S&C metric and fires the detector one symbol before the real S&C symbol
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 960
+    - 700
+    rotation: 0
+    state: enabled
+  name: dc_sub
+  id: blocks_sub_xx
+- parameters:
+    vlen: '1'
+    comment: '|x| after the DC removal: the frames (3760 active samples of 3840) with the idle slot between them'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1160
     - 700
     rotation: 0
     state: enabled
@@ -746,7 +792,7 @@ blocks:
     legend: 'False'
     maxoutbuf: '0'
     minoutbuf: '0'
-    name: '"received spectrum: 28 subcarriers of 60 kHz = 1.7 MHz wide"'
+    name: '"received spectrum (raw): 28 subcarriers of 60 kHz = 1.7 MHz wide; the spike at 0 is the DC / LO leakage"'
     nconnections: '1'
     norm_window: 'False'
     showports: 'False'
@@ -875,7 +921,7 @@ blocks:
     bus_structure: null
     coordinate:
     - 560
-    - 840
+    - 900
     rotation: 0
     state: enabled
 - parameters:
@@ -1022,6 +1068,70 @@ blocks:
   id: blocks_multiply_xx
 - parameters:
     type: float
+    alpha: '2.4e-4'
+    vlen: '1'
+    comment: the long-term average power P of the signal (time constant 4096 samples, about 1 frame)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 240
+    - 1240
+    rotation: 0
+    state: enabled
+  name: guard_avg
+  id: single_pole_iir_filter_xx
+- parameters:
+    type: float
+    num_inputs: '2'
+    vlen: '1'
+    comment: P^2
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 440
+    - 1240
+    rotation: 0
+    state: enabled
+  name: guard_sq
+  id: blocks_multiply_xx
+- parameters:
+    type: float
+    const: (guard_level * 32) ** 2
+    vlen: '1'
+    comment: '(guard_level 32 P)^2: the square of the smallest window energy that may count'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 640
+    - 1240
+    rotation: 0
+    state: enabled
+  name: guard_k
+  id: blocks_multiply_const_vxx
+- parameters:
+    type: float
+    num_inputs: '2'
+    vlen: '1'
+    comment: 'Ea Eb + guard: in the idle slot Ea Eb is far below the guard, so M = |S|^2 / (Ea Eb + guard) is small there whatever the content of the slot; in the frame Ea Eb is far above it and M is unchanged'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 840
+    - 1240
+    rotation: 0
+    state: enabled
+  name: guard_add
+  id: blocks_add_xx
+- parameters:
+    type: float
     const: 1e-12
     vlen: '1'
     comment: avoids a division by zero
@@ -1040,7 +1150,7 @@ blocks:
     type: float
     num_inputs: '2'
     vlen: '1'
-    comment: 'M[n] = |S|^2 / (Ea Eb): about 1 (a plateau of 17 samples) when the last 64 samples are the S&C symbol, small everywhere else'
+    comment: 'M[n] = |S|^2 / (Ea Eb + guard): about 1 (a plateau of 17 samples) when the last 64 samples are the S&C symbol, small everywhere else'
   states:
     bus_sink: false
     bus_source: false
@@ -2322,6 +2432,18 @@ connections:
   - '0'
 - - rx_in
   - '0'
+  - dc_iir
+  - '0'
+- - rx_in
+  - '0'
+  - dc_sub
+  - '0'
+- - dc_iir
+  - '0'
+  - dc_sub
+  - '1'
+- - dc_sub
+  - '0'
   - x_mag
   - '0'
 - - rx_in
@@ -2332,7 +2454,7 @@ connections:
   - '0'
   - time_sink_rx
   - '0'
-- - rx_in
+- - dc_sub
   - '0'
   - sc_delay
   - '0'
@@ -2340,7 +2462,7 @@ connections:
   - '0'
   - sc_conj
   - '0'
-- - rx_in
+- - dc_sub
   - '0'
   - sc_mult
   - '0'
@@ -2356,7 +2478,7 @@ connections:
   - '0'
   - sc_mag2
   - '0'
-- - rx_in
+- - dc_sub
   - '0'
   - en_mag2
   - '0'
@@ -2376,7 +2498,31 @@ connections:
   - '0'
   - en_mult
   - '0'
+- - en_mag2
+  - '0'
+  - guard_avg
+  - '0'
+- - guard_avg
+  - '0'
+  - guard_sq
+  - '0'
+- - guard_avg
+  - '0'
+  - guard_sq
+  - '1'
+- - guard_sq
+  - '0'
+  - guard_k
+  - '0'
 - - en_mult
+  - '0'
+  - guard_add
+  - '0'
+- - guard_k
+  - '0'
+  - guard_add
+  - '1'
+- - guard_add
   - '0'
   - en_eps
   - '0'
@@ -2396,7 +2542,7 @@ connections:
   - '0'
   - time_sink_m
   - '1'
-- - rx_in
+- - dc_sub
   - '0'
   - det
   - '0'
