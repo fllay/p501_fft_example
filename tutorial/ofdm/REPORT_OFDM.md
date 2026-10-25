@@ -93,6 +93,6 @@ Start the transmitter first and the receiver 10 s later (as the notebook says), 
 
 ## 5. Not verified
 
-* The B210 as a receiver was checked by you (tabs show data); I did not run it on the B210 myself.
+* The B210 as a receiver was run by you, not by me: the six tabs of `ofdm_b210_frame_rx.grc` with the P501 transmitting are in `img/ofdm_real_grc_rx_*.png` and read in `TUTORIAL_OFDM.md` section C.5 (one spike of M per frame, accepted = 1, carrier -8447 Hz, 25,212 frames decoded, SER 1.4e-3 since the start); the SNR of that session was not measured.
 * The gain sweep is one antenna position and 15 restarts; the earlier bad states did not reappear, so their cause is still not known.
 * The SER of 6e-5 at 76 dB and 3e-3 at 72 dB is the SNR floor of this antenna position; a cable with a step attenuator would give a real SER against SNR curve (the AWGN model predicts the P501 to P501 curve above 19 dB; the B210 curve was not compared).

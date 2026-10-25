@@ -227,11 +227,47 @@ The spectrum and the envelope are the *baseband signal that goes into the B210*:
 | 5 Channel estimate | **channel estimator** | `|H|` and arg H against k |
 | 6 Equalizer and decisions | **equalizer and pilot tracking**, **slicer**, **symbol error counter** | the 16 clusters; arg g and |g| per symbol; SER, errors, frames decoded |
 
-![tab 2 on a recording](img/ofdm_t_grc_tab2.png)
+The controls on top of the window: **RX gain**, **S&C threshold**, **decode 1 frame in N** and **pilot smoothing**.
 
-![tab 4 on a recording](img/ofdm_t_grc_tab4.png)
+### A real run of the receiver: the P501 transmits, the B210 receives
 
-(Screenshots of the flowgraph on a recording made with the model, 30 dB SNR and a DC offset: one spike of M per frame, and the occupied band of 28 subcarriers with the unused DC.) The controls on top: **RX gain**, **S&C threshold**, **decode 1 frame in N** and **pilot smoothing**.
+The six tabs of one session: the P501 transmits the frame from its DAC through TX1 (the notebook, *Level* 500), the B210 receives it at 850 MHz with the RX gain at 45 dB, antennas a few centimetres apart, `ofdm_b210_frame_rx.grc` with its default controls (threshold 0.65, decode 1 frame in 8, pilot smoothing 5).
+
+**Tab 1: the received signal.**
+
+![tab 1](img/ofdm_real_grc_rx_1.png)
+
+The spectrum (raw, before the DC removal) shows the band of the 28 subcarriers, 1.7 MHz wide and about 25 dB above the skirts, and the spike at 0 Hz: the DC and LO leakage, about 14 dB above the band (the reason for the DC removal). In `|x|` (after the DC removal) the idle slot is the short low stretch just before 500 us and 1500 us (the frames repeat every 1000 us).
+
+**Tab 2: frame detection.**
+
+![tab 2](img/ofdm_real_grc_rx_2.png)
+
+M is below 0.4 almost everywhere and reaches 0.98 once per frame, at the same place 1000 us later: **one spike per frame**, well above the red threshold (0.65). The spikes are 17 samples (4.4 us) wide. This is the picture that was *two spikes per frame* before the DC removal and the guard (A.5).
+
+**Tab 3: the frame and the carrier correction.**
+
+![tab 3](img/ofdm_real_grc_rx_3.png)
+
+The 3760 samples of a frame after the corrections (unit rms: the gain of the detector's tag): no gap, no step at the training symbols (T1 and T2 have the same power as the data). The number sinks: the carrier offset **-8447 Hz** (the sign is the other way from the P501-as-receiver tests: here the B210 receives, and the offset is the difference of the two references seen from the other side) and **accepted = 1**: the frame passed the T1/T2 check.
+
+**Tab 4: the FFT.**
+
+![tab 4](img/ofdm_real_grc_rx_4.png)
+
+The mean `|FFT|` of 64 symbols: 28 bins at about 1.4, and nothing outside (k = -14 to +14); the bin k = 0 is higher, the DC of the front end, which carries no data. Below: the used bins of the data symbols *before* the equaliser, as a constellation: points on rings of three radii (the three distinct amplitudes of 16-QAM), turned by the channel and the carrier differently on every subcarrier, as in the left panel of the figure of A.8.
+
+**Tab 5: the channel estimate.**
+
+![tab 5](img/ofdm_real_grc_rx_5.png)
+
+`|H|` is flat within about 10 % (the dip at k = 0 is the unused DC: no training value there), and arg H is a **straight line with wraps**: the delay of the FFT window (6 samples early) and the timing error; the equaliser removes it with the channel.
+
+**Tab 6: the equaliser and the decisions.**
+
+![tab 6](img/ofdm_real_grc_rx_6.png)
+
+16 clusters; the spread and the error rate below correspond to an EVM of about -17 dB (estimated, the EVM is not displayed in this flowgraph). The right-hand plot is arg g and |g| of the pilots per symbol: **|g| stays at 1** (the gain), and **arg g is a sawtooth**: within each frame (each ramp is one decoded frame, the frames shown are 8 apart) the common phase drifts by up to 2.5 radians over the 44 symbols, a residual carrier offset of a few hundred hertz that the fine estimate of one frame leaves at this SNR, and it starts again near zero in the next frame. The pilots remove exactly this drift, which is why the clusters are not smeared into arcs. The counters at the bottom: **25,212 frames decoded, 37,419 symbol errors, SER 1.4e-3 since the start** (decode 1 in 8: about 200 s of reception; 26.6 million symbols). The error rate lies between those of the 72 and 76 dB rows of the B210 gain sweep (C.4) (the SNR was not measured in this session): the link works and makes errors; raising the P501's *Level* or lowering its *TX atten* should give the error-free case.
 
 Two things that differ from the FPGA, on purpose:
 

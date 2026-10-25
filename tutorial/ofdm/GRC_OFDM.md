@@ -38,6 +38,14 @@ the S&C symbol, which has the average power, is not changed. The FPGA has the sa
 
 The seven blocks written in Python (embedded blocks, their source is in the flowgraph: open them with a double click) are the ones that have no stock GNU Radio block: frame detector, the two carrier corrections, channel estimator, equalizer, slicer, error counter. The controls on top: **RX gain**, **S&C threshold** (the FPGA uses 0.65), **decode 1 frame in N**, **pilot smoothing** (the FPGA averages 5 symbols).
 
+## A real run
+
+The six tabs on the B210 (the P501 transmitting through TX1, antennas a few centimetres apart, default controls), with a reading of each, are in [`TUTORIAL_OFDM.md`](../TUTORIAL_OFDM.md) section C.5: one spike of M per frame, accepted = 1, a carrier offset of -8447 Hz (the sign is opposite to the P501-receiving tests), the channel flat with a linear phase, 16 clusters and 25,212 frames decoded with a symbol error rate of 1.4e-3 since the start.
+
+![tab 2 of the receiver on the B210](../img/ofdm_real_grc_rx_2.png)
+
+![tab 6 of the receiver on the B210](../img/ofdm_real_grc_rx_6.png)
+
 ## What differs from the FPGA receiver
 
 * **Only 1 frame in N is decoded** (default 8: 125 frames per second, 132 thousand symbols per second). The transmitter repeats the same frame 1000 times per second and the Python blocks cannot decode all of them in real time on an ordinary PC;
@@ -53,4 +61,4 @@ The seven blocks written in Python (embedded blocks, their source is in the flow
 * The generated flowgraph (`grcc`) with the File Source on the synthetic recording of `make_ofdm_capture.py` (24 dB, 9 kHz), Qt offscreen, 30 s: 3821 frames decoded in real time, SER 3.9e-5 (the errors are at the seams of the replay loop).
 * Recordings with a DC offset of 0.02 (0.2 of the rms): at 35 dB SNR without the DC removal 38 frames in 20 s are decoded (the idle slot fires the detector, as in the first B210 test of the flowgraph), with it 3295; at 60 dB SNR (the B210 and the P501 are this clean) the DC removal alone gives 867 frames, with the energy guard 3535
   (the replay is faster than real time: about 170 frames per second; about 1000 symbol errors in all are the first frames, while the DC estimate settles).
-* **Not tested on the B210 by me** (the B210 was the transmitter of the other flowgraph): open the receiver with the P501 as transmitter and check the six tabs.
+* On the B210: run by you with the P501 as the transmitter (screenshots in *A real run* above); not run by me.
