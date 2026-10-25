@@ -6,6 +6,7 @@ Two flowgraphs for the B210 (run them from this folder, `tutorial/ofdm`, after `
 |---|---|
 | `ofdm_b210_frame_tx.grc` | the B210 transmits the OFDM frames (the same frame as the P501 receiver `p501_ofdm_rx_sc` expects, 850 MHz, 3.84 MS/s) |
 | `ofdm_b210_frame_rx.grc` | the B210 receives and decodes them with **separate blocks**, one plot tab per stage; for teaching |
+| `ofdm_b210_frame_rx_stock.grc` | the same receiver built from the **stock gr-digital OFDM blocks** (Schmidl & Cox, header/payload demux, channel estimator, frame equalizer, serializer); see *The same receiver with the stock OFDM blocks* below |
 
 ```bash
 gnuradio-companion ofdm_b210_frame_rx.grc
@@ -53,6 +54,70 @@ The six tabs on the B210 (the P501 transmitting through TX1, antennas a few cent
 * **M is normalised by Ea Eb** (the energies of the two 32-sample halves). The FPGA divides by Eb^2 only and has the guard `EA <= 2 E` instead (`rtl/ofdm_detect.v`, commit `d2ea5e6`): a strong frame that ends in noise would fire a detector with Eb^2 alone.
 * Floating point instead of the integer model; the channel is estimated from T1 and T2 only (the S&C symbol is not used), and the noise estimate and the weights `W = conj(H) R / |H|^2` of the FPGA are replaced by a plain division `Y / H`.
 * The frame start is taken at the centre of the plateau, as in the FPGA, and 6 samples early (`back`).
+
+## The same receiver with the stock OFDM blocks
+
+`ofdm_b210_frame_rx_stock.grc` decodes the same frame with the OFDM blocks that ship with GNU Radio (`gr-digital`, the blocks of the stock `rx_ofdm.grc` example) instead of my seven Python blocks. It is a second implementation to compare with, and it decodes **every** frame (1000 per second) in real time because the blocks are C++.
+
+```bash
+gnuradio-companion ofdm_b210_frame_rx_stock.grc
+```
+
+| stage | stock block | what it does here |
+|---|---|---|
+| frame detection and fine carrier | **Schmidl & Cox synchroniser** (`ofdm_sync_sc_cfb`, *even* carriers) | output 0: the carrier offset (read at one sample of the metric's plateau, held until the next frame); output 1: a pulse at the start of the first symbol after the S&C symbol |
+| cut the frame | **Header/Payload Demux** (header 3 symbols = S&C, T1, T2; 64 values per symbol, the cyclic prefix removed) | waits for the message `header_data` that says how many data symbols follow |
+| FFT | *FFT* with shift (twice: header and payload) | the bin k + 32 holds subcarrier k |
+| channel | **OFDM Channel Estimation** (`ofdm_chanest_vcvc`, sync words = our S&C and T1 spectra) | H[k] = received / known, as a tag on its output |
+| equalizer | **OFDM Frame Equalizer** with `ofdm_equalizer_simpledfe` (our 4 pilots and their PRBS-7 polarity, `eq_alpha` 0.6) | divides by the taps, corrects phase and slope with the pilots, **updates the taps from its own decisions** |
+| data | **OFDM Serializer**, **Constellation Decoder** (16-QAM with our Gray code) | 24 values per symbol, 44 symbols per frame, one byte (0 to 15) per symbol |
+
+The six tabs follow the other receiver (received signal; frame detection with the stock block's pulses; carrier offset; FFT; channel; equalizer and decisions). The controls on top: **RX gain**, **S&C threshold** (0.8), **carrier offset averaging (frames)** (13) and **detector dither** (0.12).
+
+Three Python blocks are still needed; none is a receiver step the stock chain could do for this frame:
+
+* **Header stand-in.** The stock chain reads the packet length from a header symbol; this frame has none (always 44 data symbols). The block sends the message `header_data` (`frame_length` = 44, and the tags of the channel estimator that the equalizer needs) for every frame, and outputs the channel estimate for tab 5.
+* **Error counter** (the block of the other flowgraph with a fourth output: the error rate over the **last 2000 frames**, "SER now"; the first number counts from the start and includes the start-up).
+* **Soft equalizer**, for tab 6 only (see *Why a soft branch* below). It sees 1 frame in 8 (`soft_n`).
+
+### What the stock chain needed to work on the B210 (three changes, each found on a recording)
+
+With its stock settings the chain decoded **nothing** on the P501 to B210 link (symbol error rate 0.94 live, reproduced offline on a 3 s recording of the B210). Three things were wrong, in this order:
+
+1. **The stock S&C block has no energy guard, so the idle slot fires it.** The idle slot of the P501 frame (80 samples at about -15 dB of the signal, with a leakage that is not noise) is, after DC removal, still periodic enough for the block: it fires **twice per frame, 80 samples apart** (offsets 2354 and 2434 in the recording), the demux takes the first, and every frame is cut one symbol early.
+   The FPGA and the other receiver prevent this with the guard of `A.5` (3); the stock block is closed. The fix is **noise added to the detector's input only** (the data path does not get it) at 0.12 of the signal level, measured by a one-pole average of |x|: the noise destroys the periodicity of the idle slot, the S&C symbol is about 15 dB stronger and keeps M near 1 (threshold 0.8 instead of 0.9 leaves room). On the recording: 1939 of 1939 frames without a symbol error after the first 60, and the same at 0.1, 0.3 and 3 times the signal level for dither 0.08, 0.12 and 0.2 (a fixed noise level would have broken when the RX gain slider moves).
+2. **The carrier offset of the stock block scatters by 1 to 2 kHz from frame to frame** (it is read at whichever sample of the plateau the peak detector picks), and this equalizer tolerates only about **+-500 Hz** (fixed offsets on a recording of the B210: 9100 Hz gave a symbol error rate of 5e-4, 8600 Hz 0.2, 9600 Hz 0.27, 8000 and 10200 Hz 0.9). The oscillators of the two radios are stable, so the offset is **averaged over about 13 frames** (a one-pole low-pass on the output of the block, tab 3 shows the scattered value and the average). The price: the first 30 to 60 frames after the start are wrong while the average settles (about 29,000 symbol errors on the B210, which is why "SER since the start" reads 4e-4 after a minute and "SER now" reads 0).
+3. **The equalizer is too slow at its default.** `eq_alpha` 0.1 follows the phase drift of this link badly: on a recording of the B210 with the offset fixed at its best value, 0.1 gave 3.9e-2 and 0.6 gave 5e-4. 0.6 is the shipped value (0.8 and 1 were worse; it is read when the flowgraph starts).
+
+### Why a soft branch
+
+The stock equalizer's decision-directed loop **outputs the decided constellation point** (scaled by 1.056, the outer points at +-1), not the received value: against its own scale the error of its output is -155 dB, that is zero. Its constellation is **always 16 perfect dots**, whatever the noise; a frame with symbol errors looks the same as a clean one, and any EVM computed from its output is just the scale factor (an early "-25 dB" figure of mine was exactly that and is wrong).
+The error counters are the only quality measure of the stock path, so tab 6 has a **soft equalizer** next to it: the same FFT output divided by the channel estimate (the tag of the stock channel estimator), the 4 pilots giving the slope and the common gain (as in the other receiver, smoothing over 5 symbols), the received values kept. It also measures the **EVM against the PRBS-15 payload that the transmitter sends**, a running average over about 30 frames. Left: the soft clusters and the decided points, right: the five numbers (SER since the start, errors, frames decoded, SER now, EVM).
+The stock static equalizer (`ofdm_equalizer_static`) was tried for this and rejected: it does not track the phase, the common phase drifts by 13 degrees over the 44 symbols and the EVM reads -11 dB when it is -26 dB. The soft block sees 1 frame in 8: on every frame it made the B210 overflow (40 `O` in 50 s, 27,790 symbol errors after the start), a Python block does not keep up with 1000 frames per second.
+
+### Results (the P501 transmitting through TX1 at 850 MHz, the B210 receiving, RX gain 45, antennas a few centimetres apart)
+
+| test | stock settings | shipped settings |
+|---|---|---|
+| model recording, 300 frames, 24 dB SNR, 9 kHz, 10 ppm, with and without DC | symbol error rate 2.8e-2 (30 of 300 frames clean) | 235 of 240 frames clean after the first 60, 7.5e-5 |
+| B210 recorded by the P501 ADC (`qam16/sim/adc_ofdm850b.npy`, 273 frames) | almost nothing decodes (0.59) | 3.6e-3 after the first 60 frames, 88 of 212 clean (the other receiver: 6.8e-4 on this recording: **worse here**) |
+| 3 s of the B210 receiving the P501 (2000 frames) | 0.94 | 1939 of 1939 frames clean after the first 60 |
+| live, headless, 50 s, soft branch on 1 frame in 8 | | 45,507 frames, no overflow, **no symbol error after the first 100 frames**, EVM -28.6 dB (-28.9 to -28.1 over the run) |
+| live, headless, 60 s, before the soft branch was added | | 65,977 frames, no error after the first 100; SER since the start 4.2e-4 (29,100 errors, all in the start-up) |
+
+You ran the flowgraph in the GNU Radio window: your first run with the stock settings gave a symbol error rate of 0.95 (what led to the dither), and with the shipped settings and the soft branch tab 6 shows real clusters and an EVM value (you confirmed it; I did not record the numbers shown there). The EVM of my headless session (-28.6 dB) is **not comparable** with the -17 dB that I estimated from the screenshots of the other receiver: other day, other antenna position, and the EVM here is measured against the known payload.
+
+### Comparison with the other receiver
+
+| | `ofdm_b210_frame_rx.grc` | `ofdm_b210_frame_rx_stock.grc` |
+|---|---|---|
+| receiver steps in Python | 7 (detector, 2 carrier corrections, estimator, equalizer, slicer, counter) | 3 (header stand-in, soft equalizer for the plots, counter), none of them a receiver step the stock chain could do |
+| frames decoded in real time | 1 in 8 (default) | all |
+| idle slot, DC | energy guard in M, DC removal | DC removal and the dither (the stock block cannot be changed) |
+| carrier | coarse from S&C, fine from T1/T2 of every frame | the stock block's offset, **averaged over 13 frames**, the equalizer's pilots do the rest |
+| equalizer | one tap, pilots; **soft** output | decision directed; **decisions only** |
+| weak recording (`adc_ofdm850b`) | 6.8e-4 | 3.6e-3 |
+| first frames after the start | usable at once | wrong for 30 to 60 frames |
 
 ## Tests
 

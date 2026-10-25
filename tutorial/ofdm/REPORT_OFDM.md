@@ -14,6 +14,7 @@ Design and every step: `PLAN_OFDM.md`; raw results: `results_board_loopback.txt`
 | board driver and live notebook | `notebook/p501_ofdm_rx.py`, `notebook/P501_OFDM_Live.ipynb` | done; 22 self-test checks pass headless on the board |
 | B210 transmitter | `ofdm_frame_tx.py`, `ofdm_b210_frame_tx.grc` | done |
 | B210 receiver in GNU Radio, block by block | `ofdm_b210_frame_rx.grc`, `GRC_OFDM.md` | done; works on the B210 (checked by you) |
+| B210 receiver from the stock gr-digital OFDM blocks | `ofdm_b210_frame_rx_stock.grc`, `GRC_OFDM.md` | done; works on the B210 after three changes (section 2c); you ran it in the GUI |
 | not done | 128-sample STS overlay (second synchroniser), FPGA OFDM transmitter, OFDM tutorial chapter, the common soft-output interface, FEC | open |
 
 Throughput: 3840 samples = 1 ms per frame, 44 data symbols x 24 subcarriers x 4 bits = 4224 bits per frame, 4.2 Mb/s; the receiver decodes every frame (2003 per 2 s, nothing late).
@@ -73,6 +74,23 @@ The counters *since the start* look worse than the link: found 81,158, **rejecte
 That looks like a receiver that was started before the transmitter was up (the detector fires on noise, the T1/T2 check throws those detections away: 65,476 rejected), but I do not know the order of the starts in this run, so it is the likely reading, not a measured one.
 Start the transmitter first and the receiver 10 s later (as the notebook says), or use *Stop receiver* / *Start receiver* once the transmitter runs: the counters then start from zero. After the start-up the SER is 5e-5 (about the value of the gain sweep at 76 dB: the level here, 188 counts, is between its 76 and 79 dB).
 
+## 2c. A receiver from the stock GNU Radio OFDM blocks
+
+Question: can the receiver be built from the OFDM blocks that ship with GNU Radio (`ofdm_sync_sc_cfb`, `header_payload_demux`, `ofdm_chanest_vcvc`, `ofdm_frame_equalizer_vcvc` with `ofdm_equalizer_simpledfe`, `ofdm_serializer_vcc`)? **Yes, with three changes**; the flowgraph is `ofdm_b210_frame_rx_stock.grc`, the description and the block table are in `GRC_OFDM.md`. The frame fits the stock chain closely: the S&C symbol has two equal halves of 32 samples, every symbol (S&C, T1, T2 and the 44 data symbols) is 80 samples with its prefix, so the demux takes S&C, T1 and T2 as its 3 header symbols and T2 plays the role of the header symbol.
+
+| test | stock settings | shipped settings |
+|---|---|---|
+| model recording (300 frames, 24 dB SNR, 9 kHz, 10 ppm), with and without DC | 2.8e-2 (30 of 300 frames clean) | 235 of 240 clean after the first 60, 7.5e-5 |
+| B210 recorded by the P501 ADC (`qam16/sim/adc_ofdm850b.npy`, 273 frames) | 0.59 (almost nothing decodes) | 3.6e-3 after the first 60 frames (the Python receiver: 6.8e-4) |
+| 3 s of the B210 receiving the P501 | 0.94 | 1939 of 1939 frames clean after the first 60 |
+| live, headless, 50 s | | 45,507 frames, no overflow, no symbol error after the first 100, EVM -28.6 dB |
+
+* **Detector without a guard:** the idle slot of the P501 frame (about -15 dB, not pure noise) fires the stock S&C block twice per frame, 80 samples apart (offsets 2354 and 2434 on the recording); the demux takes the first and every frame is cut one symbol early (symbol error rate 0.94 on the recording; your first GUI run, which had the carrier average and the faster equalizer but not the dither: 0.95). Fix: noise at 0.12 of the signal level added to the detector's input only (level-relative: 1939 of 1939 frames clean at 0.1, 0.3 and 3 times the level), threshold 0.8.
+* **Carrier estimate:** the stock block's value scatters by 1 to 2 kHz per frame and the equalizer tolerates about 500 Hz (fixed offsets: 9100 Hz 5e-4, 8600 Hz 0.2, 9600 Hz 0.27); averaged over 13 frames. The first 30 to 60 frames are wrong (about 29,000 symbol errors), so the error rate since the start is 4.2e-4 after a minute while the error rate over the last 2000 frames is 0 (the flowgraph shows both).
+* **Equalizer:** `alpha` 0.1 gives 3.9e-2 on the recording with the offset fixed at its best value, 0.6 gives 5e-4.
+* **The stock equalizer outputs only its decisions** (scaled by 1.056): its constellation is perfect whatever the noise and any EVM computed from it is the scale factor. **A "-25 dB EVM" that I quoted for this chain during the work was exactly that and is wrong.** A soft equalizer block (channel tag from the stock estimator, 4 pilots, EVM against the known payload) gives the real clusters; the stock static equalizer was rejected for this (no phase tracking: 13 degrees of drift per frame, EVM -11 dB against -26 dB). The soft block sees 1 frame in 8: on every frame the B210 overflowed (40 reports in 50 s) and 27,790 symbol errors followed.
+* **Compared with the Python receiver:** all frames decoded in real time instead of 1 in 8, 3 Python blocks instead of 7, but worse on the weak recording (3.6e-3 against 6.8e-4), slower to settle (30 to 60 frames) and it needs the dither because the stock detector cannot be given the energy guard.
+
 ## 3. Problems found and fixed
 
 1. **A strong frame ending in an empty idle slot fired the detector** (`results_board_air.txt` E and F). The S&C metric |S|^2 / E^2 divides by the energy of the newer half only: when the older half is a strong signal and the newer half is receiver noise the ratio is large (13 dB between them is enough).
@@ -82,6 +100,7 @@ Start the transmitter first and the receiver 10 s later (as the notebook says), 
 3. **The GNU Radio receiver showed empty tabs on the B210**: the B210 leaves its DC (LO leakage) and almost no noise in the idle slot, a constant looks periodic to the S&C metric, and M reached 1 one symbol before the real S&C symbol (two spikes per frame in tab 2); the frames were cut wrongly and all failed the T1/T2 check.
    Fix: the DC is estimated by a slow low-pass and subtracted, and M = |S|^2 / (Ea Eb + guard) with a guard of (0.1 x 32 x the average power)^2. In a recording with a DC offset and 60 dB SNR: 867 frames decoded with the DC removal alone, 3535 with the guard. Commit `3758884`. The FPGA has the same weakness in principle (a constant fills a window with M = 1): its guard is the absolute `EMIN` and the `EA <= 2 E` test;
    a DC of the ADC larger than the signal in the idle slot would still fire it. The relative energy guard would be the clean fix there too.
+4. **The stock S&C block fired in the idle slot** (section 2c): the same weakness as 3 in a block that cannot be changed; the fix is a dither on its input. Your GUI run without the dither gave a symbol error rate of 0.95, the same as my headless run on the B210 (0.937), so it could be reproduced offline on a 3 s recording (`raw_live`, not in the repository).
 
 ## 4. Open items (what I would do next, in this order)
 
@@ -94,5 +113,6 @@ Start the transmitter first and the receiver 10 s later (as the notebook says), 
 ## 5. Not verified
 
 * The B210 as a receiver was run by you, not by me: the six tabs of `ofdm_b210_frame_rx.grc` with the P501 transmitting are in `img/ofdm_real_grc_rx_*.png` and read in `TUTORIAL_OFDM.md` section C.5 (one spike of M per frame, accepted = 1, carrier -8447 Hz, 25,212 frames decoded, SER 1.4e-3 since the start); the SNR of that session was not measured.
+* The stock-block receiver: my numbers are from recordings and from headless runs on the B210 (50 and 60 s, Qt off screen); the GUI run was yours and I did not record the values on the screen (you reported a reading of 4.5e-4, most likely the value since the start, and "no O in the terminal"). Its EVM (-28.6 dB) is not comparable with the -17 dB estimated from the screenshots of the other receiver (other day, other antenna position). The behaviour at other RX gains than 45 was tested only on rescaled recordings (the dither follows the level), not on the B210. The average of the carrier offset assumes stable oscillators; a drifting offset was not tested.
 * The gain sweep is one antenna position and 15 restarts; the earlier bad states did not reappear, so their cause is still not known.
 * The SER of 6e-5 at 76 dB and 3e-3 at 72 dB is the SNR floor of this antenna position; a cable with a step attenuator would give a real SER against SNR curve (the AWGN model predicts the P501 to P501 curve above 19 dB; the B210 curve was not compared).

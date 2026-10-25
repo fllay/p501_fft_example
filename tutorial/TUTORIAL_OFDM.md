@@ -28,7 +28,7 @@ The same method as in tutorials 4 and 5: **every stage must reproduce the previo
 2. **Integer model** (`ofdm/ofdm_fixed.py`): every register and every shift of the RTL, in Python; within 0.1 to 0.3 dB of the float model (`results_ofdm_fixed.txt`).
 3. **RTL** (`rtl/ofdm_detect.v`, `ofdm_derot.v`, `ofdm_fft.v`, `ofdm_chan.v`, `ofdm_data.v`, `ofdm_rx.v`) simulated with xsim on the same vectors, one block after the other: zero mismatches against the integer model (`ofdm/sim/run_*.sh`).
 4. **Overlay** `p501_ofdm_rx_sc`, driver, notebook; **board** tests: digital loopback first, then over the air.
-5. **GNU Radio** receiver `ofdm/ofdm_b210_frame_rx.grc`: the same steps with stock blocks and seven small Python blocks, for looking at the signal after every stage.
+5. **GNU Radio** receiver `ofdm/ofdm_b210_frame_rx.grc`: the same steps with stock blocks and seven small Python blocks, for looking at the signal after every stage. A second one, `ofdm/ofdm_b210_frame_rx_stock.grc`, uses the OFDM blocks that ship with GNU Radio (C.5).
 
 ## A.2 Why OFDM, and what it costs
 
@@ -276,6 +276,18 @@ Two things that differ from the FPGA, on purpose:
 
 A tip for writing such blocks: the Python objects of a GNU Radio block must stay referenced by the flowgraph (the generated code keeps them as attributes), otherwise the process crashes at start with a segmentation fault in a thread that has no Python frame.
 
+### The same receiver with the OFDM blocks that ship with GNU Radio
+
+GNU Radio has its own OFDM receiver blocks (`gr-digital`: *Schmidl & Cox OFDM synch.*, *Header/Payload Demux*, *OFDM Channel Estimation*, *OFDM Frame Equalizer*, *OFDM Serializer*; the example `rx_ofdm.grc`). `ofdm/ofdm_b210_frame_rx_stock.grc` builds the receiver of this chapter from them: the sync words are our S&C and T1 spectra, the equalizer gets our four pilots and their polarity, the decoder our Gray-coded 16-QAM. Details, numbers and the block table: [`ofdm/GRC_OFDM.md`](ofdm/GRC_OFDM.md) (*The same receiver with the stock OFDM blocks*).
+
+It works on the B210 and decodes every frame (the blocks are C++), but **not with the stock settings**, and the three reasons are the lesson of this section:
+
+1. **The stock detector has no guard** (A.5). With the P501 frame it fires in the idle slot too, two pulses per frame 80 samples apart, and every frame is cut one symbol early: symbol error rate **0.94**. The block cannot be changed, so noise at 0.12 of the signal level is added to **its input only**: the idle slot stops looking periodic, the S&C symbol (about 15 dB stronger) is nearly unchanged. Set the *detector dither* slider to 0 and watch tab 2 (two pulses) and tab 6 (errors) to see it.
+2. **Its carrier estimate scatters by 1 to 2 kHz per frame** and the equalizer tolerates about 500 Hz. The estimate is averaged over 13 frames (tab 3 shows both curves); the first 30 to 60 frames after the start are wrong while it settles.
+3. **Its equalizer is decision directed and slow by default** (`alpha` 0.1; 0.6 here), **and it outputs the decisions**: its constellation is 16 perfect dots whatever the noise. A small soft equalizer next to it gives the real clusters and the EVM against the known payload (about -28.6 dB in the live run of the report, at another antenna position than the -17 dB of the screenshots above).
+
+On the live P501 to B210 link it makes no symbol error after the start-up. On the weaker recording of the B210 received by the P501 the Python receiver reaches 6.8e-4 and this one 3.6e-3 (report section 2c): the stock chain is not more accurate, it is **shorter to build and decodes every frame**, and its own constellation hides the noise that the other receiver shows.
+
 ## C.6 The registers and the driver
 
 Byte offsets; the whole list is in the header of `rtl/ofdm_rx.v`.
@@ -327,6 +339,8 @@ The counters since *Start receiver* include the first seconds, when the receiver
 | `late` not 0 | a sample came sooner than the engine's 25 clocks: the ADC clock is not 3.84 MS/s |
 | GNU Radio: tabs 3 to 6 empty | the detector fires in the wrong place: tab 2 shows two spikes per frame (idle slot): DC removal and guard (A.5); or a false "accepted = 0" at a low SNR |
 | GNU Radio: `O` in the terminal | the PC cannot keep up: raise *decode 1 frame in N*, close other programs |
+| GNU Radio stock receiver: error rate near 0.9, tab 2 shows two pulses per frame | the detector fires in the idle slot: raise the *detector dither* (C.5) |
+| GNU Radio stock receiver: a few thousand errors right after the start | the carrier-offset average is settling (30 to 60 frames); read *SER now*, not the value since the start |
 
 ---
 
@@ -339,5 +353,6 @@ The counters since *Start receiver* include the first seconds, when the receiver
 5. In `ofdm_b210_frame_rx.grc` set *pilot smoothing* to 1, 5 and 9 and watch tab 6 (arg g and the clusters): what does the averaging cost and gain?
 6. Run the gain sweep of C.4 with the P501 attenuating its own transmitter instead (a cable and `TX atten`): draw the SER against the SNR and compare with the white-noise curve of A.2.
 7. Lower the S&C threshold in the GNU Radio flowgraph to 0.3 and count the accepted flag of tab 3: how many false detections does the T1/T2 check throw away?
+8. In `ofdm_b210_frame_rx_stock.grc` set the *detector dither* to 0, then to 0.05, 0.12 and 0.4, and *carrier offset averaging* to 1 and 60: for each, note tab 2 (pulses per frame), tab 3 and *SER now*. Which of the two matters more? What does a large dither do to M of the real S&C symbol?
 
 **Where next in the lab:** the **128-sample short-training-field detector** as a second overlay (the same blocks with another delay and window) and the comparison of the two synchronisers on the air; the **relative energy guard in the FPGA** and the re-arm of the capture in the reject path (one overlay rebuild); an **FPGA transmitter** (an inverse FFT and the prefix instead of the host's buffer); the **common soft-output interface** (a signed 8-bit soft value per coded bit and a frame flag: the equaliser's weights and the noise estimate are what the soft values need), and then **forward error correction**, which turns an uncoded link of -18 dB EVM into an error-free one (simulation in `qam16/results_fec.txt`). The roadmap is in the [README](../README.md).
