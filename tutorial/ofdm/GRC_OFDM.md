@@ -7,6 +7,7 @@ Two flowgraphs for the B210 (run them from this folder, `tutorial/ofdm`, after `
 | `ofdm_b210_frame_tx.grc` | the B210 transmits the OFDM frames (the same frame as the P501 receiver `p501_ofdm_rx_sc` expects, 850 MHz, 3.84 MS/s) |
 | `ofdm_b210_frame_rx.grc` | the B210 receives and decodes them with **separate blocks**, one plot tab per stage; for teaching |
 | `ofdm_b210_frame_rx_stock.grc` | the same receiver built from the **stock gr-digital OFDM blocks** (Schmidl & Cox, header/payload demux, channel estimator, frame equalizer, serializer); see *The same receiver with the stock OFDM blocks* below |
+| `ofdm_b210_frame_tx_stock.grc` | the transmitter built from the **stock gr-digital OFDM blocks** (carrier allocator, IFFT, cyclic prefixer) and tagged-stream blocks; the same frame, sample for sample, as `ofdm_b210_frame_tx.grc`; see *The transmitter with the stock OFDM blocks* below |
 
 ```bash
 gnuradio-companion ofdm_b210_frame_rx.grc
@@ -118,6 +119,41 @@ You ran the flowgraph in the GNU Radio window: your first run with the stock set
 | equalizer | one tap, pilots; **soft** output | decision directed; **decisions only** |
 | weak recording (`adc_ofdm850b`) | 6.8e-4 | 3.6e-3 |
 | first frames after the start | usable at once | wrong for 30 to 60 frames |
+
+## The transmitter with the stock OFDM blocks
+
+`ofdm_b210_frame_tx_stock.grc` builds the frame of the P501 receiver from the transmit blocks that ship with GNU Radio, with **no Python block at all**, and the B210 transmits it at 850 MHz.
+
+```bash
+gnuradio-companion ofdm_b210_frame_tx_stock.grc
+```
+
+| stage | stock block | what it does here |
+|---|---|---|
+| payload | *Vector Source* (1056 numbers of 4 bits, repeated), *Stream to Tagged Stream* (1056) | the 44 x 24 symbols of one frame (the PRBS-15 payload of the other transmitter and of the error counters, restarted in every frame); the tag `packet_len` marks the frame |
+| mapping | *Chunks to Symbols* (16 points) | number 0 .. 15 to 16-QAM with the Gray code of the receivers |
+| subcarriers | **OFDM Carrier Allocator** (sync words S&C, T1, T2; 24 data carriers; 4 pilots with the PRBS-7 polarity) | one vector of 64 per OFDM symbol, 47 per frame: the three sync words first, then the 44 data symbols |
+| time signal | *FFT* (inverse, shift), **OFDM Cyclic Prefixer** (prefix 16) | 80 samples per symbol, 3760 per frame |
+| idle slot | *Stream to Tagged Stream* on a zero source (80), *Tagged Stream Mux* | frame (3760) + 80 zeros = 3840 samples = 1 ms |
+| level | *Multiply Const* (1/8 and the amplitude, times the ON switch), *Tag Gate*, UHD sink | the stock IFFT has no 1/N: its output is 8 times the frame of the model |
+
+The controls are those of the other transmitter: **Transmit OFF/ON** (OFF at start), **B210 TX gain** (79 dB), **TX digital amplitude** (rms 0.25). Four tabs: the 16-QAM symbols, the mean |X[k]| of the 47 OFDM symbols before the IFFT (the 28 used subcarriers), the frame in time (the gap is the idle slot) and the spectrum (1.7 MHz wide, a notch at 0 Hz where no subcarrier is used).
+
+**Check against the other transmitter** (offline, the UHD sink replaced by a file): 12 consecutive frames of the output differ from the model frame (`ofdm_frame.npy`, the frame of `ofdm_b210_frame_tx.grc`) by at most 3e-7, the rms of the active part is 0.2500, the peak 0.837 and the idle slot exactly zero; in a longer run all 3000 frames out of 3000 are identical to the reference. The same frame means that every receiver of this chapter decodes it.
+
+Two things that cost me time, and that the block help does not say:
+
+* **The Cyclic Prefixer parameter is the prefix only** (16). The block adds the FFT length itself; with `fft_len + cp_len` the symbols have 144 samples and the output looks like noise.
+* **Its output buffer must hold a whole frame.** The prefixer and the mux need a *minimum output buffer* of 32768 items (8192 was not enough): without it the prefixer stops with "Buffer too small for min_noutput_items".
+
+**On the air** (the P501 receiving with the notebook, B210 at 79 dB, rms 0.25, RX gain 70; I did not run this, the screenshots are yours):
+
+| antenna position | level | SNR | EVM | frames | error rate |
+|---|---|---|---|---|---|
+| a few centimetres | 237 counts | 25.5 dB | -19.8 dB (last frame), -21.6 dB (picture) | 156,434 at 1001 per second, 9,432 bad frames (6 %) | 1.0e-3 since the start and in the last 2 s |
+| closer | 394 counts | 28.2 dB | -25.2 dB, -24.0 dB | 476,050 at 1000 per second; between the two screenshots 319,616 frames with 154 more bad frames and 2 more rejected | 0 in the last 2 s, the error strip at its floor |
+
+At the closer position the stock transmitter is as clean as the other one at 82 dB in the gain sweep (`REPORT_OFDM.md` 2). At the first position the error rate is 1e-3 with an EVM of -20 dB and 6 % bad frames; the earlier run with `ofdm_b210_frame_tx.grc` (report 2b) had 5e-5 at an SNR of 25 dB, **but on another day and at another position, so the two are not a like-for-like comparison**. I looked for a fault of the stock chain and did not find one: no `U` (underflow) in its terminal, the offline output equals the reference in every one of 3000 frames, and the chain used 2.4 s of CPU for 3 s of signal. A run of the old transmitter at the first position, in the same session, was not made.
 
 ## Tests
 

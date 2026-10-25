@@ -288,6 +288,8 @@ It works on the B210 and decodes every frame (the blocks are C++), but **not wit
 
 On the live P501 to B210 link it makes no symbol error after the start-up. On the weaker recording of the B210 received by the P501 the Python receiver reaches 6.8e-4 and this one 3.6e-3 (report section 2c): the stock chain is not more accurate, it is **shorter to build and decodes every frame**, and its own constellation hides the noise that the other receiver shows.
 
+**The transmitter from stock blocks, too.** `ofdm/ofdm_b210_frame_tx_stock.grc` builds the frame with the transmit blocks of `gr-digital` and no Python block: *OFDM Carrier Allocator* (the S&C symbol, T1 and T2 as sync words, 24 data carriers, 4 pilots), inverse *FFT*, *OFDM Cyclic Prefixer*, and a *Tagged Stream Mux* that appends the 80-sample idle slot. Its output equals the frame of `ofdm_b210_frame_tx.grc` to 3e-7, so every receiver of this chapter decodes it; the P501 decoded it on the air at 1000 frames per second, with a symbol error rate of 1e-3 at an SNR of 25.5 dB (EVM -20 dB) and none at 28 dB (EVM -25 dB) with the antenna closer ([`ofdm/GRC_OFDM.md`](ofdm/GRC_OFDM.md) has the table and two pitfalls: the prefix length parameter and the output buffer of the prefixer). Compare the tabs of this transmitter (symbols, subcarriers before the IFFT, frame in time, spectrum) with section A.3.
+
 ## C.6 The registers and the driver
 
 Byte offsets; the whole list is in the header of `rtl/ofdm_rx.v`.
