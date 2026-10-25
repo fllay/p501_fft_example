@@ -36,7 +36,7 @@ Throughput: 3840 samples = 1 ms per frame, 44 data symbols x 24 subcarriers x 4 
 
 ![SER against the B210 gain](../img/ofdm_gain_sweep.png)
 
-**The link is limited by the SNR and nothing else.** The level at the ADC rises by 3 dB for every 3 dB of B210 gain (70, 112, 160, 225, 315 counts), so the B210 does not compress up to 85 dB at rms 0.25 (peaks 0.85 of full scale); from 79 dB there are 0 symbol errors in 8.5 M symbols per restart.
+**The link is limited by the SNR and nothing else.** The level at the ADC rises by 3 dB for every 3 dB of B210 gain (70, 112, 160, 225, 315 counts), so the B210 does not compress up to 85 dB at rms 0.25 (peaks 0.85 of full scale); at 82 and 85 dB 47 of 48 windows (2.1 M symbols each) have no symbol error (the 48th: 7e-6), at 79 dB 23 of 24 (the 24th: 1e-3).
 Three cold starts at 85 dB with the receiver started together with the transmitter (14 windows each) also gave 0 errors in 38 of 42 windows (the other four: 1e-2 with 8 bad frames, 1e-4, 9e-7 and 5e-7).
 
 **Corrections to what I said earlier** (the earlier B210 runs were noisier than these, and I attributed it to the wrong causes):
