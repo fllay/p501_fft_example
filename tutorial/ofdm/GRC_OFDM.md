@@ -14,6 +14,10 @@ gnuradio-companion ofdm_b210_frame_rx.grc
 The P501 can be the transmitter (notebook `notebook/P501_OFDM_Live.ipynb`, *P501 transmits* = OFDM frame, *Level* 500, *TX atten* 20 to 30 dB, antennas a few centimetres apart, **LO 850 MHz**) or the receiver; the B210 is the other end.
 Without hardware: `python3 make_ofdm_capture.py` writes `ofdm_b210_capture.c64` (60 frames from the model with a 9 kHz carrier offset and 24 dB SNR; `python3 make_ofdm_capture.py ofdm_b210_capture.c64 35 9000 0.014` adds a DC offset like the B210's); in the receiver enable *File Source 0* and *Throttle 0*, disable the *UHD: USRP Source*.
 
+The transmitter flowgraph and the P501 notebook receiving it (the live run of `REPORT_OFDM.md` section 2b):
+
+![the transmitter in GNU Radio Companion](../img/ofdm_real_grc_tx.png)
+
 ## The receiver, stage by stage
 
 The frame: S&C symbol | T1 | T2 | 44 data symbols (80 samples each, 16 of them the cyclic prefix) | 80 idle = 3840 samples = 1 ms (`PLAN_OFDM.md` section 12).

@@ -47,6 +47,32 @@ Three cold starts at 85 dB with the receiver started together with the transmitt
 
 ![tones through TX1 and RX1](../img/ofdm_iq_image.png)
 
+## 2b. A live run: the GNU Radio transmitter and the notebook receiver
+
+The B210 runs `ofdm_b210_frame_tx.grc` (850 MHz, TX gain 79 dB, rms 0.25, antennas a few centimetres apart); the P501 runs `notebook/P501_OFDM_Live.ipynb` (RX gain 70, detector threshold 166 = 0.65, receiver started with *Start receiver*, display on).
+
+![the transmitter in GNU Radio Companion](../img/ofdm_real_grc_tx.png)
+
+The transmitter window: the spectrum of the transmitted signal is the 28 subcarriers (1.7 MHz wide, a notch at 0 where the unused DC subcarrier is) about 20 dB above the skirts that begin at +-1 MHz; the envelope shows two frames of 3840 samples with the idle slot of 80 samples (about 20 us) at the end of each, and peaks of 0.84 of the full scale at an rms of 0.25 (3.4 x the rms).
+
+![the live notebook receiving it](../img/ofdm_real_notebook.png)
+
+What the notebook shows (one picture, after the start-up):
+
+| item | reading |
+|---|---|
+| frames | 15,678 decoded, 997 per second (of about 1000); every frame the detector finds is decoded |
+| EVM, SNR | -19.4 dB for the last frame, -23.8 dB over the 1024 symbols of the picture; SNR 25.1 dB from the channel estimate and the noise sum |
+| symbol errors | 5.1e-5 over the last 2 s; the strip of log10 SER is at the floor (1e-7) except for one burst |
+| carrier | +8916 Hz (coarse +10099 Hz): the natural offset of the B210 and the P501 |
+| level, gain | 188 counts rms at the ADC, gain 2.12 (the receiver brings the samples to 400 counts for the FFT) |
+| constellation, channel | 16 clean clusters; |H| flat over the 28 subcarriers; EVM per data subcarrier flat (no weak subcarrier, no tilt) |
+| late, overflow | late 0, fft_ovf 0, overrun 0; `ovf` 1 is the sticky flag that the first garbage frames set |
+
+The counters *since the start* look worse than the link: found 81,158, **rejected 65,476**, bad frames 915, symbol errors 905,843 (SER 9.8e-2). They include the first part of the run, which the strips show: the frames per second climbed to 1000 over about 30 s and the carrier reading wandered (-6.9 to +11 kHz) until the signal was stable.
+That looks like a receiver that was started before the transmitter was up (the detector fires on noise, the T1/T2 check throws those detections away: 65,476 rejected), but I do not know the order of the starts in this run, so it is the likely reading, not a measured one.
+Start the transmitter first and the receiver 10 s later (as the notebook says), or use *Stop receiver* / *Start receiver* once the transmitter runs: the counters then start from zero. After the start-up the SER is 5e-5 (about the value of the gain sweep at 76 dB: the level here, 188 counts, is between its 76 and 79 dB).
+
 ## 3. Problems found and fixed
 
 1. **A strong frame ending in an empty idle slot fired the detector** (`results_board_air.txt` E and F). The S&C metric |S|^2 / E^2 divides by the energy of the newer half only: when the older half is a strong signal and the newer half is receiver noise the ratio is large (13 dB between them is enough).
