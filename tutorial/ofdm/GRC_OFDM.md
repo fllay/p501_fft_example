@@ -8,6 +8,8 @@ Two flowgraphs for the B210 (run them from this folder, `tutorial/ofdm`, after `
 | `ofdm_b210_frame_rx.grc` | the B210 receives and decodes them with **separate blocks**, one plot tab per stage; for teaching |
 | `ofdm_b210_frame_rx_stock.grc` | the same receiver built from the **stock gr-digital OFDM blocks** (Schmidl & Cox, header/payload demux, channel estimator, frame equalizer, serializer); see *The same receiver with the stock OFDM blocks* below |
 | `ofdm_b210_frame_tx_stock.grc` | the transmitter built from the **stock gr-digital OFDM blocks** (carrier allocator, IFFT, cyclic prefixer) and tagged-stream blocks; the same frame, sample for sample, as `ofdm_b210_frame_tx.grc`; see *The transmitter with the stock OFDM blocks* below |
+| `ofdm_b210_frame_tx_sts_stock.grc` | the transmitter of the **128-sample STS frame** (overlay `p501_ofdm_rx_sts`): the preamble from a vector source, the 44 data symbols from the stock blocks; see *The STS frame in GNU Radio* below |
+| `ofdm_b210_frame_rx_sts_stock.grc` | the receiver of the STS frame: stock blocks and **one synchroniser block of its own** (`sts_sync.py`), because the stock Schmidl-and-Cox block cannot find a preamble that repeats every 16 samples |
 
 ```bash
 gnuradio-companion ofdm_b210_frame_rx.grc
@@ -154,6 +156,42 @@ Two things that cost me time, and that the block help does not say:
 | closer | 394 counts | 28.2 dB | -25.2 dB, -24.0 dB | 476,050 at 1000 per second; between the two screenshots 319,616 frames with 154 more bad frames and 2 more rejected | 0 in the last 2 s, the error strip at its floor |
 
 At the closer position the stock transmitter is as clean as the other one at 82 dB in the gain sweep (`REPORT_OFDM.md` 2). At the first position the error rate is 1e-3 with an EVM of -20 dB and 6 % bad frames; the earlier run with `ofdm_b210_frame_tx.grc` (report 2b) had 5e-5 at an SNR of 25 dB, **but on another day and at another position, so the two are not a like-for-like comparison**. I looked for a fault of the stock chain and did not find one: no `U` (underflow) in its terminal, the offline output equals the reference in every one of 3000 frames, and the chain used 2.4 s of CPU for 3 s of signal. A run of the old transmitter at the first position, in the same session, was not made.
+
+## The STS frame in GNU Radio
+
+The overlay `p501_ofdm_rx_sts` (the same RTL as the Schmidl-and-Cox overlay with the parameter `STS = 1`, `PLAN_OFDM.md` sections 4b and 14) receives a frame with the **128-sample short training field**: `STS (128) | LTS (32 prefix, T1 64, T2 64) | 44 data symbols of 80 | 32 idle` = 3840 samples.
+The STS is a 64-sample IFFT of 6 QPSK subcarriers (k = +-4, +-8, +-12) sent twice, so it repeats every 16 samples; the LTS is the training symbol twice with a prefix of 32 samples. Two flowgraphs and a notebook (`notebook/P501_OFDM_STS_Live.ipynb`) match it. **I made them without the hardware, so the numbers below are from the model and from offline runs; you then ran both flowgraphs and the notebook with the B210 and the P501 and found that they work (the readings of that run were not recorded).**
+
+### Transmitter: `ofdm_b210_frame_tx_sts_stock.grc`
+
+The data part is the chain of `ofdm_b210_frame_tx_stock.grc` unchanged (vector source of 1056 numbers, chunks to symbols, OFDM Carrier Allocator without sync words, inverse FFT, OFDM Cyclic Prefixer): 44 symbols of 80 samples. The preamble is **not** an OFDM symbol with the usual 16-sample prefix, so it comes from a *Vector Source* of its own
+(288 samples: a variable `preamble_samples` in the units of the stock IFFT, 8 x the model), and a *Tagged Stream Mux* with **three** inputs joins `preamble (288) | data (3520) | idle (32)` = 3840 samples.
+**Check** (offline, the UHD sink replaced by a file): 12 frames differ from the model frame `ofdm_frame_sts.npy` by at most 2.5e-7, the rms of the active part is 0.2500 (the 3808 samples before the idle slot), the peak 0.837 and the idle slot exactly zero. The controls are those of the other transmitters;
+the default **B210 gain is 60 dB** (the amplifier after the B210 of our lab: 65 dB gave 82 counts at the P501 with RX gain index 50; without an amplifier 79 dB is the value of the other transmitters): raise it step by step, the radiated power is yours to check.
+
+### Receiver: `ofdm_b210_frame_rx_sts_stock.grc`
+
+| stage | block | what it does |
+|---|---|---|
+| input | UHD source, DC removal | as in the other receivers |
+| metric | *Delay 16*, *Conjugate*, *Multiply*, *Moving Average 48* (S), the energies, the guard, *Divide* (the chain of `ofdm_b210_frame_rx.grc`, retuned from lag 32 / 32 products to **lag 16 / 48 products**) | M = |S|^2 / (Ea Eb + guard): a plateau of 65 samples near 1 inside the STS; the guard (0.1 of the long-term power, squared) keeps the idle slot of the P501 frame below the threshold, so **no dither is needed** (the stock Schmidl-and-Cox block has no guard) |
+| synchroniser | **`sts_sync`** (Python, `tutorial/ofdm/sts_sync.py`) | takes the plateau of M (the windows above 24/32 of the maximum, as the FPGA does), the start of the STS from it, the coarse carrier from the angle of S (unambiguous to +-120 kHz) and the fine carrier from the two training symbols (64 samples apart, they must repeat or the frame is dropped); outputs the carrier offset and the trigger in the form of the stock block (`ofdm_sync_sc_cfb`) |
+| frame | *Delay 384*, *Frequency Modulator* + *Multiply* (the carrier corrector), **Header/Payload Demux** (header 2 symbols, guard 16) | the trigger comes 122 samples after the start of the STS: the demux takes the two header windows at s0 + 138 and s0 + 218 and the 44 data windows at s0 + 298 + 80 l, the windows of the FPGA receiver (the data windows start 6 samples inside the prefix) |
+| channel | *FFT*, **OFDM Channel Estimation** (one training symbol), the header stand-in | H[k] from the window at s0 + 138, which is a circular shift of the training symbol: the sync word is `TRAIN[k] (-j)^k`, the symbol with the phase slope of the 16 samples between this window and the one 6 samples before T1, so that H has the same slope as the data windows |
+| data | *FFT*, **OFDM Frame Equalizer** (decision directed, `alpha` 0.6), **Serializer**, **Constellation Decoder**, the error counter, the soft equalizer | as in `ofdm_b210_frame_rx_stock.grc` (the stock equalizer outputs only its decisions: the soft block gives the clusters and the EVM) |
+
+**What is different from the stock receiver of the Schmidl-and-Cox frame, and why:** no dither on the detector (the guard of the metric does that job) and no averaging of the carrier offset (the synchroniser measures the carrier of every frame with the two training symbols, error 100 Hz rms in the model; the stock block's offset scattered by 1 to 2 kHz).
+The delay is longer (384 samples against 80) because the carrier is known only after the second training symbol, 282 samples after the start of the STS.
+
+**Offline results** (the model's frames through a channel with 10 ppm and a delay of 3.4 samples; the generated flowgraph on a recording at real time, Qt off screen): 24 dB SNR and +9 kHz: 8,338 frames in 15 s, all found, none dropped, symbol error rate 2.2e-4, EVM -19.4 dB (the S&C stock receiver gives the same at that SNR). The carrier estimate has an error of 100 to 120 rms Hz (mean below 45 Hz) at 9 kHz and at 50 kHz.
+In a Python flowgraph of the same blocks at 26 dB SNR: **no symbol error in 299 frames at 0, +9, +30 and -30 kHz**; at 50 kHz a symbol error rate of 5.6e-3 (the EVM is only 0.7 dB worse; 50 kHz is far beyond the 9 kHz of the P501 and the B210); with a DC offset of 20 % of the rms the first 20 frames (the DC filter settling) have 975 symbol errors, the remaining 279 the same 70 as without the DC.
+**Tested by you on the B210, readings not recorded:** both flowgraphs and the notebook work. My own checks of the transmitter were against the model frame, sample by sample (not against the P501 receiving it); the receiver's numbers above are from model recordings.
+
+### Notebook: `notebook/P501_OFDM_STS_Live.ipynb`
+
+The notebook of `P501_OFDM_Live.ipynb` for the STS overlay (the overlay `p501_ofdm_rx_sts.bit`, the frame `ofdm_frame_sts.npy`, an assertion that the overlay really is the STS one, and a last cell **RX gain sweep** that steps the RX gain index down while a transmitter is on and prints the error rate, the bad frames and the ADC level).
+Copy `p501_ofdm_rx_sts.bit`, its `.hwh` (after `tools/fix_hwh.py`), `ofdm_frame_sts.npy`, `p501_ofdm_rx.py` and the notebook to `/home/xilinx/jupyter_notebooks/p501_ofdm/`. **Executed headless on the board: all 22 checks pass** (no transmitter: no false alarm; digital loopback at three levels: every frame found, 0 errors in 2.1 M symbols, EVM -40 to -45 dB, nothing late; capture RAM and channel estimate; live pictures; the controls).
+A recording for the receiver without hardware: `python3 make_ofdm_capture.py ofdm_b210_capture_sts.c64 24 9000 0 sts` (the File Source and the Throttle are disabled in the flowgraph: enable them and disable the B210 as in the other receivers).
 
 ## Tests
 

@@ -16,7 +16,8 @@ Design and every step: `PLAN_OFDM.md`; raw results: `results_board_loopback.txt`
 | B210 receiver in GNU Radio, block by block | `ofdm_b210_frame_rx.grc`, `GRC_OFDM.md` | done; works on the B210 (checked by you) |
 | B210 receiver from the stock gr-digital OFDM blocks | `ofdm_b210_frame_rx_stock.grc`, `GRC_OFDM.md` | done; works on the B210 after three changes (section 2c); you ran it in the GUI |
 | B210 transmitter from the stock gr-digital OFDM blocks | `ofdm_b210_frame_tx_stock.grc`, `GRC_OFDM.md` | done; its output equals the model frame (3e-7); decoded by the P501 on the air (section 2c) |
-| not done | 128-sample STS overlay (second synchroniser), FPGA OFDM transmitter, OFDM tutorial chapter, the common soft-output interface, FEC | open |
+| 128-sample STS overlay (second synchroniser) | the same `rtl/ofdm_detect.v`, `ofdm_rx.v` with the parameter `STS = 1`, `create_project.tcl ... OFDMRXSTS=1`, `ofdm_fixed.py` variant `STS`, `results_ofdm_fixed_sts.txt` | done, bit-exact in xsim, on the board in the loopback and over the air (section 2d); GNU Radio flowgraphs and a notebook for it written; run by you on the B210 and the P501: they work (readings not recorded) |
+| not done | FPGA OFDM transmitter, the common soft-output interface, FEC | open |
 
 Throughput: 3840 samples = 1 ms per frame, 44 data symbols x 24 subcarriers x 4 bits = 4224 bits per frame, 4.2 Mb/s; the receiver decodes every frame (2003 per 2 s, nothing late).
 
@@ -101,6 +102,19 @@ Question: can the receiver be built from the OFDM blocks that ship with GNU Radi
 
 The first row is worse than the 5e-5 of the old transmitter in section 2b, **at another position and on another day**; no run of the old transmitter at the first position in the same session was made, so I cannot say whether the 1e-3 belongs to the transmitter or to the position. What I checked: no underflow message in its terminal, no deviation in 3000 offline frames, a CPU use of 2.4 s for 3 s of signal; the closer position is clean. Two pitfalls: the cyclic prefixer's `cp_len` parameter is the prefix only (a symbol of 144 samples otherwise), and the prefixer and the mux need a minimum output buffer of 32768 items.
 
+## 2d. The 128-sample STS overlay (2026-10-26)
+
+`p501_ofdm_rx_sts` (ID 0xDD520008) is the same receiver as `p501_ofdm_rx_sc` with the detector of the 128-sample short training field: lag 16, 48 products, 144 stored windows, the plateau at 24/32 of the maximum, the start 32 samples before the plateau centre; frame `STS 128 | LTS 160 (prefix 32, T1, T2) | 44 data symbols | 32 idle`.
+One RTL source builds both overlays (the parameter `STS`). **Model** (`results_ofdm_fixed_sts.txt`): the same accuracy as S&C (EVM -13.7 / -17.5 / -21.5 dB at 16 / 20 / 24 dB), a smaller start-error spread (0.94 / 0.39 / 0.31 samples against 2.5 / 1.3 / 0.5), no false alarm in 2000 noise records (S&C: 2 before the check), carrier range +-100 kHz.
+**xsim:** the detector on seven records and four whole frames, each followed by a second frame (the 32-sample idle slot works), 0 mismatches; the S&C regressions still pass. **Overlay:** 31,664 LUT (27.0 %), 27,584 FF, 9 BRAM, 175 DSP, setup +0.417 ns, hold +0.012 ns (the one pulse-width endpoint at -0.002 ns of the base design).
+**Board:** digital loopback 0 errors in 2.1 M symbols at three levels (EVM -43 to -46 dB); the notebook's 22 checks pass headless.
+
+**On the air** (`results_board_air.txt` I and J):
+* P501 to P501, four runs alternating the overlays at the same antennas: the STS has **no bad frame at any TX attenuation (20 to 28 dB)**, S&C has 3, 18, 68 and 167 at 22 to 28 dB; the symbol error rate of the STS is 1.4 to 7 times lower at the same level (22 dB: 5.9e-5 against 4.4e-4; 24 dB: 1.3e-3 against 3.1e-3), the SNR and the EVM are the same.
+* B210 with your amplifier at 65 dB, the P501 RX gain index swept: error-free for both down to index 40 (25 counts at the ADC, SNR 33 dB); from index 36 (16 counts, SNR 29 dB) S&C has 13 to 16 % bad frames, the STS none down to index 30 (9 counts) and 1 at index 28. The model reproduces it
+  (`test_ofdm_lowlevel.py`: at 12 counts 45 of 300 S&C frames bad, none for the STS): it is an effect of the **ADC level**, not of the SNR. The cause inside the S&C detector is not proven. At TX gain 60 dB and RX gain index 70 nothing was found (overload).
+* **Not done:** the B210 sweep at normal ADC levels by stepping the B210's TX gain; the STS in the tutorial text and the README (the GNU Radio side is in `GRC_OFDM.md`: `ofdm_b210_frame_tx_sts_stock.grc`, `ofdm_b210_frame_rx_sts_stock.grc` with its own synchroniser block, and `P501_OFDM_STS_Live.ipynb`; tested offline and headless by me, then by you on the hardware: they work, no readings recorded).
+
 ## 3. Problems found and fixed
 
 1. **A strong frame ending in an empty idle slot fired the detector** (`results_board_air.txt` E and F). The S&C metric |S|^2 / E^2 divides by the energy of the newer half only: when the older half is a strong signal and the newer half is receiver noise the ratio is large (13 dB between them is enough).
@@ -115,7 +129,7 @@ The first row is worse than the 5e-5 of the old transmitter in section 2b, **at 
 ## 4. Open items (what I would do next, in this order)
 
 1. **Relative energy guard in `rtl/ofdm_detect.v`** (an average of the window energy, a comparison, no divider; the model and `sc_q`-like vectors with DC; one overlay rebuild of 11 minutes) and the capture re-arm in the reject path, in the same rebuild.
-2. **The STS variant** (128 samples, period 16, 48 products) as the second overlay `p501_ofdm_rx_sts`, the same blocks with another delay; then the comparison of the two synchronisers on the air, as planned (`PLAN_OFDM.md` section 12).
+2. **The STS variant** is done (section 2d). Left: the STS in the tutorial, a B210 sweep at normal ADC levels, and the question whether the S&C detector's low-level weakness can be removed in the RTL (a wider S word, or the shift of 8 bits made smaller at low energy).
 3. **The tutorial chapter** (`TUTORIAL_OFDM.md`, like `TUTORIAL_QAM16.md`): the frame, the S&C metric (the figures `img/ofdm_fig_*.png` exist), the GNU Radio receiver as the lab, the FPGA receiver as the reference, the results above.
 4. **FPGA OFDM transmitter** (an IFFT and a cyclic prefix instead of the DMA buffer), then the **common soft-output interface** for the FEC stage (signed 8-bit soft values per coded bit and a frame flag): the equaliser already has the per-subcarrier weights; the soft values are the data values scaled by the noise estimate.
 5. **A wired lab setup**: the TX1 to RX1 cable with an attenuator removes the antenna dependence (the level changed by 4 dB between sessions with the antennas) and makes the SNR a number that can be set.
