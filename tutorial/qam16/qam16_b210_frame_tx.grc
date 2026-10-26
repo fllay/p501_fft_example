@@ -32,6 +32,7 @@ options:
     bus_source: false
     bus_structure: null
     coordinate: [8, 8]
+    rotation: 0
     state: enabled
 
 blocks:
@@ -44,7 +45,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 280]
+    coordinate: [0, 372.0]
+    rotation: 0
     state: enabled
 - name: excess_bw
   id: variable
@@ -55,18 +57,20 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 180]
+    coordinate: [32, 220.0]
+    rotation: 0
     state: enabled
 - name: freq
   id: variable
   parameters:
     comment: carrier; check the rules where you are before transmitting
-    value: 915e6
+    value: 850e6
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 230]
+    coordinate: [16, 284.0]
+    rotation: 0
     state: enabled
 - name: samp_rate
   id: variable
@@ -77,7 +81,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 80]
+    coordinate: [24, 124.0]
+    rotation: 0
     state: enabled
 - name: sps
   id: variable
@@ -88,7 +93,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 130]
+    coordinate: [232, 204.0]
+    rotation: 0
     state: enabled
 - name: tx_amp
   id: variable_qtgui_range
@@ -109,7 +115,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [240, 180]
+    coordinate: [216, 500.0]
+    rotation: 0
     state: enabled
 - name: tx_gain
   id: variable_qtgui_range
@@ -131,7 +138,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [240, 100]
+    coordinate: [616, 52.0]
+    rotation: 0
     state: enabled
 - name: tx_on
   id: variable_qtgui_chooser
@@ -160,7 +168,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [240, 20]
+    coordinate: [352, 68.0]
+    rotation: 0
     state: enabled
 - name: blocks_complex_to_mag_0
   id: blocks_complex_to_mag
@@ -176,6 +185,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [560, 440]
+    rotation: 0
     state: enabled
 - name: blocks_multiply_const_vxx_0
   id: blocks_multiply_const_vxx
@@ -193,6 +203,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [560, 300]
+    rotation: 0
     state: enabled
 - name: epy_block_0
   id: epy_block
@@ -249,7 +260,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [240, 300]
+    coordinate: [232, 416.0]
+    rotation: 0
     state: enabled
 - name: import_digital
   id: import
@@ -261,7 +273,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 330]
+    coordinate: [0, 492.0]
+    rotation: 0
     state: enabled
 - name: qtgui_freq_sink_x_0
   id: qtgui_freq_sink_x
@@ -341,7 +354,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [800, 440]
+    coordinate: [960, 420.0]
+    rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_0
   id: qtgui_time_sink_x
@@ -437,7 +451,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [800, 600]
+    coordinate: [936, 588.0]
+    rotation: 0
     state: enabled
 - name: uhd_usrp_sink_0
   id: uhd_usrp_sink
@@ -713,7 +728,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [800, 280]
+    coordinate: [976, 212.0]
+    rotation: 0
     state: enabled
 
 connections:
