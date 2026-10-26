@@ -797,6 +797,7 @@ blocks:
     num_inputs: '2'
     vlen: '1'
     comment: x minus its DC. the B210 DC leakage would otherwise add to every window (see also the detector dither below)
+    minoutbuf: '262144'
   states:
     bus_sink: false
     bus_source: false
@@ -1833,14 +1834,14 @@ blocks:
   name: dec
   id: digital_constellation_decoder_cb
 - parameters:
-    _source_code: "\"\"\"Symbol error counter. The payload of every frame is the PRBS-15 (x^15 + x^14 + 1, seed 0x7FFF, 4 bits per 16-QAM symbol, the first bit pair = I) restarted in every frame: 44 symbols x 24 subcarriers = 1056 values.\nEvery frame of 1056 slicer bytes is compared with it (a rejected frame, bytes of 255, is skipped). Outputs (one value per input byte): 0: symbol error rate since the start, 1: symbol errors, 2: frames decoded, 3: symbol error rate over the last 2000 frames (what the link does now, not what happened at the start).\"\"\"\nimport collections\nimport numpy as np\nfrom gnuradio import gr\n\nNPAY = 1056\n\n\ndef prbs15_symbols(n):\n    s, bits = 0x7FFF, []\n    for _ in range(4 * n):\n        bits.append((s >> 14) & 1); s = ((s << 1) & 0x7FFF) | (((s >> 14) ^ (s >> 13)) & 1)\n    b = np.array(bits, int).reshape(n, 4)\n    return (b[:, 0] * 8 + b[:, 1] * 4 + b[:, 2] * 2 + b[:, 3]).astype(np.uint8)\n\n\nclass blk(gr.sync_block):\n    def __init__(self):\n    \
-      \    gr.sync_block.__init__(self, name=\"Symbol error counter\", in_sig=[np.uint8], out_sig=[np.float32, np.float32, np.float32, np.float32])\n        self.ref = prbs15_symbols(NPAY)\n        self.sym = 0; self.err = 0; self.frames = 0\n        self.recent = collections.deque(maxlen=2000)\n        self.set_output_multiple(NPAY)\n\n    def work(self, input_items, output_items):\n        x = input_items[0]; nf = len(output_items[0]) // NPAY\n        for f in range(nf):\n            fr = x[f * NPAY:(f + 1) * NPAY]\n            if not np.any(fr == 255):\n                ne = int(np.count_nonzero(fr != self.ref)); self.err += ne; self.sym += NPAY; self.frames += 1; self.recent.append(ne)\n            sl = slice(f * NPAY, (f + 1) * NPAY)\n            output_items[0][sl] = self.err / self.sym if self.sym else 0.0; output_items[1][sl] = self.err; output_items[2][sl] = self.frames; output_items[3][sl] = sum(self.recent) / (NPAY * len(self.recent)) if self.recent else 0.0\n        return nf\
-      \ * NPAY\n"
+    _source_code: "\"\"\"Symbol error counter, one output value per frame. The payload of every frame is the PRBS-15 (x^15 + x^14 + 1, seed 0x7FFF, 4 bits per 16-QAM symbol, the first bit pair = I) restarted in every frame: 44 symbols x 24 subcarriers = 1056 values.\nEvery frame of 1056 slicer bytes (0 .. 15) is compared with it (a rejected frame, bytes of 255, is skipped). Outputs, one value per frame: 0: symbol error rate since the start, 1: symbol errors since the start, 2: frames decoded,\n3: symbol error rate over the last 2000 frames (what the link does now). A decimating block with vectorised numpy: one value per frame instead of one per symbol keeps the Python interpreter, which the other Python blocks of the flowgraph share, free.\"\"\"\nimport numpy as np\nfrom gnuradio import gr\n\nNPAY = 1056\n\n\ndef prbs15_symbols(n):\n    s, bits = 0x7FFF, []\n    for _ in range(4 * n):\n        bits.append((s >> 14) & 1); s = ((s << 1) & 0x7FFF) | (((s >> 14) ^ (s >> 13)) & 1)\n    b = np.array(bits,\
+      \ int).reshape(n, 4)\n    return (b[:, 0] * 8 + b[:, 1] * 4 + b[:, 2] * 2 + b[:, 3]).astype(np.uint8)\n\n\nclass blk(gr.decim_block):\n    def __init__(self):\n        gr.decim_block.__init__(self, name=\"Symbol error counter (one value per frame)\", in_sig=[np.uint8], out_sig=[np.float32, np.float32, np.float32, np.float32], decim=NPAY)\n        self.ref = prbs15_symbols(NPAY)\n        self.err = 0; self.frames = 0\n        self.hist = np.zeros(0, np.int64)            # symbol errors of the last 2000 frames\n\n    def work(self, input_items, output_items):\n        nf = len(output_items[0])\n        fr = input_items[0][:nf * NPAY].reshape(nf, NPAY)\n        e = np.count_nonzero(fr != self.ref[None, :], axis=1).astype(np.int64)\n        e[np.any(fr == 255, axis=1)] = -1                                           # rejected frames are not counted\n        ok = e >= 0\n        cum_e = self.err + np.cumsum(np.where(ok, e, 0)); cum_f = self.frames + np.cumsum(ok)\n        allh = np.concatenate([self.hist,\
+      \ np.where(ok, e, 0)]); cs = np.concatenate([[0], np.cumsum(allh)]); k = len(self.hist) + np.arange(1, nf + 1); lo = np.maximum(k - 2000, 0)\n        rec = (cs[k] - cs[lo]) / (NPAY * np.maximum(k - lo, 1))\n        output_items[0][:] = np.where(cum_f > 0, cum_e / (NPAY * np.maximum(cum_f, 1)), 0.0); output_items[1][:] = cum_e; output_items[2][:] = cum_f; output_items[3][:] = rec\n        self.err = int(cum_e[-1]); self.frames = int(cum_f[-1]); self.hist = allh[-2000:]\n        return nf\n"
     affinity: ''
     alias: ''
     maxoutbuf: '0'
     minoutbuf: '0'
-    comment: 'compares every frame with the PRBS-15 payload that the transmitter sends: symbol errors since the start, symbol error rate, frames decoded (as in ofdm_b210_frame_rx.grc, with a fourth output: the error rate over the last 2000 frames)'
+    comment: 'compares every frame with the PRBS-15 payload that the transmitter sends: symbol errors since the start, symbol error rate, frames decoded, and the error rate over the last 2000 frames. It outputs ONE value per frame (a decimating block, vectorised): the version with one value per symbol took more of the Python interpreter than the rest of the receiver together and made the flowgraph too slow for the B210 (overflows)'
   states:
     bus_sink: false
     bus_source: false
@@ -1850,24 +1851,9 @@ blocks:
     - 2200
     rotation: 0
     state: enabled
-    _io_cache: ('Symbol error counter', 'blk', [], [('0', 'byte', 1)], [('0', 'float', 1), ('1', 'float', 1), ('2', 'float', 1), ('3', 'float', 1)], '', [])
+    _io_cache: ('Symbol error counter (one value per frame)', 'blk', [], [('0', 'byte', 1)], [('0', 'float', 1), ('1', 'float', 1), ('2', 'float', 1), ('3', 'float', 1)], '', [])
   name: counter
   id: epy_block
-- parameters:
-    type: float
-    n: '1056'
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate:
-    - 1960
-    - 2200
-    rotation: 0
-    state: enabled
-  name: keep_ser
-  id: blocks_keep_one_in_n
 - name: number_ser
   id: qtgui_number_sink
   parameters:
@@ -1933,21 +1919,6 @@ blocks:
     - 2200
     rotation: 0
     state: enabled
-- parameters:
-    type: float
-    n: '1056'
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate:
-    - 1960
-    - 2280
-    rotation: 0
-    state: enabled
-  name: keep_err
-  id: blocks_keep_one_in_n
 - name: number_err
   id: qtgui_number_sink
   parameters:
@@ -2013,21 +1984,6 @@ blocks:
     - 2280
     rotation: 0
     state: enabled
-- parameters:
-    type: float
-    n: '1056'
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate:
-    - 1960
-    - 2360
-    rotation: 0
-    state: enabled
-  name: keep_frames
-  id: blocks_keep_one_in_n
 - name: number_frames
   id: qtgui_number_sink
   parameters:
@@ -2058,7 +2014,7 @@ blocks:
     factor9: '1'
     graph_type: qtgui.NUM_GRAPH_NONE
     gui_hint: tabs@5:2,2,1,1
-    label1: frames
+    label1: '"frames"'
     label10: ''
     label2: ''
     label3: ''
@@ -2070,7 +2026,7 @@ blocks:
     label9: ''
     max: '1'
     min: '0'
-    name: '"frames decoded"'
+    name: '"frames checked (1 in check_n)"'
     nconnections: '1'
     type: float
     unit1: ''
@@ -2093,21 +2049,6 @@ blocks:
     - 2360
     rotation: 0
     state: enabled
-- parameters:
-    type: float
-    n: '1056'
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate:
-    - 1960
-    - 2440
-    rotation: 0
-    state: enabled
-  name: keep_recent
-  id: blocks_keep_one_in_n
 - name: number_recent
   id: qtgui_number_sink
   parameters:
@@ -2150,7 +2091,7 @@ blocks:
     label9: ''
     max: '1'
     min: '0'
-    name: '"symbol error rate, last 2000 frames (about 2 s)"'
+    name: '"symbol error rate, last 2000 checked frames (about 16 s)"'
     nconnections: '1'
     type: float
     unit1: ''
@@ -2558,6 +2499,7 @@ blocks:
     max_iter: '4000'
     vlen: '1'
     comment: 'S[n] = sum of 48 products x[n] conj(x[n-16]): |S| is large when the last 64 samples are the periodic STS; its angle is 16 times the carrier offset per sample'
+    minoutbuf: '262144'
   states:
     bus_sink: false
     bus_source: false
@@ -2733,6 +2675,7 @@ blocks:
     num_inputs: '2'
     vlen: '1'
     comment: 'M[n] = |S|^2 / (Ea Eb + guard): about 1 (a plateau of 65 samples) when the last 64 samples are inside the STS, small everywhere else; the idle slot (80 samples at -15 dB, not pure noise) stays below the guard'
+    minoutbuf: '262144'
   states:
     bus_sink: false
     bus_source: false
@@ -2860,17 +2803,17 @@ blocks:
     state: enabled
 - parameters:
     _source_code: "\"\"\"Frame synchroniser for the 128-sample STS frame (the part that the stock Schmidl-and-Cox block does for the S&C frame). Inputs: the received samples x, the timing metric M and the sum S of 48 products x[n] conj(x[n-16]),\nall aligned (the window of 64 samples ends at sample n; the stock blocks in front compute M = |S|^2 / (Ea Eb + guard)). When M reaches `threshold` the next 144 windows are collected; the plateau (the windows with M >= 24/32 of the largest)\ngives the start of the STS: s0 = window start + (first + last + 1) // 2 - 32. The carrier offset is the coarse one from the angle of S over the plateau (lag 16, unambiguous to +-120 kHz) plus the fine one from the two training symbols\nT1 and T2 (64 samples apart, the windows start at s0 + 154 and s0 + 218), which must repeat (|P|^2 >= E1 E2 / 2) or the frame is a false detection and is dropped.\nOutputs (one value per input sample): 0: the carrier offset in the unit of the stock Schmidl-and-Cox block (the stock\
-      \ oscillator turns by -2/N x this per sample), switched to the new value `delay` - 38 samples after s0 (the samples\nreach the oscillator `delay` samples late, through a Delay block); 1: the trigger of the stock Header/Payload Demux, a 1 at s0 + 122 + `delay` (the demux then skips the 16 samples of its guard interval, takes the two header symbols\nat s0 + 138 and s0 + 218 and the data symbols from s0 + 298, as the FPGA receiver does); 2: frames found since the start; 3: frames dropped by the training-symbol check.\"\"\"\nimport numpy as np\nfrom gnuradio import gr\n\nN, FS = 64, 3.84e6\n\n\nclass blk(gr.sync_block):\n    def __init__(self, threshold=0.65, delay=384):\n        gr.sync_block.__init__(self, name=\"STS frame synchroniser\", in_sig=[np.complex64, np.float32, np.complex64], out_sig=[np.float32, np.uint8, np.float32, np.float32])\n        self.threshold, self.delay = threshold, delay\n        self.x = np.zeros(0, np.complex64); self.M = np.zeros(0, np.float32); self.S = np.zeros(0,\
-      \ np.complex64)\n        self.base = 0; self.total = 0; self.scan = 0\n        self.stage = 0; self.m0 = 0; self.s0 = 0; self.fc = 0.0              # 0: searching, 1: collecting the windows, 2: waiting for the training symbols\n        self.events = []                                                     # (absolute output index, kind, value): kind 0 = set the carrier, 1 = trigger\n        self.cfo = 0.0; self.found = 0; self.rejected = 0\n\n    def set_threshold(self, t): self.threshold = float(t)\n\n    def _trim(self):\n        keep = 4096\n        if len(self.x) > 2 * keep:\n            k = len(self.x) - keep; self.x, self.M, self.S = self.x[k:], self.M[k:], self.S[k:]; self.base += k\n\n    def _step(self):\n        while True:\n            if self.stage == 0:\n                lo = max(self.scan - self.base, 0); idx = np.nonzero(self.M[lo:] >= self.threshold)[0]\n                if len(idx) == 0: self.scan = self.base + len(self.M); return\n                self.m0 = self.base +\
-      \ lo + int(idx[0]); self.stage = 1\n            if self.stage == 1:\n                a = self.m0 - self.base\n                if a + 144 > len(self.M): return\n                seg = self.M[a:a + 144]; pk = float(seg.max()); pl = np.nonzero(seg >= pk * 24 / 32)[0]; first, last = int(pl[0]), int(pl[-1])\n                n0 = self.m0 - 63; self.s0 = n0 + ((first + last + 1) >> 1) - 32\n                self.fc = float(np.angle(np.sum(self.S[a + first:a + last + 1])) / (2 * np.pi * 16 / FS))\n                self.stage = 2\n            if self.stage == 2:\n                t2_end = self.s0 + 218 + N\n                if self.s0 + 154 - self.base < 0:                              # the samples are gone (a very late decision): drop it\n                    self.rejected += 1; self.scan = self.m0 + 144; self.stage = 0; continue\n                if t2_end > self.base + len(self.x): return\n                i1, i2 = self.s0 + 154 - self.base, self.s0 + 218 - self.base\n                rot = np.exp(-2j\
-      \ * np.pi * self.fc / FS * (np.arange(N) + (self.s0 + 154 - self.s0)))                  # the coarse correction (a common phase does not matter)\n                a1 = self.x[i1:i1 + N] * rot; b1 = self.x[i2:i2 + N] * rot * np.exp(-2j * np.pi * self.fc / FS * 64)\n                P = np.sum(b1 * np.conj(a1)); e1 = float(np.sum(np.abs(a1) ** 2)); e2 = float(np.sum(np.abs(b1) ** 2))\n                if 2 * abs(P) ** 2 >= e1 * e2:\n                    ff = float(np.angle(P)) / (2 * np.pi * 64 / FS); f = self.fc + ff; val = np.pi * N * f / FS\n                    self.events.append((self.s0 + self.delay - 38, 0, val)); self.events.append((self.s0 + 122 + self.delay, 1, 0.0)); self.found += 1\n                else: self.rejected += 1\n                self.scan = self.m0 + 144; self.stage = 0; continue\n\n    def work(self, input_items, output_items):\n        x, M, S = input_items; n = len(x); out_cfo, out_trg, out_fnd, out_rej = output_items\n        self.x = np.concatenate([self.x, x]);\
-      \ self.M = np.concatenate([self.M, M]); self.S = np.concatenate([self.S, S])\n        self.total += n; self._step(); self._trim()\n        lo = self.total - n\n        out_trg[:] = 0; out_cfo[:] = self.cfo\n        for ev in sorted(self.events):\n            if ev[0] < lo: continue\n            if ev[0] >= lo + n: break\n            i = ev[0] - lo\n            if ev[1] == 0: out_cfo[i:] = ev[2]; self.cfo = ev[2]\n            else: out_trg[i] = 1\n        self.events = [e for e in self.events if e[0] >= lo + n]\n        out_fnd[:] = self.found; out_rej[:] = self.rejected\n        return n\n"
+      \ oscillator turns by -2/N x this per sample), switched to the new value `delay` - 38 samples after s0 (the samples\nreach the oscillator `delay` samples late, through a Delay block); 1: the trigger of the stock Header/Payload Demux, a 1 at s0 + 122 + `delay` (the demux then skips the 16 samples of its guard interval, takes the two header symbols\nat s0 + 138 and s0 + 218 and the data symbols from s0 + 298, as the FPGA receiver does).\nIt runs in the Python interpreter that the other Python blocks of the flowgraph share, at 3.84 million samples per second, so it is written to make as few NumPy calls as possible: GNU Radio keeps the last 1024 input samples for it (the history), it\nlooks at M only when a frame is not being processed, and it writes its two outputs once per call. `found` and `rejected` count the frames.\"\"\"\nimport numpy as np\nfrom gnuradio import gr\n\nN, FS, HIST = 64, 3.84e6, 1024\n\n\nclass blk(gr.sync_block):\n    def __init__(self, threshold=0.65, delay=384):\n\
+      \        gr.sync_block.__init__(self, name=\"STS frame synchroniser\", in_sig=[np.complex64, np.float32, np.complex64], out_sig=[np.float32, np.uint8])\n        self.set_history(HIST)\n        self.threshold, self.delay = threshold, delay\n        self.scan = 0                                                       # absolute index of the first window not yet looked at\n        self.stage = 0; self.m0 = 0; self.s0 = 0; self.fc = 0.0              # 0: searching, 1: collecting the windows, 2: waiting for the training symbols\n        self.events = []                                                     # (absolute output index, kind, value): kind 0 = set the carrier, 1 = trigger\n        self.cfo = 0.0; self.found = 0; self.rejected = 0\n\n    def set_threshold(self, t): self.threshold = float(t)\n\n    def _step(self, x, M, S, base, end):\n        \"\"\"x, M, S: the input arrays, element i has the absolute index base + i; end = the absolute index after the last one\"\"\"\n        while\
+      \ True:\n            if self.stage == 0:\n                lo = max(self.scan, base) - base\n                if lo >= len(M): self.scan = end; return\n                idx = np.flatnonzero(M[lo:] >= self.threshold)\n                if len(idx) == 0: self.scan = end; return\n                self.m0 = base + lo + int(idx[0]); self.stage = 1\n            if self.stage == 1:\n                a = self.m0 - base\n                if a < 0: self.rejected += 1; self.scan = self.m0 + 144; self.stage = 0; continue\n                if a + 144 > len(M): return\n                seg = M[a:a + 144]; pk = float(seg.max()); pl = np.flatnonzero(seg >= pk * 24 / 32); first, last = int(pl[0]), int(pl[-1])\n                self.s0 = self.m0 - 63 + ((first + last + 1) >> 1) - 32\n                self.fc = float(np.angle(np.sum(S[a + first:a + last + 1])) / (2 * np.pi * 16 / FS))\n                self.stage = 2\n            if self.stage == 2:\n                i1, i2 = self.s0 + 154 - base, self.s0 + 218 -\
+      \ base\n                if i1 < 0: self.rejected += 1; self.scan = self.m0 + 144; self.stage = 0; continue\n                if i2 + N > len(x): return\n                rot = np.exp(-2j * np.pi * self.fc / FS * (np.arange(N) + 154))\n                a1 = x[i1:i1 + N] * rot; b1 = x[i2:i2 + N] * rot * np.exp(-2j * np.pi * self.fc / FS * 64)\n                P = np.sum(b1 * np.conj(a1)); e1 = float(np.sum(np.abs(a1) ** 2)); e2 = float(np.sum(np.abs(b1) ** 2))\n                if 2 * abs(P) ** 2 >= e1 * e2:\n                    ff = float(np.angle(P)) / (2 * np.pi * 64 / FS); f = self.fc + ff; val = np.pi * N * f / FS\n                    self.events.append((self.s0 + self.delay - 38, 0, val)); self.events.append((self.s0 + 122 + self.delay, 1, 0.0)); self.found += 1\n                else: self.rejected += 1\n                self.scan = self.m0 + 144; self.stage = 0; continue\n\n    def work(self, input_items, output_items):\n        x, M, S = input_items; out_cfo, out_trg = output_items;\
+      \ n = len(out_cfo)\n        end = self.nitems_read(0) + n; base = end - len(x)                                        # absolute index of x[0] (the history comes first)\n        self._step(x, M, S, base, end)\n        lo = end - n\n        out_trg[:] = 0\n        if not self.events: out_cfo[:] = self.cfo\n        else:\n            pos = 0\n            for ev in sorted(self.events):\n                if ev[0] >= end: break\n                i = max(ev[0] - lo, 0)\n                if ev[1] == 0: out_cfo[pos:i] = self.cfo; pos = i; self.cfo = ev[2]\n                else: out_trg[i] = 1\n            out_cfo[pos:] = self.cfo\n            self.events = [e for e in self.events if e[0] >= end]\n        return n\n"
     threshold: threshold
     delay: sync_delay
     affinity: ''
     alias: ''
     maxoutbuf: '0'
-    minoutbuf: '0'
+    minoutbuf: '262144'
     comment: 'THE ONE BLOCK THAT IS NOT STOCK in the front end: the stock Schmidl-and-Cox block needs a symbol of two equal halves of 32 samples; the 128-sample STS repeats every 16. This block finds the plateau of M, takes the start of the STS from it, measures the carrier (coarse from the angle of S, fine from the two training symbols) and gives the stock chain what ofdm_sync_sc_cfb gives it: the carrier offset (output 0) and the trigger of the Header/Payload Demux (output 1)'
   states:
     bus_sink: false
@@ -2881,24 +2824,9 @@ blocks:
     - 1000
     rotation: 0
     state: enabled
-    _io_cache: ('STS frame synchroniser', 'blk', [('threshold', '0.65'), ('delay', '384')], [('0', 'complex', 1), ('1', 'float', 1), ('2', 'complex', 1)], [('0', 'float', 1), ('1', 'byte', 1), ('2', 'float', 1), ('3', 'float', 1)], '', ['delay', 'threshold'])
+    _io_cache: ('STS frame synchroniser', 'blk', [('threshold', '0.65'), ('delay', '384')], [('0', 'complex', 1), ('1', 'float', 1), ('2', 'complex', 1)], [('0', 'float', 1), ('1', 'byte', 1)], '', ['delay', 'threshold'])
   name: sts_sync
   id: epy_block
-- parameters:
-    type: float
-    n: '3840'
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate:
-    - 900
-    - 1100
-    rotation: 0
-    state: enabled
-  name: keep_fnd
-  id: blocks_keep_one_in_n
 - name: number_fnd
   id: qtgui_number_sink
   parameters:
@@ -2929,7 +2857,7 @@ blocks:
     factor9: '1'
     graph_type: qtgui.NUM_GRAPH_NONE
     gui_hint: tabs@2:1,0,1,1
-    label1: '"frames found"'
+    label1: '"found"'
     label10: ''
     label2: ''
     label3: ''
@@ -2941,7 +2869,7 @@ blocks:
     label9: ''
     max: '1'
     min: '0'
-    name: '"frames found"'
+    name: '"frames found per frame period (1 = every frame is found)"'
     nconnections: '1'
     type: float
     unit1: ''
@@ -2966,84 +2894,59 @@ blocks:
     state: enabled
 - parameters:
     type: float
-    n: '3840'
+    decim: '3840'
     vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate:
-    - 900
-    - 1200
-    rotation: 0
-    state: enabled
-  name: keep_rej
-  id: blocks_keep_one_in_n
-- name: number_rej
-  id: qtgui_number_sink
-  parameters:
     affinity: ''
     alias: ''
-    autoscale: 'False'
-    avg: '0.0'
-    color1: ("black", "black")
-    color10: ("black", "black")
-    color2: ("black", "black")
-    color3: ("black", "black")
-    color4: ("black", "black")
-    color5: ("black", "black")
-    color6: ("black", "black")
-    color7: ("black", "black")
-    color8: ("black", "black")
-    color9: ("black", "black")
-    comment: ''
-    factor1: '1'
-    factor10: '1'
-    factor2: '1'
-    factor3: '1'
-    factor4: '1'
-    factor5: '1'
-    factor6: '1'
-    factor7: '1'
-    factor8: '1'
-    factor9: '1'
-    graph_type: qtgui.NUM_GRAPH_NONE
-    gui_hint: tabs@2:1,1,1,1
-    label1: '"frames dropped"'
-    label10: ''
-    label2: ''
-    label3: ''
-    label4: ''
-    label5: ''
-    label6: ''
-    label7: ''
-    label8: ''
-    label9: ''
-    max: '1'
-    min: '0'
-    name: '"frames dropped (training symbols do not repeat)"'
-    nconnections: '1'
-    type: float
-    unit1: ''
-    unit10: ''
-    unit2: ''
-    unit3: ''
-    unit4: ''
-    unit5: ''
-    unit6: ''
-    unit7: ''
-    unit8: ''
-    unit9: ''
-    update_time: '0.25'
+    comment: 'STOCK: sums 3840 samples (one frame period): 1 = one trigger per frame period, i.e. the frame was found'
+    maxoutbuf: '0'
+    minoutbuf: '0'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
     coordinate:
     - 1100
-    - 1200
+    - 1100
     rotation: 0
     state: enabled
+  name: trg_sum
+  id: blocks_integrate_xx
+- parameters:
+    value: '8'
+    comment: the error counter (Python) checks 1 frame in check_n; the Python blocks that run once per frame at 1000 frames per second keep the interpreter busy, and the flowgraph could not follow the B210 (overflows of the sample stream). The decisions of every frame are made by the stock blocks anyway
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 200
+    - 880
+    rotation: 0
+    state: enabled
+  name: check_n
+  id: variable
+- parameters:
+    type: byte
+    m: '1056'
+    n: 1056 * check_n
+    offset: '0'
+    affinity: ''
+    alias: ''
+    comment: 'STOCK: of every check_n frames (1056 symbols each) one goes to the error counter'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1720
+    - 2100
+    rotation: 0
+    state: enabled
+  name: keep_chk
+  id: blocks_keep_m_in_n
 connections:
 - - uhd_usrp_source_0
   - '0'
@@ -3181,38 +3084,6 @@ connections:
   - '0'
   - const_raw
   - '0'
-- - counter
-  - '0'
-  - keep_ser
-  - '0'
-- - keep_ser
-  - '0'
-  - number_ser
-  - '0'
-- - counter
-  - '1'
-  - keep_err
-  - '0'
-- - keep_err
-  - '0'
-  - number_err
-  - '0'
-- - counter
-  - '2'
-  - keep_frames
-  - '0'
-- - keep_frames
-  - '0'
-  - number_frames
-  - '0'
-- - counter
-  - '3'
-  - keep_recent
-  - '0'
-- - keep_recent
-  - '0'
-  - number_recent
-  - '0'
 - - fft_pay
   - '0'
   - eq
@@ -3228,10 +3099,6 @@ connections:
 - - ser
   - '0'
   - dec
-  - '0'
-- - dec
-  - '0'
-  - counter
   - '0'
 - - fft_pay
   - '0'
@@ -3385,21 +3252,37 @@ connections:
   - '1'
   - hpd
   - '1'
-- - sts_sync
-  - '2'
-  - keep_fnd
+- - counter
   - '0'
-- - keep_fnd
+  - number_ser
+  - '0'
+- - counter
+  - '1'
+  - number_err
+  - '0'
+- - counter
+  - '2'
+  - number_frames
+  - '0'
+- - counter
+  - '3'
+  - number_recent
+  - '0'
+- - detect_f
+  - '0'
+  - trg_sum
+  - '0'
+- - trg_sum
   - '0'
   - number_fnd
   - '0'
-- - sts_sync
-  - '3'
-  - keep_rej
+- - dec
   - '0'
-- - keep_rej
+  - keep_chk
   - '0'
-  - number_rej
+- - keep_chk
+  - '0'
+  - counter
   - '0'
 metadata:
   file_format: 1
