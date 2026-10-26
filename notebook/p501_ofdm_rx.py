@@ -18,7 +18,8 @@ REG = dict(ID=0x00, CTRL=0x04, THR=0x08, EMIN=0x0C, TARGET=0x10, GAIN_OVR=0x14, 
            NOISE_LO=0x74, NOISE_HI=0x78, WR_COUNT=0x7C, LATE=0x80)
 CAPTURE, HMEM = 0x1000, 0x2000
 FS, R_UNIT, LV = 3.84e6, 12953, 4096
-EXPECTED_ID = 0xDD520007
+EXPECTED_ID = 0xDD520007                         # the Schmidl-and-Cox receiver (overlay p501_ofdm_rx_sc)
+ID_STS = 0xDD520008                              # the same receiver with the 128-sample STS (p501_ofdm_rx_sts)
 USED = np.array([k for k in range(-14, 15) if k != 0])
 
 
@@ -29,8 +30,9 @@ def _signed(v, bits=32):
 class P501OfdmRx:
     def __init__(self, ip):
         self.ip = ip
-        if self.ip.read(REG["ID"]) != EXPECTED_ID:
+        if self.ip.read(REG["ID"]) not in (EXPECTED_ID, ID_STS):
             raise RuntimeError("not the OFDM receiver (ID 0x%08X)" % self.ip.read(REG["ID"]))
+        self.sts = self.ip.read(REG["ID"]) == ID_STS
 
     def r(self, name):
         return self.ip.read(REG[name])

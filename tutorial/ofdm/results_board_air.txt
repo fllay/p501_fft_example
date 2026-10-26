@@ -47,3 +47,102 @@ G. B210 -> P501, 850 MHz, TX gain 79 (was 85), rms 0.25, idle slot empty, RX gai
 H. the same, second run at gain 79 (the B210 stayed up for all 10 windows): 2003-2004 frames found per window, 0 rejected; level 97-110 counts; EVM -18.8 to -22.9 dB; SNR 22.5 to 26.4 dB; carrier +8.8 to +9.3 kHz;
  SER per window 3.9e-3, 0, 0, 3.3e-4, 1.5e-4, 1.8e-4, 9.8e-5, 9.1e-5, 7.7e-4, 4.2e-3 (median 1.7e-4; bad frames 0-8 per window); at gain 85 the median was 6e-3.
  Summary 850 MHz with the empty idle slot (relative energy guard): detection solid (no frame missed or rejected in 40 windows with signal); symbol errors 0 to 4e-3 per window, median about 2e-4, as in the P501 -> P501 test at 23 dB SNR.
+
+I. P501 to P501 over the air, the Schmidl-and-Cox overlay (p501_ofdm_rx_sc, ID 0xDD520007) against the 128-sample STS overlay (p501_ofdm_rx_sts, ID 0xDD520008), 2026-10-26
+   the same antennas (a few centimetres apart), 915 MHz, RX gain index 70, buffer level 500, four runs in the order S&C, STS, S&C, STS (every run is a new AD9361 bring-up: the level at the ADC differs by up to 1 dB between runs);
+   OFDM_VARIANT=<sc|sts> python3 /tmp/p501_ofdm_air.py <frame> 70 20,22,24,26,28 500 4      (frame: ofdm_frame.npy for S&C, ofdm_frame_sts.npy for STS; 4 s per attenuation, 4.2 M symbols)
+   bad frames = frames with more than 20 % symbol errors (a frame found at a wrong place or lost). Raw output:
+   READY bring_up_ok=True rx id=0xDD520007
+   A atten  20.0 dB: locked True | in 4 s frames 4005 found 4005 rejected 0 bad 0, symbol errors 4 of 4229280 (SER 9.46e-07) bit errors 4 | last frame: EVM -21.3 dB SNR 24.3 dB carrier +164 Hz level 87 counts gain 4.60 | late 0 ovf False/False
+   A atten  22.0 dB: locked True | in 4 s frames 4005 found 4005 rejected 0 bad 3, symbol errors 1382 of 4229280 (SER 3.27e-04) bit errors 1457 | last frame: EVM -20.2 dB SNR 22.9 dB carrier -34 Hz level 68 counts gain 5.88 | late 0 ovf False/False
+   A atten  24.0 dB: locked True | in 4 s frames 4006 found 4006 rejected 0 bad 15, symbol errors 11398 of 4230336 (SER 2.69e-03) bit errors 11888 | last frame: EVM -17.9 dB SNR 19.7 dB carrier -21 Hz level 54 counts gain 7.41 | late 0 ovf False/False
+   A atten  26.0 dB: locked True | in 4 s frames 4002 found 4002 rejected 0 bad 52, symbol errors 65208 of 4226112 (SER 1.54e-02) bit errors 67289 | last frame: EVM -16.0 dB SNR 18.4 dB carrier +3 Hz level 43 counts gain 9.30 | late 0 ovf False/False
+   A atten  28.0 dB: locked True | in 4 s frames 4006 found 4006 rejected 0 bad 158, symbol errors 235018 of 4230336 (SER 5.56e-02) bit errors 242670 | last frame: EVM -13.1 dB SNR 14.7 dB carrier +13 Hz level 36 counts gain 11.11 | late 0 ovf False/False
+   == overlay sts
+   READY bring_up_ok=True rx id=0xDD520008
+   A atten  20.0 dB: locked True | in 4 s frames 4005 found 4005 rejected 0 bad 0, symbol errors 0 of 4229280 (SER 0.00e+00) bit errors 0 | last frame: EVM -22.4 dB SNR 25.0 dB carrier +47 Hz level 100 counts gain 4.00 | late 0 ovf False/False
+   A atten  22.0 dB: locked True | in 4 s frames 4006 found 4006 rejected 0 bad 0, symbol errors 20 of 4230336 (SER 4.73e-06) bit errors 20 | last frame: EVM -20.5 dB SNR 22.9 dB carrier +133 Hz level 78 counts gain 5.12 | late 0 ovf False/False
+   A atten  24.0 dB: locked True | in 4 s frames 4005 found 4005 rejected 0 bad 0, symbol errors 1364 of 4229280 (SER 3.23e-04) bit errors 1365 | last frame: EVM -18.6 dB SNR 21.2 dB carrier -21 Hz level 61 counts gain 6.55 | late 0 ovf False/False
+   A atten  26.0 dB: locked True | in 4 s frames 4006 found 4006 rejected 0 bad 0, symbol errors 16296 of 4230336 (SER 3.85e-03) bit errors 16299 | last frame: EVM -16.9 dB SNR 19.2 dB carrier +180 Hz level 50 counts gain 8.00 | late 0 ovf False/False
+   A atten  28.0 dB: locked True | in 4 s frames 4005 found 4005 rejected 0 bad 0, symbol errors 92745 of 4229280 (SER 2.19e-02) bit errors 92969 | last frame: EVM -14.6 dB SNR 14.5 dB carrier -131 Hz level 40 counts gain 10.00 | late 0 ovf False/False
+   == overlay sc
+   READY bring_up_ok=True rx id=0xDD520007
+   A atten  20.0 dB: locked True | in 4 s frames 4005 found 4005 rejected 0 bad 0, symbol errors 0 of 4230336 (SER 0.00e+00) bit errors 0 | last frame: EVM -22.0 dB SNR 25.0 dB carrier -51 Hz level 86 counts gain 4.65 | late 0 ovf False/False
+   A atten  22.0 dB: locked True | in 4 s frames 4005 found 4005 rejected 0 bad 3, symbol errors 1846 of 4229280 (SER 4.36e-04) bit errors 1959 | last frame: EVM -19.1 dB SNR 20.9 dB carrier +144 Hz level 65 counts gain 6.15 | late 0 ovf False/False
+   A atten  24.0 dB: locked True | in 4 s frames 4005 found 4006 rejected 0 bad 18, symbol errors 13138 of 4229280 (SER 3.11e-03) bit errors 13785 | last frame: EVM -18.4 dB SNR 20.3 dB carrier +35 Hz level 53 counts gain 7.55 | late 0 ovf False/False
+   A atten  26.0 dB: locked True | in 4 s frames 4005 found 4005 rejected 0 bad 68, symbol errors 72154 of 4229280 (SER 1.71e-02) bit errors 75000 | last frame: EVM -14.9 dB SNR 19.4 dB carrier -243 Hz level 44 counts gain 9.09 | late 0 ovf False/False
+   A atten  28.0 dB: locked True | in 4 s frames 4005 found 4005 rejected 0 bad 167, symbol errors 244195 of 4229280 (SER 5.77e-02) bit errors 252779 | last frame: EVM -14.6 dB SNR 16.4 dB carrier +128 Hz level 35 counts gain 11.43 | late 0 ovf False/False
+   == overlay sts
+   READY bring_up_ok=True rx id=0xDD520008
+   A atten  20.0 dB: locked True | in 4 s frames 4005 found 4005 rejected 0 bad 0, symbol errors 3 of 4229280 (SER 7.09e-07) bit errors 3 | last frame: EVM -21.8 dB SNR 24.7 dB carrier +139 Hz level 86 counts gain 4.65 | late 0 ovf False/False
+   A atten  22.0 dB: locked True | in 4 s frames 4005 found 4005 rejected 0 bad 0, symbol errors 250 of 4229280 (SER 5.91e-05) bit errors 250 | last frame: EVM -19.6 dB SNR 23.1 dB carrier -101 Hz level 69 counts gain 5.80 | late 0 ovf False/False
+   A atten  24.0 dB: locked True | in 4 s frames 4006 found 4005 rejected 0 bad 0, symbol errors 5502 of 4230336 (SER 1.30e-03) bit errors 5502 | last frame: EVM -18.2 dB SNR 22.3 dB carrier -176 Hz level 55 counts gain 7.27 | late 0 ovf False/False
+   A atten  26.0 dB: locked True | in 4 s frames 4002 found 4002 rejected 0 bad 0, symbol errors 42951 of 4226112 (SER 1.02e-02) bit errors 42992 | last frame: EVM -15.4 dB SNR 18.2 dB carrier -36 Hz level 44 counts gain 9.09 | late 0 ovf False/False
+   A atten  28.0 dB: locked True | in 4 s frames 4005 found 4005 rejected 0 bad 0, symbol errors 180121 of 4229280 (SER 4.26e-02) bit errors 181040 | last frame: EVM -13.8 dB SNR 15.8 dB carrier +114 Hz level 36 counts gain 11.11 | late 0 ovf False/False
+
+   summary (symbol error rate; bad frames in 4 s), run 2 of each overlay, the levels at the ADC agree within 4 counts, 0.5 dB (86 / 65 / 53 / 44 / 35 for S&C, 86 / 69 / 55 / 44 / 36 for STS):
+   TX atten   SNR(S&C / STS)   S&C SER     bad    STS SER     bad
+     20 dB     25.0 / 24.7     0           0      7.1e-07     0
+     22 dB     20.9 / 23.1     4.4e-04     3      5.9e-05     0
+     24 dB     20.3 / 22.3     3.1e-03     18     1.3e-03     0
+     26 dB     19.4 / 18.2     1.7e-02     68     1.0e-02     0
+     28 dB     16.4 / 15.8     5.8e-02     167    4.3e-02     0
+   run 1 (the STS run had about 1 dB more signal: 100 / 78 / 61 / 50 / 40 counts against 87 / 68 / 54 / 43 / 36): S&C 9.5e-07, 3.3e-04, 2.7e-03, 1.5e-02, 5.6e-02 (bad 0, 3, 15, 52, 158); STS 0, 4.7e-06, 3.2e-04, 3.9e-03, 2.2e-02 (bad 0 everywhere).
+   All 20 points: every frame found (4000 to 4006 in 4 s), none rejected, nothing late, no overflow.
+
+J. B210 to P501 at 850 MHz with an amplifier after the B210 (B210 TX gain 65 dB, rms 0.25), the P501 RX gain index swept: Schmidl-and-Cox against the 128-sample STS, 2026-10-26
+   The B210 transmits the frame (ofdm_frame_tx.py [--sts] --freq 850e6 --tx-gain 65 --rms 0.25), the P501 runs one AD9361 bring-up and steps the RX gain index (p501_ofdm_rxsweep.py 850e6 4 <list>: 4 s = 4.2 M symbols per index);
+   the level at the ADC and the SNR fall with the index. Run order S&C 1, STS 1, S&C 2, STS 2 (the transmitter restarted with the frame of the overlay under test each time; every run is a new bring-up).
+   At TX gain 60 dB and RX index 70 nothing was found (level 102400 = no frame: the ADC and front end overloaded with the amplifier); at 65 dB, index 50 gives 82 counts and an SNR of 35 dB.
+   Raw output, STS run 1:
+   G index 50: frames  4006 found  4006 rejected     0 bad     0 | symbol errors       0 of  4230336 (SER 0.00e+00) | last frame: EVM  -31.0 dB SNR  34.3 dB level    82 counts gain   4.88 | late 0 ovf False/False
+   G index 40: frames  4005 found  4005 rejected     0 bad     0 | symbol errors       0 of  4229280 (SER 0.00e+00) | last frame: EVM  -28.6 dB SNR  33.0 dB level    25 counts gain  16.00 | late 0 ovf False/False
+   G index 36: frames  4005 found  4005 rejected     0 bad     0 | symbol errors       0 of  4229280 (SER 0.00e+00) | last frame: EVM  -25.7 dB SNR  30.6 dB level    16 counts gain  25.00 | late 0 ovf False/False
+   G index 32: frames  4006 found  4006 rejected     0 bad     0 | symbol errors       4 of  4230336 (SER 9.46e-07) | last frame: EVM  -22.9 dB SNR  26.1 dB level    12 counts gain  33.33 | late 0 ovf False/False
+   G index 30: frames  4006 found  4005 rejected     0 bad     0 | symbol errors     162 of  4230336 (SER 3.83e-05) | last frame: EVM  -21.2 dB SNR  25.0 dB level     9 counts gain  44.44 | late 0 ovf False/False
+   G index 28: frames  4005 found  4005 rejected     0 bad     0 | symbol errors   23461 of  4230336 (SER 5.55e-03) | last frame: EVM  -17.3 dB SNR  21.0 dB level     7 counts gain  57.14 | late 0 ovf False/False
+   G index 26: frames  3902 found  4090 rejected   188 bad   641 | symbol errors  382991 of  4120512 (SER 9.29e-02) | last frame: EVM  -17.7 dB SNR  19.5 dB level     5 counts gain  80.00 | late 0 ovf False/False
+   G index 24: frames  4003 found  4005 rejected     2 bad    56 | symbol errors   70470 of  4227168 (SER 1.67e-02) | last frame: EVM  -13.2 dB SNR  20.0 dB level     4 counts gain 100.00 | late 0 ovf False/False
+   G index 22: frames     0 found     0 rejected     0 bad     0 | symbol errors       0 of        0 (SER 0.00e+00) | last frame: EVM  -15.8 dB SNR  18.7 dB level     4 counts gain 100.00 | late 0 ovf False/False
+   G index 20: frames     0 found     0 rejected     0 bad     0 | symbol errors       0 of        0 (SER 0.00e+00) | last frame: EVM  -15.8 dB SNR  18.7 dB level     4 counts gain 100.00 | late 0 ovf False/False
+   S&C run 1:
+   G index 50: frames  4006 found  4006 rejected     0 bad     0 | symbol errors       0 of  4230336 (SER 0.00e+00) | last frame: EVM  -31.0 dB SNR  34.9 dB level    81 counts gain   4.94 | late 0 ovf False/False
+   G index 40: frames  4003 found  4003 rejected     0 bad     0 | symbol errors       0 of  4227168 (SER 0.00e+00) | last frame: EVM  -28.1 dB SNR  32.3 dB level    25 counts gain  16.00 | late 0 ovf False/False
+   G index 36: frames  4006 found  4006 rejected     0 bad     7 | symbol errors    2871 of  4230336 (SER 6.79e-04) | last frame: EVM  -26.4 dB SNR  29.5 dB level    16 counts gain  25.00 | late 0 ovf False/False
+   G index 32: frames  4002 found  4002 rejected     0 bad   576 | symbol errors  254885 of  4226112 (SER 6.03e-02) | last frame: EVM  -22.4 dB SNR  25.8 dB level    12 counts gain  33.33 | late 0 ovf False/False
+   G index 30: frames  4005 found  4005 rejected     0 bad   626 | symbol errors  273419 of  4229280 (SER 6.46e-02) | last frame: EVM  -21.9 dB SNR  25.5 dB level     9 counts gain  44.44 | late 0 ovf False/False
+   G index 28: frames  3977 found  4037 rejected    60 bad  1025 | symbol errors  485871 of  4199712 (SER 1.16e-01) | last frame: EVM  -17.4 dB SNR  22.2 dB level     7 counts gain  57.14 | late 0 ovf False/False
+   G index 26: frames  3488 found  3663 rejected   176 bad   595 | symbol errors  368554 of  3683328 (SER 1.00e-01) | last frame: EVM  -18.1 dB SNR  21.5 dB level     5 counts gain  80.00 | late 0 ovf False/False
+   G index 24: frames     0 found     0 rejected     0 bad     0 | symbol errors       0 of        0 (SER 0.00e+00) | last frame: EVM  -16.1 dB SNR  19.3 dB level     6 counts gain  66.66 | late 0 ovf False/False
+   S&C run 2:
+   G index 40: frames  4005 found  4005 rejected     0 bad     0 | symbol errors       0 of  4229280 (SER 0.00e+00) | last frame: EVM  -29.1 dB SNR  33.9 dB level    26 counts gain  15.38 | late 0 ovf False/False
+   G index 36: frames  4001 found  4001 rejected     0 bad     6 | symbol errors    2387 of  4225056 (SER 5.65e-04) | last frame: EVM  -26.6 dB SNR  28.9 dB level    16 counts gain  25.00 | late 0 ovf False/False
+   G index 34: frames  4006 found  4006 rejected     0 bad   651 | symbol errors  288851 of  4230336 (SER 6.83e-02) | last frame: EVM  -23.5 dB SNR  26.9 dB level    11 counts gain  36.36 | late 0 ovf False/False
+   G index 32: frames  4005 found  4005 rejected     0 bad   541 | symbol errors  240681 of  4229280 (SER 5.69e-02) | last frame: EVM   -8.9 dB SNR  11.8 dB level    12 counts gain  33.33 | late 0 ovf False/False
+   G index 30: frames  4005 found  4005 rejected     0 bad   624 | symbol errors  270986 of  4229280 (SER 6.41e-02) | last frame: EVM  -21.0 dB SNR  26.4 dB level     9 counts gain  44.44 | late 0 ovf False/False
+   G index 28: frames  3988 found  4028 rejected    40 bad  1000 | symbol errors  479736 of  4211328 (SER 1.14e-01) | last frame: EVM  -19.4 dB SNR  22.5 dB level     7 counts gain  57.14 | late 0 ovf False/False
+   G index 26: frames  3722 found  3962 rejected   240 bad   413 | symbol errors  264321 of  3930432 (SER 6.72e-02) | last frame: EVM  -16.6 dB SNR  20.1 dB level     6 counts gain  66.66 | late 0 ovf False/False
+   STS run 2:
+   G index 40: frames  4006 found  4006 rejected     0 bad     0 | symbol errors       0 of  4230336 (SER 0.00e+00) | last frame: EVM  -28.8 dB SNR  32.7 dB level    25 counts gain  16.00 | late 0 ovf False/False
+   G index 36: frames  4006 found  4006 rejected     0 bad     0 | symbol errors       0 of  4230336 (SER 0.00e+00) | last frame: EVM  -26.7 dB SNR  30.7 dB level    16 counts gain  25.00 | late 0 ovf False/False
+   G index 34: frames  4005 found  4005 rejected     0 bad     0 | symbol errors       0 of  4229280 (SER 0.00e+00) | last frame: EVM  -24.3 dB SNR  28.0 dB level    12 counts gain  33.33 | late 0 ovf False/False
+   G index 32: frames  4006 found  4006 rejected     0 bad     0 | symbol errors       2 of  4230336 (SER 4.73e-07) | last frame: EVM  -22.5 dB SNR  24.9 dB level    12 counts gain  33.33 | late 0 ovf False/False
+   G index 30: frames  4006 found  4006 rejected     0 bad     0 | symbol errors      32 of  4230336 (SER 7.56e-06) | last frame: EVM  -22.6 dB SNR  25.6 dB level     9 counts gain  44.44 | late 0 ovf False/False
+   G index 28: frames  4006 found  4005 rejected     0 bad     1 | symbol errors   13654 of  4230336 (SER 3.23e-03) | last frame: EVM  -18.6 dB SNR  21.2 dB level     7 counts gain  57.14 | late 0 ovf False/False
+   G index 26: frames  3891 found  4090 rejected   199 bad   709 | symbol errors  416951 of  4108896 (SER 1.01e-01) | last frame: EVM  -17.0 dB SNR  19.3 dB level     6 counts gain  66.66 | late 0 ovf False/False
+
+   summary (symbol error rate; bad frames = more than 20 % symbol errors, in 4 s of about 4000 frames):
+   index  ADC level   SNR (S&C / STS)   S&C run 1        S&C run 2        STS run 1        STS run 2
+    50    82 counts   34.9 / 34.3       0 (0)            -                0 (0)            -
+    40    25          32.3 / 33.0       0 (0)            0 (0)            0 (0)            0 (0)
+    36    16          29.5 / 30.6       6.8e-04 (7)      5.7e-04 (6)      0 (0)            0 (0)
+    34    12          26.9 / 28.0       -                6.8e-02 (651)    -                0 (0)
+    32    12          25.8 / 26.1       6.0e-02 (576)    5.7e-02 (541)    9.5e-07 (0)      4.7e-07 (0)
+    30     9          25.5 / 25.0       6.5e-02 (626)    6.4e-02 (624)    3.8e-05 (0)      7.6e-06 (0)
+    28     7          22.2 / 21.0       1.2e-01 (1025)   1.1e-01 (1000)  5.6e-03 (0)      3.2e-03 (1)
+    26     5-6        21.5 / 19.5       1.0e-01 (595)    6.7e-02 (413)    9.3e-02 (641)    1.0e-01 (709)
+    24     4          19.3 / 20.0       nothing found    -                1.7e-02 (56)     -
+   Both overlays decode without error to index 40 (SNR above 32 dB). From index 36 on S&C has 13 to 16 % bad frames (frames found, cut at the wrong place) at an SNR of 25 to 29 dB, the STS none down to index 30 and 1 at index 28:
+   At an ADC level of 25 counts or more the S&C overlay is nearly as good (clean down to an SNR of about 25 dB, a few bad frames at 21 dB and below, section I: 35 to 100 counts), at 9 to 16 counts it is not; the STS has no bad frame in either range.
+   The integer model reproduces it (test_ofdm_lowlevel.py, results_ofdm_fixed_sts.txt): at Es/N0 26 dB and 12 counts rms 45 of 300 S&C frames are bad (15 %), at 9 counts 72 (24 %), the STS none; start error spread 3.3 and 4.0 samples against 0.5 and 1.0.
+   At 6 counts the STS starts to fail too (5 of 300 frames bad in the model; on the board index 26 at 5 to 6 counts: 641 and 709 bad frames of 4000); the cause of the S&C failure at low level is not proven, the model only reproduces it (a likely reason: S and E are shifted right by 8 bits before the comparison, which leaves the 32-product sum of S&C with 5 bits at 12 counts, the 48-product sum of the STS with one more).

@@ -1,7 +1,7 @@
 """P501 side of the B210 -> P501 OFDM test (run on the board as root; overlay p501_ofdm_rx_sc): the B210 transmits the OFDM frames (ofdm_frame_tx.py on the host) at 915.0 MHz (the natural carrier offset of the two radios, no hint),
 the P501's own transmitter stays off. N windows of W seconds: the counters as differences, EVM, SNR, the carrier word (the offset the receiver found), the level.
     python3 /tmp/p501_ofdm_b210.py <RX gain index> [windows 10 [seconds 2]]"""
-import sys, time
+import os, sys, time
 import numpy as np
 sys.path.insert(0, '/home/xilinx/jupyter_notebooks'); sys.path.insert(0, '/home/xilinx/jupyter_notebooks/p501_fft_dds'); sys.path.insert(0, '/home/xilinx/jupyter_notebooks/p501_ofdm')
 from pynq import Overlay
@@ -9,7 +9,7 @@ import p501_radio
 from p501_ofdm_rx import P501OfdmRx
 RX_GAIN = int(sys.argv[1]) if len(sys.argv) > 1 else 70; NW = int(sys.argv[2]) if len(sys.argv) > 2 else 10; W = float(sys.argv[3]) if len(sys.argv) > 3 else 2.0
 LO = int(float(sys.argv[4])) if len(sys.argv) > 4 else 915_000_000      # must equal the B210 --freq
-ol = Overlay('/home/xilinx/jupyter_notebooks/p501_ofdm/p501_ofdm_rx_sc.bit')
+ol = Overlay('/home/xilinx/jupyter_notebooks/p501_ofdm/p501_ofdm_rx_%s.bit' % os.environ.get('OFDM_VARIANT', 'sc'))      # OFDM_VARIANT=sts: the 128-sample STS overlay
 rx = P501OfdmRx(ol.ofdm_rx)
 ad = p501_radio.bring_up(ol, lo_hz=LO, tx_atten_db=89.75, rx_gain_index=RX_GAIN)
 rx.stop(); p501_radio.loopback(ad, False)

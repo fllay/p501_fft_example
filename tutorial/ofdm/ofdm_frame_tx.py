@@ -16,21 +16,21 @@ import ofdm_model as Fm
 DEV = "num_send_frames=128,num_recv_frames=128,send_frame_size=16360,recv_frame_size=16360"
 
 
-def one_period(fill=False):
+def one_period(fill=False, sts=False):
     """3840 complex samples, unit rms over the active part (the 3760 samples before the idle slot); fill=True puts white noise of the same rms in the idle slot
     (with an empty slot and a strong signal the detector, which has only a small absolute energy guard, fires on the falling edge into the receiver noise)"""
-    x, d = Fm.tx_frame(preamble="scu")
-    x = x / np.sqrt(np.mean(np.abs(x[:3760]) ** 2))
+    x, d = Fm.tx_frame(preamble="sts16" if sts else "scu"); na = 3808 if sts else 3760                    # the active part: the frame without its idle slot (32 samples of the STS frame, 80 of the S&C frame)
+    x = x / np.sqrt(np.mean(np.abs(x[:na]) ** 2))
     if fill:
-        r = np.random.RandomState(1); x[3760:] = np.clip(r.randn(80), -2.5, 2.5) / np.sqrt(2) + 1j * np.clip(r.randn(80), -2.5, 2.5) / np.sqrt(2)
+        r = np.random.RandomState(1); x[na:] = np.clip(r.randn(3840 - na), -2.5, 2.5) / np.sqrt(2) + 1j * np.clip(r.randn(3840 - na), -2.5, 2.5) / np.sqrt(2)
     return x.astype(np.complex64)
 
 
 class OfdmFrameTx(gr.top_block):
-    def __init__(self, tx_gain=76.0, rms=0.25, freq=915.0e6, samp_rate=3.84e6, dev_args=DEV, fill=False):
+    def __init__(self, tx_gain=76.0, rms=0.25, freq=915.0e6, samp_rate=3.84e6, dev_args=DEV, fill=False, sts=False):
         gr.top_block.__init__(self, "ofdm_frame_tx")
         assert 0 <= rms <= 0.29, "the peaks of the OFDM frame are 3.4 x the rms: rms <= 0.29"
-        self.period = one_period(fill)
+        self.period = one_period(fill, sts)
         src = blocks.vector_source_c(self.period.tolist(), True)
         self.amp = blocks.multiply_const_cc(float(rms))
         sink = uhd.usrp_sink(dev_args, uhd.stream_args(cpu_format="fc32", args="", channels=[0]), "")
@@ -48,7 +48,8 @@ class OfdmFrameTx(gr.top_block):
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--tx-gain", type=float, default=76.0); p.add_argument("--rms", type=float, default=0.25); p.add_argument("--freq", type=float, default=915.0e6); p.add_argument("--seconds", type=float, default=30); p.add_argument("--fill", action="store_true", help="noise in the idle slot instead of zeros")
+    p.add_argument("--sts", action="store_true", help="the frame of the 128-sample short training field (overlay p501_ofdm_rx_sts)")
     a = p.parse_args()
-    tx = OfdmFrameTx(a.tx_gain, a.rms, a.freq, fill=a.fill); tx.start()
+    tx = OfdmFrameTx(a.tx_gain, a.rms, a.freq, fill=a.fill, sts=a.sts); tx.start()
     print("transmitting OFDM frames (3840 samples, 1 ms, 3.84 MS/s) for %g s, TX gain %g dB, rms %g (peaks %.2f), %.6f MHz" % (a.seconds, a.tx_gain, a.rms, 3.5 * a.rms, a.freq / 1e6), flush=True)
     time.sleep(a.seconds); tx.stop(); tx.wait()

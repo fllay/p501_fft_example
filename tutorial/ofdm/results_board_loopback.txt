@@ -8,3 +8,11 @@ buffer level  ADC level (from the detector's gain)  frames in 2 s   found  rejec
    600           389 counts rms (gain 1.03)           2003           2003     0       0     0 of 2,115,168          -46.6 dB                +10 Hz    0     none
 (about 1000 frames per second: 1.0015 ms per frame; the carrier word reads +10 Hz, the coarse estimate +16 Hz: no offset in the digital loopback.)
 In a first run that changed the DMA buffer between the levels inside one process, the cumulative counters showed 6 and 8 rejected frames, 2 and 4 bad frames and one data-overflow flag: they belong to the instants of the changes of the buffer (the receiver sees a frame cut in two), not to the steady state.
+
+== The 128-sample STS overlay p501_ofdm_rx_sts (ID 0xDD520008), 2026-10-26: OFDM_VARIANT=sts python3 /tmp/p501_ofdm_loopback.py /tmp/ofdm_frame_sts.npy 300,100,600 (digital loopback, nothing radiated, 915 MHz, TX attenuation 89.75 dB)
+L level   300 counts (buffer): in 2 s frames 2003 (about 2000 expected), found 2003, rejected 0, bad frames 0, symbol errors 0 of 2115168 (SER 0.00e+00), bit errors 0
+L   last frame: EVM -45.6 dB carrier +11 Hz (coarse +11) gain 2.03 = level 197 counts | late 0 status: ovf False fft_ovf False overrun False
+L level   100 counts (buffer): in 2 s frames 2003 (about 2000 expected), found 2003, rejected 0, bad frames 0, symbol errors 0 of 2115168 (SER 0.00e+00), bit errors 0
+L   last frame: EVM -43.0 dB carrier +11 Hz (coarse +11) gain 6.15 = level 65 counts | late 0 status: ovf False fft_ovf False overrun False
+L level   600 counts (buffer): in 2 s frames 2003 (about 2000 expected), found 2003, rejected 0, bad frames 0, symbol errors 0 of 2115168 (SER 0.00e+00), bit errors 0
+L   last frame: EVM -45.9 dB carrier +10 Hz (coarse +10) gain 1.01 = level 395 counts | late 0 status: ovf False fft_ovf False overrun False

@@ -2,7 +2,7 @@
 the receiver finds the frame, estimates the carrier and the channel, decodes the 44 data symbols and counts symbol and bit errors against the PRBS-15 payload.
     python3 /tmp/p501_ofdm_loopback.py /tmp/ofdm_frame.npy [adc rms counts list, e.g. 300,150,600]
 The level is set by the amplitude of the buffer: the DAC takes 16-bit values (12 bit, left-justified), so an ADC level of R counts needs about 16 R rms in the buffer. The test ends with the DMA stopped, the loopback off and the TX attenuation at its maximum."""
-import sys, time
+import os, sys, time
 import numpy as np
 sys.path.insert(0, '/home/xilinx/jupyter_notebooks'); sys.path.insert(0, '/home/xilinx/jupyter_notebooks/p501_fft_dds'); sys.path.insert(0, '/home/xilinx/jupyter_notebooks/p501_ofdm')
 from pynq import Overlay, allocate
@@ -11,7 +11,7 @@ import p501_radio
 from p501_ofdm_rx import P501OfdmRx
 frame = np.load(sys.argv[1]) if len(sys.argv) > 1 else np.load('/tmp/ofdm_frame.npy')
 levels = [float(v) for v in sys.argv[2].split(",")] if len(sys.argv) > 2 else [300.0, 100.0, 600.0]
-ol = Overlay('/home/xilinx/jupyter_notebooks/p501_ofdm/p501_ofdm_rx_sc.bit')
+ol = Overlay('/home/xilinx/jupyter_notebooks/p501_ofdm/p501_ofdm_rx_%s.bit' % os.environ.get('OFDM_VARIANT', 'sc'))      # OFDM_VARIANT=sts: the 128-sample STS overlay
 rx = P501OfdmRx(ol.ofdm_rx); txd = AxiDmac(ol.axi_ad9361_dac_dma)
 ad = p501_radio.bring_up(ol, lo_hz=915_000_000, tx_atten_db=89.75, rx_gain_index=45)
 rx.stop()

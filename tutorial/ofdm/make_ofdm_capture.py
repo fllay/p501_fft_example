@@ -3,6 +3,7 @@
 with a fraction of a sample, a sample clock error and noise. Complex float samples (the GNU Radio file format), 3.84 MS/s, rms 0.1, replayed in a loop.
 
     python3 make_ofdm_capture.py [out.c64] [SNR dB, default 24] [carrier offset Hz, default 9000] [DC offset (real and imaginary part), default 0]
+    python3 make_ofdm_capture.py [out.c64] ... sts      the frames with the 128-sample STS preamble (for ofdm_b210_frame_rx_sts_stock.grc; give the output name, e.g. ofdm_b210_capture_sts.c64)
 A DC offset of 0.014 (0.2 of the rms of 0.1) is what the B210 leakage looks like: without the DC removal of the receiver it fires the detector in the idle slot."""
 import sys, os
 import numpy as np
@@ -12,7 +13,8 @@ out = sys.argv[1] if len(sys.argv) > 1 else "ofdm_b210_capture.c64"
 snr = float(sys.argv[2]) if len(sys.argv) > 2 else 24.0
 cfo = float(sys.argv[3]) if len(sys.argv) > 3 else 9000.0
 dc = float(sys.argv[4]) if len(sys.argv) > 4 else 0.0
-x, d = Fm.tx_frame(preamble="scu")
+STS = "sts" in sys.argv[1:]; sys.argv = [a for a in sys.argv if a != "sts"]
+x, d = Fm.tx_frame(preamble="sts16" if STS else "scu")
 y = Fm.channel(np.tile(x, 60), snr, cfo_hz=cfo, tau=3.4, ppm=10.0, rng=np.random.default_rng(5), lead=300, trail=300)
 y = (y / np.sqrt(np.mean(np.abs(y) ** 2)) * 0.1 + dc * (1 + 1j)).astype(np.complex64)
 y.tofile(out)

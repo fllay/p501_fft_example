@@ -2,7 +2,7 @@
 centimetres apart, or a cable with an attenuator. For every TX attenuation the counters are read over 2 s after the third frame. Ends with the DMA stopped and the TX attenuation at its maximum.
     python3 /tmp/p501_ofdm_air.py /tmp/ofdm_frame.npy <RX gain index> <attenuations, e.g. 20,30,40> [buffer level 500 [window seconds 2]]
 The buffer level is the rms of the 16-bit DAC values divided by 16 (a level of 500 gives peaks of 0.84 of the DAC's full scale for the 10.7 dB peak-to-average ratio of the frame)."""
-import sys, time
+import os, sys, time
 import numpy as np
 sys.path.insert(0, '/home/xilinx/jupyter_notebooks'); sys.path.insert(0, '/home/xilinx/jupyter_notebooks/p501_fft_dds'); sys.path.insert(0, '/home/xilinx/jupyter_notebooks/p501_ofdm')
 from pynq import Overlay, allocate
@@ -10,7 +10,7 @@ from axi_dmac import AxiDmac
 import p501_radio
 from p501_ofdm_rx import P501OfdmRx
 frame = np.load(sys.argv[1]); RX_GAIN = int(sys.argv[2]); ATTS = [float(v) for v in sys.argv[3].split(",")]; LEVEL = float(sys.argv[4]) if len(sys.argv) > 4 else 500.0; WIN = float(sys.argv[5]) if len(sys.argv) > 5 else 2.0
-ol = Overlay('/home/xilinx/jupyter_notebooks/p501_ofdm/p501_ofdm_rx_sc.bit')
+ol = Overlay('/home/xilinx/jupyter_notebooks/p501_ofdm/p501_ofdm_rx_%s.bit' % os.environ.get('OFDM_VARIANT', 'sc'))      # OFDM_VARIANT=sts: the 128-sample STS overlay
 rx = P501OfdmRx(ol.ofdm_rx); txd = AxiDmac(ol.axi_ad9361_dac_dma)
 ad = p501_radio.bring_up(ol, lo_hz=915_000_000, tx_atten_db=89.75, rx_gain_index=RX_GAIN)
 rx.stop(); p501_radio.loopback(ad, False)
