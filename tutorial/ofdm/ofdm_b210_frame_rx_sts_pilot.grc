@@ -1,0 +1,3166 @@
+options:
+  parameters:
+    author: p501_fft_example
+    catch_exceptions: 'True'
+    category: '[GRC Hier Blocks]'
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: 'Like ofdm_b210_frame_rx_sts_stock.grc, but the stock Frame Equalizer (decision directed channel update, 4.7e-4 symbol errors on a recording of the B210 receiving the P501) is replaced by a block of our own (pilot_eq.py): the channel from the training symbol, the common phase and gain of every symbol from the 4 pilots, no feedback from the decisions.'
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: ofdm_b210_frame_rx_sts_pilot
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: 'B210 receiver: OFDM frames with the 128-sample STS preamble, stock blocks and a pilot equalizer of our own'
+    window_size: (1280, 900)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 8
+    rotation: 0
+    state: enabled
+blocks:
+- parameters:
+    value: '3840000'
+    comment: '3.84 MS/s: the sample rate of the P501 and of the OFDM frames; N = 64 subcarriers of 60 kHz'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 100
+    rotation: 0
+    state: enabled
+  name: samp_rate
+  id: variable
+- parameters:
+    value: 850e6
+    comment: 'carrier: the same as the transmitter''s (the P501 notebook P501_OFDM_Live or ofdm_b210_frame_tx.grc); check the rules where you are before transmitting'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 160
+    rotation: 0
+    state: enabled
+  name: freq
+  id: variable
+- parameters:
+    value: '"ofdm_b210_capture_sts.c64"'
+    comment: a recording of the B210 samples (complex float, 3.84 MS/s) for the File Source (disabled by default) instead of the B210
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 220
+    rotation: 0
+    state: enabled
+  name: capture_file
+  id: variable
+- parameters:
+    value: '64'
+    comment: FFT length N
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 200
+    - 100
+    rotation: 0
+    state: enabled
+  name: fft_len
+  id: variable
+- parameters:
+    value: '16'
+    comment: cyclic prefix, in samples
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 200
+    - 160
+    rotation: 0
+    state: enabled
+  name: cp_len
+  id: variable
+- parameters:
+    value: '"frame_length"'
+    comment: the tag that carries the number of OFDM symbols of the payload through the receiver
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 200
+    - 220
+    rotation: 0
+    state: enabled
+  name: length_tag_key
+  id: variable
+- parameters:
+    value: ([-14, -13, -12, -10, -9, -8, -7, -6, -5, -3, -2, -1, 1, 2, 3, 5, 6, 7, 8, 9, 10, 12, 13, 14],)
+    comment: the 24 data subcarriers (k = -14 .. +14 without 0 and without the pilots), in the order of the transmitter
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 200
+    - 280
+    rotation: 0
+    state: enabled
+  name: occupied_carriers
+  id: variable
+- parameters:
+    value: ([-11, -4, 4, 11],)
+    comment: the 4 pilot subcarriers
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 200
+    - 340
+    rotation: 0
+    state: enabled
+  name: pilot_carriers
+  id: variable
+- parameters:
+    value: '[-1, -1, -1, -1, -1, -1, -1, 1, 1, 1, 1, 1, 1, -1, 1, 1, 1, 1, 1, -1, -1, 1, 1, 1, 1, -1, 1, -1, 1, 1, 1, -1, -1, -1, -1, 1, 1, -1, 1, 1, 1, -1, 1, -1]'
+    comment: the sign of the pilots in every one of the 44 data symbols (PRBS-7 of IEEE 802.11)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 200
+    - 400
+    rotation: 0
+    state: enabled
+  name: pilot_polarity
+  id: variable
+- parameters:
+    value: tuple(tuple(p * v for v in ((0.707106781187+0.707106781187j), (0.707106781187-0.707106781187j), (-0.707106781187+0.707106781187j), (-0.707106781187-0.707106781187j))) for p in pilot_polarity)
+    comment: 'the pilot values of every data symbol: QPSK, times the polarity. The stock equalizer takes one list of 4 values per symbol and repeats the list when the frame is longer'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 200
+    - 460
+    rotation: 0
+    state: enabled
+  name: pilot_symbols
+  id: variable
+- parameters:
+    value: digital.constellation_calcdist([((-3, -1, 3, 1)[i >> 2] + 1j * (-3, -1, 3, 1)[i & 3]) / 10 ** 0.5 for i in range(16)], list(range(16)), 4, 1)
+    comment: '16-QAM with the Gray code of the transmitter: index i = 4 I + Q bits, levels -3 -1 3 1 for the Gray codes 00 01 10 11. The slicer gives the index i (0 .. 15) as one byte'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 200
+    - 640
+    rotation: 0
+    state: enabled
+  name: payload_mod
+  id: variable
+- parameters:
+    num_tabs: '6'
+    label0: 1 Received signal
+    label1: '"2 Frame detection (STS)"'
+    label2: '"3 Carrier offset"'
+    label3: 4 FFT
+    label4: 5 Channel estimate
+    label5: 6 Equalizer and decisions
+    gui_hint: 2,0,1,6
+    comment: one tab per stage of the receiver
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 280
+    rotation: 0
+    state: enabled
+  name: tabs
+  id: qtgui_tab_widget
+- name: rx_gain
+  id: variable_qtgui_range
+  parameters:
+    comment: raise it until the received spectrum is clearly above the noise and the constellation is clean; lower it if the samples clip
+    gui_hint: 0,0,1,3
+    label: B210 RX gain (dB)
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0'
+    step: '1'
+    stop: '76'
+    value: '45'
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 340
+    rotation: 0
+    state: enabled
+- name: threshold
+  id: variable_qtgui_range
+  parameters:
+    comment: 'the frame is found when M = |S|^2 / (Ea Eb + guard) reaches this value (the FPGA uses 0.65). The energy guard of the first receiver makes the idle slot of the P501 frame harmless: no dither is needed here, the stock Schmidl-and-Cox block had none'
+    gui_hint: 0,3,1,3
+    label: '"STS detection threshold (metric M)"'
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0.3'
+    step: '0.01'
+    stop: '0.95'
+    value: '0.65'
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 420
+    rotation: 0
+    state: enabled
+- name: uhd_usrp_source_0
+  id: uhd_usrp_source
+  parameters:
+    affinity: ''
+    alias: ''
+    ant0: RX2
+    ant1: '"RX2"'
+    ant10: '"RX2"'
+    ant11: '"RX2"'
+    ant12: '"RX2"'
+    ant13: '"RX2"'
+    ant14: '"RX2"'
+    ant15: '"RX2"'
+    ant16: '"RX2"'
+    ant17: '"RX2"'
+    ant18: '"RX2"'
+    ant19: '"RX2"'
+    ant2: '"RX2"'
+    ant20: '"RX2"'
+    ant21: '"RX2"'
+    ant22: '"RX2"'
+    ant23: '"RX2"'
+    ant24: '"RX2"'
+    ant25: '"RX2"'
+    ant26: '"RX2"'
+    ant27: '"RX2"'
+    ant28: '"RX2"'
+    ant29: '"RX2"'
+    ant3: '"RX2"'
+    ant30: '"RX2"'
+    ant31: '"RX2"'
+    ant4: '"RX2"'
+    ant5: '"RX2"'
+    ant6: '"RX2"'
+    ant7: '"RX2"'
+    ant8: '"RX2"'
+    ant9: '"RX2"'
+    bw0: '0'
+    bw1: '0'
+    bw10: '0'
+    bw11: '0'
+    bw12: '0'
+    bw13: '0'
+    bw14: '0'
+    bw15: '0'
+    bw16: '0'
+    bw17: '0'
+    bw18: '0'
+    bw19: '0'
+    bw2: '0'
+    bw20: '0'
+    bw21: '0'
+    bw22: '0'
+    bw23: '0'
+    bw24: '0'
+    bw25: '0'
+    bw26: '0'
+    bw27: '0'
+    bw28: '0'
+    bw29: '0'
+    bw3: '0'
+    bw30: '0'
+    bw31: '0'
+    bw4: '0'
+    bw5: '0'
+    bw6: '0'
+    bw7: '0'
+    bw8: '0'
+    bw9: '0'
+    center_freq0: freq
+    center_freq1: '0'
+    center_freq10: '0'
+    center_freq11: '0'
+    center_freq12: '0'
+    center_freq13: '0'
+    center_freq14: '0'
+    center_freq15: '0'
+    center_freq16: '0'
+    center_freq17: '0'
+    center_freq18: '0'
+    center_freq19: '0'
+    center_freq2: '0'
+    center_freq20: '0'
+    center_freq21: '0'
+    center_freq22: '0'
+    center_freq23: '0'
+    center_freq24: '0'
+    center_freq25: '0'
+    center_freq26: '0'
+    center_freq27: '0'
+    center_freq28: '0'
+    center_freq29: '0'
+    center_freq3: '0'
+    center_freq30: '0'
+    center_freq31: '0'
+    center_freq4: '0'
+    center_freq5: '0'
+    center_freq6: '0'
+    center_freq7: '0'
+    center_freq8: '0'
+    center_freq9: '0'
+    clock_rate: 0e0
+    clock_source0: ''
+    clock_source1: ''
+    clock_source2: ''
+    clock_source3: ''
+    clock_source4: ''
+    clock_source5: ''
+    clock_source6: ''
+    clock_source7: ''
+    comment: the B210 receiver (RX2 port)
+    dc_offs0: 0+0j
+    dc_offs1: 0+0j
+    dc_offs10: 0+0j
+    dc_offs11: 0+0j
+    dc_offs12: 0+0j
+    dc_offs13: 0+0j
+    dc_offs14: 0+0j
+    dc_offs15: 0+0j
+    dc_offs16: 0+0j
+    dc_offs17: 0+0j
+    dc_offs18: 0+0j
+    dc_offs19: 0+0j
+    dc_offs2: 0+0j
+    dc_offs20: 0+0j
+    dc_offs21: 0+0j
+    dc_offs22: 0+0j
+    dc_offs23: 0+0j
+    dc_offs24: 0+0j
+    dc_offs25: 0+0j
+    dc_offs26: 0+0j
+    dc_offs27: 0+0j
+    dc_offs28: 0+0j
+    dc_offs29: 0+0j
+    dc_offs3: 0+0j
+    dc_offs30: 0+0j
+    dc_offs31: 0+0j
+    dc_offs4: 0+0j
+    dc_offs5: 0+0j
+    dc_offs6: 0+0j
+    dc_offs7: 0+0j
+    dc_offs8: 0+0j
+    dc_offs9: 0+0j
+    dc_offs_enb0: default
+    dc_offs_enb1: default
+    dc_offs_enb10: default
+    dc_offs_enb11: default
+    dc_offs_enb12: default
+    dc_offs_enb13: default
+    dc_offs_enb14: default
+    dc_offs_enb15: default
+    dc_offs_enb16: default
+    dc_offs_enb17: default
+    dc_offs_enb18: default
+    dc_offs_enb19: default
+    dc_offs_enb2: default
+    dc_offs_enb20: default
+    dc_offs_enb21: default
+    dc_offs_enb22: default
+    dc_offs_enb23: default
+    dc_offs_enb24: default
+    dc_offs_enb25: default
+    dc_offs_enb26: default
+    dc_offs_enb27: default
+    dc_offs_enb28: default
+    dc_offs_enb29: default
+    dc_offs_enb3: default
+    dc_offs_enb30: default
+    dc_offs_enb31: default
+    dc_offs_enb4: default
+    dc_offs_enb5: default
+    dc_offs_enb6: default
+    dc_offs_enb7: default
+    dc_offs_enb8: default
+    dc_offs_enb9: default
+    dev_addr: ''
+    dev_args: num_send_frames=128,num_recv_frames=128,send_frame_size=16360,recv_frame_size=16360
+    gain0: rx_gain
+    gain1: '0'
+    gain10: '0'
+    gain11: '0'
+    gain12: '0'
+    gain13: '0'
+    gain14: '0'
+    gain15: '0'
+    gain16: '0'
+    gain17: '0'
+    gain18: '0'
+    gain19: '0'
+    gain2: '0'
+    gain20: '0'
+    gain21: '0'
+    gain22: '0'
+    gain23: '0'
+    gain24: '0'
+    gain25: '0'
+    gain26: '0'
+    gain27: '0'
+    gain28: '0'
+    gain29: '0'
+    gain3: '0'
+    gain30: '0'
+    gain31: '0'
+    gain4: '0'
+    gain5: '0'
+    gain6: '0'
+    gain7: '0'
+    gain8: '0'
+    gain9: '0'
+    gain_type0: default
+    gain_type1: default
+    gain_type10: default
+    gain_type11: default
+    gain_type12: default
+    gain_type13: default
+    gain_type14: default
+    gain_type15: default
+    gain_type16: default
+    gain_type17: default
+    gain_type18: default
+    gain_type19: default
+    gain_type2: default
+    gain_type20: default
+    gain_type21: default
+    gain_type22: default
+    gain_type23: default
+    gain_type24: default
+    gain_type25: default
+    gain_type26: default
+    gain_type27: default
+    gain_type28: default
+    gain_type29: default
+    gain_type3: default
+    gain_type30: default
+    gain_type31: default
+    gain_type4: default
+    gain_type5: default
+    gain_type6: default
+    gain_type7: default
+    gain_type8: default
+    gain_type9: default
+    iq_imbal0: 0+0j
+    iq_imbal1: 0+0j
+    iq_imbal10: 0+0j
+    iq_imbal11: 0+0j
+    iq_imbal12: 0+0j
+    iq_imbal13: 0+0j
+    iq_imbal14: 0+0j
+    iq_imbal15: 0+0j
+    iq_imbal16: 0+0j
+    iq_imbal17: 0+0j
+    iq_imbal18: 0+0j
+    iq_imbal19: 0+0j
+    iq_imbal2: 0+0j
+    iq_imbal20: 0+0j
+    iq_imbal21: 0+0j
+    iq_imbal22: 0+0j
+    iq_imbal23: 0+0j
+    iq_imbal24: 0+0j
+    iq_imbal25: 0+0j
+    iq_imbal26: 0+0j
+    iq_imbal27: 0+0j
+    iq_imbal28: 0+0j
+    iq_imbal29: 0+0j
+    iq_imbal3: 0+0j
+    iq_imbal30: 0+0j
+    iq_imbal31: 0+0j
+    iq_imbal4: 0+0j
+    iq_imbal5: 0+0j
+    iq_imbal6: 0+0j
+    iq_imbal7: 0+0j
+    iq_imbal8: 0+0j
+    iq_imbal9: 0+0j
+    iq_imbal_enb0: default
+    iq_imbal_enb1: default
+    iq_imbal_enb10: default
+    iq_imbal_enb11: default
+    iq_imbal_enb12: default
+    iq_imbal_enb13: default
+    iq_imbal_enb14: default
+    iq_imbal_enb15: default
+    iq_imbal_enb16: default
+    iq_imbal_enb17: default
+    iq_imbal_enb18: default
+    iq_imbal_enb19: default
+    iq_imbal_enb2: default
+    iq_imbal_enb20: default
+    iq_imbal_enb21: default
+    iq_imbal_enb22: default
+    iq_imbal_enb23: default
+    iq_imbal_enb24: default
+    iq_imbal_enb25: default
+    iq_imbal_enb26: default
+    iq_imbal_enb27: default
+    iq_imbal_enb28: default
+    iq_imbal_enb29: default
+    iq_imbal_enb3: default
+    iq_imbal_enb30: default
+    iq_imbal_enb31: default
+    iq_imbal_enb4: default
+    iq_imbal_enb5: default
+    iq_imbal_enb6: default
+    iq_imbal_enb7: default
+    iq_imbal_enb8: default
+    iq_imbal_enb9: default
+    lo_export0: 'False'
+    lo_export1: 'False'
+    lo_export10: 'False'
+    lo_export11: 'False'
+    lo_export12: 'False'
+    lo_export13: 'False'
+    lo_export14: 'False'
+    lo_export15: 'False'
+    lo_export16: 'False'
+    lo_export17: 'False'
+    lo_export18: 'False'
+    lo_export19: 'False'
+    lo_export2: 'False'
+    lo_export20: 'False'
+    lo_export21: 'False'
+    lo_export22: 'False'
+    lo_export23: 'False'
+    lo_export24: 'False'
+    lo_export25: 'False'
+    lo_export26: 'False'
+    lo_export27: 'False'
+    lo_export28: 'False'
+    lo_export29: 'False'
+    lo_export3: 'False'
+    lo_export30: 'False'
+    lo_export31: 'False'
+    lo_export4: 'False'
+    lo_export5: 'False'
+    lo_export6: 'False'
+    lo_export7: 'False'
+    lo_export8: 'False'
+    lo_export9: 'False'
+    lo_source0: internal
+    lo_source1: internal
+    lo_source10: internal
+    lo_source11: internal
+    lo_source12: internal
+    lo_source13: internal
+    lo_source14: internal
+    lo_source15: internal
+    lo_source16: internal
+    lo_source17: internal
+    lo_source18: internal
+    lo_source19: internal
+    lo_source2: internal
+    lo_source20: internal
+    lo_source21: internal
+    lo_source22: internal
+    lo_source23: internal
+    lo_source24: internal
+    lo_source25: internal
+    lo_source26: internal
+    lo_source27: internal
+    lo_source28: internal
+    lo_source29: internal
+    lo_source3: internal
+    lo_source30: internal
+    lo_source31: internal
+    lo_source4: internal
+    lo_source5: internal
+    lo_source6: internal
+    lo_source7: internal
+    lo_source8: internal
+    lo_source9: internal
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nchan: '1'
+    num_mboards: '1'
+    otw: ''
+    rx_agc0: Default
+    rx_agc1: Default
+    rx_agc10: Default
+    rx_agc11: Default
+    rx_agc12: Default
+    rx_agc13: Default
+    rx_agc14: Default
+    rx_agc15: Default
+    rx_agc16: Default
+    rx_agc17: Default
+    rx_agc18: Default
+    rx_agc19: Default
+    rx_agc2: Default
+    rx_agc20: Default
+    rx_agc21: Default
+    rx_agc22: Default
+    rx_agc23: Default
+    rx_agc24: Default
+    rx_agc25: Default
+    rx_agc26: Default
+    rx_agc27: Default
+    rx_agc28: Default
+    rx_agc29: Default
+    rx_agc3: Default
+    rx_agc30: Default
+    rx_agc31: Default
+    rx_agc4: Default
+    rx_agc5: Default
+    rx_agc6: Default
+    rx_agc7: Default
+    rx_agc8: Default
+    rx_agc9: Default
+    samp_rate: samp_rate
+    sd_spec0: ''
+    sd_spec1: ''
+    sd_spec2: ''
+    sd_spec3: ''
+    sd_spec4: ''
+    sd_spec5: ''
+    sd_spec6: ''
+    sd_spec7: ''
+    show_lo_controls: 'False'
+    start_time: '-1.0'
+    stream_args: ''
+    stream_chans: '[]'
+    sync: sync
+    time_source0: ''
+    time_source1: ''
+    time_source2: ''
+    time_source3: ''
+    time_source4: ''
+    time_source5: ''
+    time_source6: ''
+    time_source7: ''
+    type: fc32
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 24
+    - 700
+    rotation: 0
+    state: enabled
+- parameters:
+    file: capture_file
+    type: complex
+    repeat: 'True'
+    vlen: '1'
+    offset: '0'
+    length: '0'
+    begin_tag: pmt.PMT_NIL
+    comment: 'disabled: enable it (and the Throttle) and disable the B210 to replay a recording'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 24
+    - 860
+    rotation: 0
+    state: disabled
+  name: file_source_0
+  id: blocks_file_source
+- parameters:
+    type: complex
+    samples_per_second: samp_rate
+    vlen: '1'
+    ignoretag: 'True'
+    limit: auto
+    maximum: '0.1'
+    comment: the file is read at the sample rate of the B210
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 300
+    - 860
+    rotation: 0
+    state: disabled
+  name: throttle_0
+  id: blocks_throttle2
+- parameters:
+    type: complex
+    vlen: '1'
+    showports: 'False'
+    comment: 'the one entry point of the receiver: the B210 (enabled) or the recording (enable the File Source and the Throttle, disable the B210)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 560
+    - 760
+    rotation: 0
+    state: enabled
+  name: rx_in
+  id: blocks_copy
+- parameters:
+    type: complex
+    alpha: 1e-4
+    vlen: '1'
+    comment: 'the DC offset (the local oscillator leakage of the B210, the spike at 0 Hz of the spectrum) as a very slow low-pass: the time constant is 10000 samples'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 760
+    - 700
+    rotation: 0
+    state: enabled
+  name: dc_iir
+  id: single_pole_iir_filter_xx
+- parameters:
+    type: complex
+    num_inputs: '2'
+    vlen: '1'
+    comment: x minus its DC. the B210 DC leakage would otherwise add to every window (see also the detector dither below)
+    minoutbuf: '262144'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 960
+    - 700
+    rotation: 0
+    state: enabled
+  name: dc_sub
+  id: blocks_sub_xx
+- parameters:
+    vlen: '1'
+    comment: '|x| after the DC removal: the frames (3760 active samples of 3840) with the idle slot between them'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1160
+    - 700
+    rotation: 0
+    state: enabled
+  name: x_mag
+  id: blocks_complex_to_mag
+- name: freq_sink_rx
+  id: qtgui_freq_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    average: '0.2'
+    axislabels: 'True'
+    bw: samp_rate
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: ''
+    ctrlpanel: 'False'
+    fc: '0'
+    fftsize: '2048'
+    freqhalf: 'True'
+    grid: 'True'
+    gui_hint: tabs@0:0,0,1,1
+    label: Relative Gain
+    label1: B210 RX2
+    label10: ''''''
+    label2: ''''''
+    label3: ''''''
+    label4: ''''''
+    label5: ''''''
+    label6: ''''''
+    label7: ''''''
+    label8: ''''''
+    label9: ''''''
+    legend: 'False'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    name: '"received spectrum (raw): 28 subcarriers of 60 kHz = 1.7 MHz wide; the spike at 0 is the DC / LO leakage"'
+    nconnections: '1'
+    norm_window: 'False'
+    showports: 'False'
+    tr_chan: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_tag: '""'
+    type: complex
+    units: dB
+    update_time: '0.1'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    wintype: window.WIN_BLACKMAN_hARRIS
+    ymax: '0'
+    ymin: '-120'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 560
+    - 700
+    rotation: 0
+    state: enabled
+- name: time_sink_rx
+  id: qtgui_time_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'True'
+    axislabels: 'True'
+    color1: blue
+    color10: dark blue
+    color2: red
+    color3: green
+    color4: black
+    color5: cyan
+    color6: magenta
+    color7: yellow
+    color8: dark red
+    color9: dark green
+    comment: ''
+    ctrlpanel: 'False'
+    entags: 'False'
+    grid: 'True'
+    gui_hint: tabs@0:1,0,1,1
+    label1: '|x|'
+    label10: Signal 10
+    label2: Signal 2
+    label3: Signal 3
+    label4: Signal 4
+    label5: Signal 5
+    label6: Signal 6
+    label7: Signal 7
+    label8: Signal 8
+    label9: Signal 9
+    legend: 'False'
+    marker1: '-1'
+    marker10: '-1'
+    marker2: '-1'
+    marker3: '-1'
+    marker4: '-1'
+    marker5: '-1'
+    marker6: '-1'
+    marker7: '-1'
+    marker8: '-1'
+    marker9: '-1'
+    name: '"received signal |x| (two frames of 3840 samples = 1 ms each)"'
+    nconnections: '1'
+    size: '8192'
+    srate: samp_rate
+    stemplot: 'False'
+    style1: '1'
+    style10: '1'
+    style2: '1'
+    style3: '1'
+    style4: '1'
+    style5: '1'
+    style6: '1'
+    style7: '1'
+    style8: '1'
+    style9: '1'
+    tr_chan: '0'
+    tr_delay: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_tag: '""'
+    type: float
+    update_time: '0.1'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    ylabel: Amplitude
+    ymax: '1'
+    ymin: '0'
+    yunit: '""'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 560
+    - 900
+    rotation: 0
+    state: enabled
+- parameters:
+    vlen: '1'
+    scale: '1'
+    comment: the detect pulses as numbers for the plot
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 300
+    - 1100
+    rotation: 0
+    state: enabled
+  name: detect_f
+  id: blocks_char_to_float
+- parameters:
+    vlen: '1'
+    comment: '|x| for the plot'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 300
+    - 1000
+    rotation: 0
+    state: enabled
+  name: x_mag2
+  id: blocks_complex_to_mag
+- name: time_sink_det
+  id: qtgui_time_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    axislabels: 'True'
+    color1: blue
+    color10: dark blue
+    color2: red
+    color3: green
+    color4: black
+    color5: cyan
+    color6: magenta
+    color7: yellow
+    color8: dark red
+    color9: dark green
+    comment: ''
+    ctrlpanel: 'False'
+    entags: 'False'
+    grid: 'True'
+    gui_hint: tabs@1:0,0,1,1
+    label1: '|x| (x 5)'
+    label10: Signal 10
+    label2: '"trigger"'
+    label3: Signal 3
+    label4: Signal 4
+    label5: Signal 5
+    label6: Signal 6
+    label7: Signal 7
+    label8: Signal 8
+    label9: Signal 9
+    legend: 'False'
+    marker1: '-1'
+    marker10: '-1'
+    marker2: '-1'
+    marker3: '-1'
+    marker4: '-1'
+    marker5: '-1'
+    marker6: '-1'
+    marker7: '-1'
+    marker8: '-1'
+    marker9: '-1'
+    name: '"|x| and the trigger of the STS synchroniser (two frames of 3840 samples = 1 ms each)"'
+    nconnections: '2'
+    size: '8192'
+    srate: samp_rate
+    stemplot: 'False'
+    style1: '1'
+    style10: '1'
+    style2: '1'
+    style3: '1'
+    style4: '1'
+    style5: '1'
+    style6: '1'
+    style7: '1'
+    style8: '1'
+    style9: '1'
+    tr_chan: '0'
+    tr_delay: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_tag: '""'
+    type: float
+    update_time: '0.1'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    ylabel: ''
+    ymax: '1.2'
+    ymin: '-0.1'
+    yunit: '""'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 560
+    - 1060
+    rotation: 0
+    state: enabled
+- parameters:
+    type: float
+    const: '5'
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 440
+    - 1000
+    rotation: 0
+    state: enabled
+  name: x_scale
+  id: blocks_multiply_const_vxx
+- parameters:
+    type: float
+    const: samp_rate / (3.141592653589793 * fft_len)
+    vlen: '1'
+    comment: 'the carrier offset of the synchroniser in Hz: output x samp_rate / (pi N)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 24
+    - 1300
+    rotation: 0
+    state: enabled
+  name: cfo_hz_raw
+  id: blocks_multiply_const_vxx
+- name: time_sink_cfo
+  id: qtgui_time_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    axislabels: 'True'
+    color1: blue
+    color10: dark blue
+    color2: red
+    color3: green
+    color4: black
+    color5: cyan
+    color6: magenta
+    color7: yellow
+    color8: dark red
+    color9: dark green
+    comment: ''
+    ctrlpanel: 'False'
+    entags: 'False'
+    grid: 'True'
+    gui_hint: tabs@2:0,0,1,1
+    label1: '"measured"'
+    label10: Signal 10
+    label2: averaged
+    label3: Signal 3
+    label4: Signal 4
+    label5: Signal 5
+    label6: Signal 6
+    label7: Signal 7
+    label8: Signal 8
+    label9: Signal 9
+    legend: 'False'
+    marker1: '-1'
+    marker10: '-1'
+    marker2: '-1'
+    marker3: '-1'
+    marker4: '-1'
+    marker5: '-1'
+    marker6: '-1'
+    marker7: '-1'
+    marker8: '-1'
+    marker9: '-1'
+    name: '"carrier offset (Hz) measured for every frame: coarse from the STS, fine from the two training symbols"'
+    nconnections: '1'
+    size: '32768'
+    srate: samp_rate
+    stemplot: 'False'
+    style1: '1'
+    style10: '1'
+    style2: '1'
+    style3: '1'
+    style4: '1'
+    style5: '1'
+    style6: '1'
+    style7: '1'
+    style8: '1'
+    style9: '1'
+    tr_chan: '0'
+    tr_delay: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_tag: '""'
+    type: float
+    update_time: '0.1'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    ylabel: Hz
+    ymax: '20000'
+    ymin: '-20000'
+    yunit: '""'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 560
+    - 1300
+    rotation: 0
+    state: enabled
+- parameters:
+    sensitivity: -2.0 / fft_len
+    comment: 'exp(-j 2 pi f n): the corrector. The offset in the units of the synchroniser times -2/N is the phase step per sample'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 300
+    - 1500
+    rotation: 0
+    state: enabled
+  name: osc
+  id: analog_frequency_modulator_fc
+- parameters:
+    type: complex
+    num_inputs: '2'
+    vlen: '1'
+    comment: x delayed by one symbol times the corrector
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 560
+    - 1500
+    rotation: 0
+    state: enabled
+  name: rot
+  id: blocks_multiply_xx
+- parameters:
+    type: complex
+    delay: sync_delay
+    num_ports: '1'
+    vlen: '1'
+    comment: 'the samples wait for the synchroniser (the training symbols end 282 samples after the start of the STS): then the carrier is known when they pass the oscillator'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 300
+    - 1600
+    rotation: 0
+    state: enabled
+  name: sym_delay
+  id: blocks_delay
+- parameters:
+    header_len: '2'
+    items_per_symbol: fft_len
+    guard_interval: cp_len
+    length_tag_key: length_tag_key
+    trigger_tag_key: '""'
+    output_symbols: 'True'
+    type: complex
+    timing_tag_key: '""'
+    samp_rate: samp_rate
+    special_tags: ()
+    header_padding: '0'
+    comment: 'STOCK BLOCK: cuts the frame. The trigger of the synchroniser (122 samples after the start of the STS) starts it; after the guard interval of 16 samples the 2 header symbols (the windows at s0 + 138, a training symbol read 10 samples late, and s0 + 218, the second training symbol) go to output 0, then it waits for the message ''header_data'' (always 44 symbols) and the 44 data symbols (the windows at s0 + 298 + 80 l) go to output 1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 760
+    - 1500
+    rotation: 0
+    state: enabled
+  name: hpd
+  id: digital_header_payload_demux
+- parameters:
+    type: complex
+    fft_size: fft_len
+    forward: 'True'
+    window: ()
+    shift: 'True'
+    nthreads: '1'
+    comment: 'STOCK: FFT of the 3 header symbols; shift: the bin k + 32 holds subcarrier k'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1000
+    - 1500
+    rotation: 0
+    state: enabled
+  name: fft_hdr
+  id: fft_vxx
+- parameters:
+    sync_symbol1: sync_word
+    sync_symbol2: sync_word
+    n_data_symbols: '1'
+    eq_noise_red_len: '0'
+    max_carr_offset: '-1'
+    force_one_symbol: 'True'
+    comment: 'STOCK BLOCK: channel estimate H[k] = received / known from the first header symbol (one training symbol: force one sync symbol; the sync word is given twice because the block uses the second one to find the active subcarriers); the second header symbol passes with H as a tag'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1240
+    - 1500
+    rotation: 0
+    state: enabled
+  name: chanest
+  id: digital_ofdm_chanest_vcvc
+- parameters:
+    nsym: '44'
+    _source_code: "\"\"\"Header stand-in. The stock receiver chain expects a header with the length of the packet after the synchronisation symbols; this frame has none: it always has 44 data symbols after S&C, T1 and T2.\nInput: the third symbol of every frame (T2) after the FFT and the channel estimator, 64 values, with the tags of the channel estimator. For every frame it sends the message that the Header/Payload Demux waits for:\nframe_length = nsym data symbols, and the channel estimate and the carrier offset of the tags (the equalizer of the payload needs them). Output: the channel estimate H[k] of the frame (64 values, DC in the middle, zero on the unused subcarriers) for the plots.\"\"\"\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\n\nclass blk(gr.sync_block):\n    def __init__(self, nsym=44):\n        gr.sync_block.__init__(self, name=\"Header stand-in (fixed frame length)\", in_sig=[(np.complex64, 64)], out_sig=[(np.complex64, 64)])\n        self.nsym = nsym\n   \
+      \     self.frames = 0\n        self.message_port_register_out(pmt.intern(\"header_data\"))\n\n    def work(self, input_items, output_items):\n        n0 = self.nitems_read(0); n = len(input_items[0]); out = output_items[0]\n        out[:] = 0\n        for i in range(n):\n            d = pmt.make_dict()\n            d = pmt.dict_add(d, pmt.intern(\"frame_length\"), pmt.from_long(int(self.nsym)))\n            for t in self.get_tags_in_range(0, n0 + i, n0 + i + 1):\n                d = pmt.dict_add(d, t.key, t.value)\n                if pmt.symbol_to_string(t.key) == \"ofdm_sync_chan_taps\":\n                    out[i] = np.array(pmt.c32vector_elements(t.value), dtype=np.complex64)\n            self.message_port_pub(pmt.intern(\"header_data\"), d)\n            self.frames += 1\n        return n\n"
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    comment: 'the stand-in for the packet header (the frame has none: always 44 data symbols): sends the message the Header/Payload Demux waits for, with the channel estimate of the tag, and outputs the estimate for the plots'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1480
+    - 1500
+    rotation: 0
+    state: enabled
+    _io_cache: ('Header stand-in (fixed frame length)', 'blk', [('nsym', '44')], [('0', 'complex', 64)], [('0', 'complex', 64), ('header_data', 'message', 1)], '', ['nsym'])
+  name: hdr
+  id: epy_block
+- parameters:
+    vlen: '64'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1720
+    - 1500
+    rotation: 0
+    state: enabled
+  name: h_mag
+  id: blocks_complex_to_mag
+- parameters:
+    vlen: '64'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1720
+    - 1600
+    rotation: 0
+    state: enabled
+  name: h_arg
+  id: blocks_complex_to_arg
+- parameters:
+    name: '"channel |H[k]| (the unused subcarriers are 0)"'
+    vlen: '64'
+    x_start: '-32'
+    x_step: '1'
+    x_axis_label: '"subcarrier k"'
+    y_axis_label: '"|H|"'
+    ymin: '0'
+    ymax: '2'
+    autoscale: 'True'
+    nconnections: '1'
+    gui_hint: tabs@4:0,0,1,1
+    update_time: '0.1'
+    grid: 'True'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1920
+    - 1500
+    rotation: 0
+    state: enabled
+  name: vec_hmag
+  id: qtgui_vector_sink_f
+- parameters:
+    name: '"channel phase arg H[k] (rad): a straight line = a delay (the timing offset and the early FFT window)"'
+    vlen: '64'
+    x_start: '-32'
+    x_step: '1'
+    x_axis_label: '"subcarrier k"'
+    y_axis_label: '"rad"'
+    ymin: '-3.2'
+    ymax: '3.2'
+    autoscale: 'False'
+    nconnections: '1'
+    gui_hint: tabs@4:1,0,1,1
+    update_time: '0.1'
+    grid: 'True'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1920
+    - 1600
+    rotation: 0
+    state: enabled
+  name: vec_harg
+  id: qtgui_vector_sink_f
+- parameters:
+    type: complex
+    fft_size: fft_len
+    forward: 'True'
+    window: ()
+    shift: 'True'
+    nthreads: '1'
+    comment: 'STOCK: FFT of every data symbol (the prefix is already removed by the demux)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1000
+    - 1800
+    rotation: 0
+    state: enabled
+  name: fft_pay
+  id: fft_vxx
+- parameters:
+    type: complex
+    const: '[1.0 / 8.0] * 64'
+    vlen: '64'
+    comment: '1 / sqrt(64): a subcarrier of unit power gives a bin of unit power (only for the plots; the equalizer does not care)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1240
+    - 1800
+    rotation: 0
+    state: enabled
+  name: fft_scale
+  id: blocks_multiply_const_vxx
+- parameters:
+    vlen: '64'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1480
+    - 1800
+    rotation: 0
+    state: enabled
+  name: fft_mag
+  id: blocks_complex_to_mag
+- parameters:
+    type: float
+    length: '64'
+    scale: 1.0 / 64
+    max_iter: '4000'
+    vlen: '64'
+    comment: 'the mean of |FFT| of 64 symbols: the occupied band of 28 subcarriers (k = -14 .. +14)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1720
+    - 1800
+    rotation: 0
+    state: enabled
+  name: fft_avg
+  id: blocks_moving_average_xx
+- parameters:
+    name: '"|FFT| of the OFDM symbols (mean of 64 symbols): subcarrier k = bin - 32"'
+    vlen: '64'
+    x_start: '-32'
+    x_step: '1'
+    x_axis_label: '"subcarrier k"'
+    y_axis_label: '"|X[k]|"'
+    ymin: '0'
+    ymax: '3'
+    autoscale: 'False'
+    nconnections: '1'
+    gui_hint: tabs@3:0,0,1,1
+    update_time: '0.1'
+    grid: 'True'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1920
+    - 1800
+    rotation: 0
+    state: enabled
+  name: vec_fft
+  id: qtgui_vector_sink_f
+- parameters:
+    type: complex
+    num_items: '64'
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1240
+    - 1920
+    rotation: 0
+    state: enabled
+  name: v2s64
+  id: blocks_vector_to_stream
+- parameters:
+    type: complex
+    m: '29'
+    n: '64'
+    offset: '18'
+    comment: the used subcarriers k = -14 .. +14 (29 bins, including the unused DC) of the 64
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1480
+    - 1920
+    rotation: 0
+    state: enabled
+  name: keep29
+  id: blocks_keep_m_in_n
+- name: const_raw
+  id: qtgui_const_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    axislabels: 'True'
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: ''
+    grid: 'True'
+    gui_hint: tabs@3:1,0,1,1
+    label1: symbols
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    legend: 'False'
+    marker1: '0'
+    marker10: '0'
+    marker2: '0'
+    marker3: '0'
+    marker4: '0'
+    marker5: '0'
+    marker6: '0'
+    marker7: '0'
+    marker8: '0'
+    marker9: '0'
+    name: '"after the FFT, before the equalizer (used subcarriers: the channel and the carrier rotate and scale the points)"'
+    nconnections: '1'
+    size: '2048'
+    style1: '0'
+    style10: '0'
+    style2: '0'
+    style3: '0'
+    style4: '0'
+    style5: '0'
+    style6: '0'
+    style7: '0'
+    style8: '0'
+    style9: '0'
+    tr_chan: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_tag: '""'
+    type: complex
+    update_time: '0.1'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    xmax: '1.6'
+    xmin: '-1.6'
+    ymax: '1.6'
+    ymin: '-1.6'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1720
+    - 1920
+    rotation: 0
+    state: enabled
+- name: const_eq
+  id: qtgui_const_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    axislabels: 'True'
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: ''
+    grid: 'True'
+    gui_hint: tabs@5:0,2,2,2
+    label1: symbols
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    legend: 'False'
+    marker1: '0'
+    marker10: '0'
+    marker2: '0'
+    marker3: '0'
+    marker4: '0'
+    marker5: '0'
+    marker6: '0'
+    marker7: '0'
+    marker8: '0'
+    marker9: '0'
+    name: '"the decided points (the nearest of the 16: the error counters tell the quality)"'
+    nconnections: '1'
+    size: '2048'
+    style1: '0'
+    style10: '0'
+    style2: '0'
+    style3: '0'
+    style4: '0'
+    style5: '0'
+    style6: '0'
+    style7: '0'
+    style8: '0'
+    style9: '0'
+    tr_chan: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_tag: '""'
+    type: complex
+    update_time: '0.1'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    xmax: '1.6'
+    xmin: '-1.6'
+    ymax: '1.6'
+    ymin: '-1.6'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1480
+    - 2100
+    rotation: 0
+    state: enabled
+- parameters:
+    constellation: payload_mod.base()
+    comment: 'STOCK BLOCK: the 16-QAM slicer, one byte (0 .. 15) per symbol'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1480
+    - 2200
+    rotation: 0
+    state: enabled
+  name: dec
+  id: digital_constellation_decoder_cb
+- parameters:
+    _source_code: "\"\"\"Symbol error counter, one output value per frame. The payload of every frame is the PRBS-15 (x^15 + x^14 + 1, seed 0x7FFF, 4 bits per 16-QAM symbol, the first bit pair = I) restarted in every frame: 44 symbols x 24 subcarriers = 1056 values.\nEvery frame of 1056 slicer bytes (0 .. 15) is compared with it (a rejected frame, bytes of 255, is skipped). Outputs, one value per frame: 0: symbol error rate since the start, 1: symbol errors since the start, 2: frames decoded,\n3: symbol error rate over the last 2000 frames (what the link does now). A decimating block with vectorised numpy: one value per frame instead of one per symbol keeps the Python interpreter, which the other Python blocks of the flowgraph share, free.\"\"\"\nimport numpy as np\nfrom gnuradio import gr\n\nNPAY = 1056\n\n\ndef prbs15_symbols(n):\n    s, bits = 0x7FFF, []\n    for _ in range(4 * n):\n        bits.append((s >> 14) & 1); s = ((s << 1) & 0x7FFF) | (((s >> 14) ^ (s >> 13)) & 1)\n    b = np.array(bits,\
+      \ int).reshape(n, 4)\n    return (b[:, 0] * 8 + b[:, 1] * 4 + b[:, 2] * 2 + b[:, 3]).astype(np.uint8)\n\n\nclass blk(gr.decim_block):\n    def __init__(self):\n        gr.decim_block.__init__(self, name=\"Symbol error counter (one value per frame)\", in_sig=[np.uint8], out_sig=[np.float32, np.float32, np.float32, np.float32], decim=NPAY)\n        self.ref = prbs15_symbols(NPAY)\n        self.err = 0; self.frames = 0\n        self.hist = np.zeros(0, np.int64)            # symbol errors of the last 2000 frames\n\n    def work(self, input_items, output_items):\n        nf = len(output_items[0])\n        fr = input_items[0][:nf * NPAY].reshape(nf, NPAY)\n        e = np.count_nonzero(fr != self.ref[None, :], axis=1).astype(np.int64)\n        e[np.any(fr == 255, axis=1)] = -1                                           # rejected frames are not counted\n        ok = e >= 0\n        cum_e = self.err + np.cumsum(np.where(ok, e, 0)); cum_f = self.frames + np.cumsum(ok)\n        allh = np.concatenate([self.hist,\
+      \ np.where(ok, e, 0)]); cs = np.concatenate([[0], np.cumsum(allh)]); k = len(self.hist) + np.arange(1, nf + 1); lo = np.maximum(k - 2000, 0)\n        rec = (cs[k] - cs[lo]) / (NPAY * np.maximum(k - lo, 1))\n        output_items[0][:] = np.where(cum_f > 0, cum_e / (NPAY * np.maximum(cum_f, 1)), 0.0); output_items[1][:] = cum_e; output_items[2][:] = cum_f; output_items[3][:] = rec\n        self.err = int(cum_e[-1]); self.frames = int(cum_f[-1]); self.hist = allh[-2000:]\n        return nf\n"
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    comment: 'compares every frame with the PRBS-15 payload that the transmitter sends: symbol errors since the start, symbol error rate, frames decoded, and the error rate over the last 2000 frames. It outputs ONE value per frame (a decimating block, vectorised): the version with one value per symbol took more of the Python interpreter than the rest of the receiver together and made the flowgraph too slow for the B210 (overflows)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1720
+    - 2200
+    rotation: 0
+    state: enabled
+    _io_cache: ('Symbol error counter (one value per frame)', 'blk', [], [('0', 'byte', 1)], [('0', 'float', 1), ('1', 'float', 1), ('2', 'float', 1), ('3', 'float', 1)], '', [])
+  name: counter
+  id: epy_block
+- name: number_ser
+  id: qtgui_number_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    autoscale: 'False'
+    avg: '0.0'
+    color1: ("black", "black")
+    color10: ("black", "black")
+    color2: ("black", "black")
+    color3: ("black", "black")
+    color4: ("black", "black")
+    color5: ("black", "black")
+    color6: ("black", "black")
+    color7: ("black", "black")
+    color8: ("black", "black")
+    color9: ("black", "black")
+    comment: ''
+    factor1: '1'
+    factor10: '1'
+    factor2: '1'
+    factor3: '1'
+    factor4: '1'
+    factor5: '1'
+    factor6: '1'
+    factor7: '1'
+    factor8: '1'
+    factor9: '1'
+    graph_type: qtgui.NUM_GRAPH_NONE
+    gui_hint: tabs@5:2,0,1,1
+    label1: SER
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    max: '1'
+    min: '0'
+    name: '"symbol error rate (since the start)"'
+    nconnections: '1'
+    type: float
+    unit1: ''
+    unit10: ''
+    unit2: ''
+    unit3: ''
+    unit4: ''
+    unit5: ''
+    unit6: ''
+    unit7: ''
+    unit8: ''
+    unit9: ''
+    update_time: '0.25'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2160
+    - 2200
+    rotation: 0
+    state: enabled
+- name: number_err
+  id: qtgui_number_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    autoscale: 'False'
+    avg: '0.0'
+    color1: ("black", "black")
+    color10: ("black", "black")
+    color2: ("black", "black")
+    color3: ("black", "black")
+    color4: ("black", "black")
+    color5: ("black", "black")
+    color6: ("black", "black")
+    color7: ("black", "black")
+    color8: ("black", "black")
+    color9: ("black", "black")
+    comment: ''
+    factor1: '1'
+    factor10: '1'
+    factor2: '1'
+    factor3: '1'
+    factor4: '1'
+    factor5: '1'
+    factor6: '1'
+    factor7: '1'
+    factor8: '1'
+    factor9: '1'
+    graph_type: qtgui.NUM_GRAPH_NONE
+    gui_hint: tabs@5:2,1,1,1
+    label1: errors
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    max: '1'
+    min: '0'
+    name: '"symbol errors"'
+    nconnections: '1'
+    type: float
+    unit1: ''
+    unit10: ''
+    unit2: ''
+    unit3: ''
+    unit4: ''
+    unit5: ''
+    unit6: ''
+    unit7: ''
+    unit8: ''
+    unit9: ''
+    update_time: '0.25'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2160
+    - 2280
+    rotation: 0
+    state: enabled
+- name: number_frames
+  id: qtgui_number_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    autoscale: 'False'
+    avg: '0.0'
+    color1: ("black", "black")
+    color10: ("black", "black")
+    color2: ("black", "black")
+    color3: ("black", "black")
+    color4: ("black", "black")
+    color5: ("black", "black")
+    color6: ("black", "black")
+    color7: ("black", "black")
+    color8: ("black", "black")
+    color9: ("black", "black")
+    comment: ''
+    factor1: '1'
+    factor10: '1'
+    factor2: '1'
+    factor3: '1'
+    factor4: '1'
+    factor5: '1'
+    factor6: '1'
+    factor7: '1'
+    factor8: '1'
+    factor9: '1'
+    graph_type: qtgui.NUM_GRAPH_NONE
+    gui_hint: tabs@5:2,2,1,1
+    label1: '"frames"'
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    max: '1'
+    min: '0'
+    name: '"frames checked (1 in check_n)"'
+    nconnections: '1'
+    type: float
+    unit1: ''
+    unit10: ''
+    unit2: ''
+    unit3: ''
+    unit4: ''
+    unit5: ''
+    unit6: ''
+    unit7: ''
+    unit8: ''
+    unit9: ''
+    update_time: '0.25'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2160
+    - 2360
+    rotation: 0
+    state: enabled
+- name: number_recent
+  id: qtgui_number_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    autoscale: 'False'
+    avg: '0.0'
+    color1: ("black", "black")
+    color10: ("black", "black")
+    color2: ("black", "black")
+    color3: ("black", "black")
+    color4: ("black", "black")
+    color5: ("black", "black")
+    color6: ("black", "black")
+    color7: ("black", "black")
+    color8: ("black", "black")
+    color9: ("black", "black")
+    comment: ''
+    factor1: '1'
+    factor10: '1'
+    factor2: '1'
+    factor3: '1'
+    factor4: '1'
+    factor5: '1'
+    factor6: '1'
+    factor7: '1'
+    factor8: '1'
+    factor9: '1'
+    graph_type: qtgui.NUM_GRAPH_NONE
+    gui_hint: tabs@5:2,3,1,1
+    label1: SER now
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    max: '1'
+    min: '0'
+    name: '"symbol error rate, last 2000 checked frames (about 16 s)"'
+    nconnections: '1'
+    type: float
+    unit1: ''
+    unit10: ''
+    unit2: ''
+    unit3: ''
+    unit4: ''
+    unit5: ''
+    unit6: ''
+    unit7: ''
+    unit8: ''
+    unit9: ''
+    update_time: '0.25'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 2160
+    - 2440
+    rotation: 0
+    state: enabled
+- parameters:
+    type: complex
+    num_items: '24'
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1480
+    - 2300
+    rotation: 0
+    state: enabled
+  name: v2s_soft
+  id: blocks_vector_to_stream
+- parameters:
+    type: complex
+    n: '8'
+    vlen: '1'
+    comment: every 8th point is enough for the plot
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1680
+    - 2300
+    rotation: 0
+    state: enabled
+  name: keep_soft
+  id: blocks_keep_one_in_n
+- name: const_soft
+  id: qtgui_const_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    axislabels: 'True'
+    color1: '"blue"'
+    color10: '"dark blue"'
+    color2: '"red"'
+    color3: '"green"'
+    color4: '"black"'
+    color5: '"cyan"'
+    color6: '"magenta"'
+    color7: '"yellow"'
+    color8: '"dark red"'
+    color9: '"dark green"'
+    comment: ''
+    grid: 'True'
+    gui_hint: tabs@5:0,0,2,2
+    label1: symbols
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    legend: 'False'
+    marker1: '0'
+    marker10: '0'
+    marker2: '0'
+    marker3: '0'
+    marker4: '0'
+    marker5: '0'
+    marker6: '0'
+    marker7: '0'
+    marker8: '0'
+    marker9: '0'
+    name: '"the received data symbols after the equalizer: the spread of the clusters is the noise (the channel is divided out, the pilots remove the phase and gain)"'
+    nconnections: '1'
+    size: '2048'
+    style1: '0'
+    style10: '0'
+    style2: '0'
+    style3: '0'
+    style4: '0'
+    style5: '0'
+    style6: '0'
+    style7: '0'
+    style8: '0'
+    style9: '0'
+    tr_chan: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_tag: '""'
+    type: complex
+    update_time: '0.1'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    xmax: '1.6'
+    xmin: '-1.6'
+    ymax: '1.6'
+    ymin: '-1.6'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1880
+    - 2300
+    rotation: 0
+    state: enabled
+- parameters:
+    type: float
+    n: '1056'
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1480
+    - 2400
+    rotation: 0
+    state: enabled
+  name: keep_evm
+  id: blocks_keep_one_in_n
+- name: number_evm
+  id: qtgui_number_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    autoscale: 'False'
+    avg: '0.0'
+    color1: ("black", "black")
+    color10: ("black", "black")
+    color2: ("black", "black")
+    color3: ("black", "black")
+    color4: ("black", "black")
+    color5: ("black", "black")
+    color6: ("black", "black")
+    color7: ("black", "black")
+    color8: ("black", "black")
+    color9: ("black", "black")
+    comment: ''
+    factor1: '1'
+    factor10: '1'
+    factor2: '1'
+    factor3: '1'
+    factor4: '1'
+    factor5: '1'
+    factor6: '1'
+    factor7: '1'
+    factor8: '1'
+    factor9: '1'
+    graph_type: qtgui.NUM_GRAPH_NONE
+    gui_hint: tabs@5:2,4,1,1
+    label1: EVM
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    max: '1'
+    min: '0'
+    name: '"EVM against the known payload (dB)"'
+    nconnections: '1'
+    type: float
+    unit1: dB
+    unit10: ''
+    unit2: ''
+    unit3: ''
+    unit4: ''
+    unit5: ''
+    unit6: ''
+    unit7: ''
+    unit8: ''
+    unit9: ''
+    update_time: '0.25'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1680
+    - 2400
+    rotation: 0
+    state: enabled
+- parameters:
+    value: '[0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, (-0.707106781187+0.707106781187j), (0.707106781187-0.707106781187j), (0.707106781187-0.707106781187j), (-0.707106781187-0.707106781187j), (0.707106781187-0.707106781187j), (0.707106781187-0.707106781187j), (0.707106781187-0.707106781187j), (0.707106781187-0.707106781187j), (-0.707106781187+0.707106781187j), (-0.707106781187-0.707106781187j), (0.707106781187+0.707106781187j), (-0.707106781187+0.707106781187j), (-0.707106781187+0.707106781187j), (-0.707106781187+0.707106781187j), 0j, (-0.707106781187-0.707106781187j), (0.707106781187-0.707106781187j), (-0.707106781187+0.707106781187j), (-0.707106781187-0.707106781187j), (-0.707106781187-0.707106781187j), (-0.707106781187+0.707106781187j), (-0.707106781187+0.707106781187j), (0.707106781187+0.707106781187j), (0.707106781187-0.707106781187j), (-0.707106781187+0.707106781187j), (-0.707106781187-0.707106781187j), (-0.707106781187-0.707106781187j), (0.707106781187+0.707106781187j),
+      (0.707106781187+0.707106781187j), 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j, 0j]'
+    comment: 'the training symbol as the channel estimator must see it: the 28 QPSK values of T times (-j)^k. The first header window of the demux starts at s0 + 138, ten samples into the LTS (the LTS is T repeated, so the window is T shifted circularly by 42 samples: a phase slope of 42 samples); the data windows start 6 samples inside their prefixes (a slope of -6 samples). The factor exp(j 2 pi k 48 / 64) = (-j)^k is the sum of the two, so that H = received / sync word has the phase slope of the data windows'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 200
+    - 520
+    rotation: 0
+    state: enabled
+  name: sync_word
+  id: variable
+- parameters:
+    value: '384'
+    comment: the samples wait this long (a Delay block) while the synchroniser measures the carrier from the two training symbols (they end 282 samples after the start of the STS); it must be at least 330
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 200
+    - 580
+    rotation: 0
+    state: enabled
+  name: sync_delay
+  id: variable
+- parameters:
+    value: '0.1'
+    comment: 'energy guard: a window counts only if its energy is at least this fraction of the long-term average (0.1 = -10 dB). A constant, a DC offset or noise that is not much weaker than the signal looks like a periodic signal to the S&C metric (M reaches 1 in the idle slot) whatever its level; the FPGA has the same guard as an absolute level (EMIN)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 8
+    - 250
+    rotation: 0
+    state: enabled
+  name: guard_level
+  id: variable
+- parameters:
+    type: complex
+    delay: '16'
+    num_ports: '1'
+    vlen: '1'
+    comment: 'x[n-16]: the STS repeats every 16 samples (6 QPSK subcarriers at k = +-4, +-8, +-12)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 24
+    - 2900
+    rotation: 0
+    state: enabled
+  name: sc_delay
+  id: blocks_delay
+- parameters: {}
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 224
+    - 2900
+    rotation: 0
+    state: enabled
+  name: sc_conj
+  id: blocks_conjugate_cc
+- parameters:
+    type: complex
+    num_inputs: '2'
+    vlen: '1'
+    comment: x[n] conj(x[n-32])
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 424
+    - 2900
+    rotation: 0
+    state: enabled
+  name: sc_mult
+  id: blocks_multiply_xx
+- parameters:
+    type: complex
+    length: '48'
+    scale: '1'
+    max_iter: '4000'
+    vlen: '1'
+    comment: 'S[n] = sum of 48 products x[n] conj(x[n-16]): |S| is large when the last 64 samples are the periodic STS; its angle is 16 times the carrier offset per sample'
+    minoutbuf: '262144'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 624
+    - 2900
+    rotation: 0
+    state: enabled
+  name: sc_avg
+  id: blocks_moving_average_xx
+- parameters:
+    vlen: '1'
+    comment: '|S|^2'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 824
+    - 2900
+    rotation: 0
+    state: enabled
+  name: sc_mag2
+  id: blocks_complex_to_mag_squared
+- parameters:
+    vlen: '1'
+    comment: '|x|^2'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1024
+    - 2900
+    rotation: 0
+    state: enabled
+  name: en_mag2
+  id: blocks_complex_to_mag_squared
+- parameters:
+    type: float
+    length: '48'
+    scale: '1'
+    max_iter: '4000'
+    vlen: '1'
+    comment: 'Eb: the energy of the newer 48 samples'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 24
+    - 3020
+    rotation: 0
+    state: enabled
+  name: en_avg
+  id: blocks_moving_average_xx
+- parameters:
+    type: float
+    delay: '16'
+    num_ports: '1'
+    vlen: '1'
+    comment: 'Ea: the energy of the older 48 samples (the multiplied ones: 16 samples earlier)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 224
+    - 3020
+    rotation: 0
+    state: enabled
+  name: en_delay
+  id: blocks_delay
+- parameters:
+    type: float
+    num_inputs: '2'
+    vlen: '1'
+    comment: 'Ea Eb: the normalisation. With |S|^2 / Eb^2 alone a strong frame that ends in noise would fire the detector (the P501 FPGA has a guard for this); Ea Eb keeps M <= 1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 424
+    - 3020
+    rotation: 0
+    state: enabled
+  name: en_mult
+  id: blocks_multiply_xx
+- parameters:
+    type: float
+    alpha: '2.4e-4'
+    vlen: '1'
+    comment: the long-term average power P of the signal (time constant 4096 samples, about 1 frame)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 624
+    - 3020
+    rotation: 0
+    state: enabled
+  name: guard_avg
+  id: single_pole_iir_filter_xx
+- parameters:
+    type: float
+    num_inputs: '2'
+    vlen: '1'
+    comment: P^2
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 824
+    - 3020
+    rotation: 0
+    state: enabled
+  name: guard_sq
+  id: blocks_multiply_xx
+- parameters:
+    type: float
+    const: (guard_level * 48) ** 2
+    vlen: '1'
+    comment: '(guard_level 48 P)^2: the square of the smallest window energy that may count (see guard_level)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1024
+    - 3020
+    rotation: 0
+    state: enabled
+  name: guard_k
+  id: blocks_multiply_const_vxx
+- parameters:
+    type: float
+    num_inputs: '2'
+    vlen: '1'
+    comment: 'Ea Eb + guard: in the idle slot Ea Eb is far below the guard, so M = |S|^2 / (Ea Eb + guard) is small there whatever the content of the slot; in the frame Ea Eb is far above it and M is unchanged'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 24
+    - 3140
+    rotation: 0
+    state: enabled
+  name: guard_add
+  id: blocks_add_xx
+- parameters:
+    type: float
+    const: 1e-12
+    vlen: '1'
+    comment: avoids a division by zero
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 224
+    - 3140
+    rotation: 0
+    state: enabled
+  name: en_eps
+  id: blocks_add_const_vxx
+- parameters:
+    type: float
+    num_inputs: '2'
+    vlen: '1'
+    comment: 'M[n] = |S|^2 / (Ea Eb + guard): about 1 (a plateau of 65 samples) when the last 64 samples are inside the STS, small everywhere else; the idle slot (80 samples at -15 dB, not pure noise) stays below the guard'
+    minoutbuf: '262144'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 424
+    - 3140
+    rotation: 0
+    state: enabled
+  name: sc_div
+  id: blocks_divide_xx
+- parameters:
+    type: float
+    const: threshold
+    comment: the detection threshold, drawn with M
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 624
+    - 3140
+    rotation: 0
+    state: enabled
+  name: thr_src
+  id: analog_const_source_x
+- name: time_sink_m
+  id: qtgui_time_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'False'
+    axislabels: 'True'
+    color1: blue
+    color10: dark blue
+    color2: red
+    color3: green
+    color4: black
+    color5: cyan
+    color6: magenta
+    color7: yellow
+    color8: dark red
+    color9: dark green
+    comment: ''
+    ctrlpanel: 'False'
+    entags: 'False'
+    grid: 'True'
+    gui_hint: tabs@1:1,0,1,1
+    label1: M
+    label10: Signal 10
+    label2: threshold
+    label3: Signal 3
+    label4: Signal 4
+    label5: Signal 5
+    label6: Signal 6
+    label7: Signal 7
+    label8: Signal 8
+    label9: Signal 9
+    legend: 'False'
+    marker1: '-1'
+    marker10: '-1'
+    marker2: '-1'
+    marker3: '-1'
+    marker4: '-1'
+    marker5: '-1'
+    marker6: '-1'
+    marker7: '-1'
+    marker8: '-1'
+    marker9: '-1'
+    name: '"STS metric M and the threshold (two frames)"'
+    nconnections: '2'
+    size: '8192'
+    srate: samp_rate
+    stemplot: 'False'
+    style1: '1'
+    style10: '1'
+    style2: '1'
+    style3: '1'
+    style4: '1'
+    style5: '1'
+    style6: '1'
+    style7: '1'
+    style8: '1'
+    style9: '1'
+    tr_chan: '0'
+    tr_delay: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_tag: '""'
+    type: float
+    update_time: '0.1'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    ylabel: M
+    ymax: '1.1'
+    ymin: '-0.1'
+    yunit: '""'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 824
+    - 3140
+    rotation: 0
+    state: enabled
+- parameters:
+    _source_code: "\"\"\"Frame synchroniser for the 128-sample STS frame (the part that the stock Schmidl-and-Cox block does for the S&C frame). Inputs: the received samples x, the timing metric M and the sum S of 48 products x[n] conj(x[n-16]),\nall aligned (the window of 64 samples ends at sample n; the stock blocks in front compute M = |S|^2 / (Ea Eb + guard)). When M reaches `threshold` the next 144 windows are collected; the plateau (the windows with M >= 24/32 of the largest)\ngives the start of the STS: s0 = window start + (first + last + 1) // 2 - 32. The carrier offset is the coarse one from the angle of S over the plateau (lag 16, unambiguous to +-120 kHz) plus the fine one from the two training symbols\nT1 and T2 (64 samples apart, the windows start at s0 + 154 and s0 + 218), which must repeat (|P|^2 >= E1 E2 / 2) or the frame is a false detection and is dropped.\nOutputs (one value per input sample): 0: the carrier offset in the unit of the stock Schmidl-and-Cox block (the stock\
+      \ oscillator turns by -2/N x this per sample), switched to the new value `delay` - 38 samples after s0 (the samples\nreach the oscillator `delay` samples late, through a Delay block); 1: the trigger of the stock Header/Payload Demux, a 1 at s0 + 122 + `delay` (the demux then skips the 16 samples of its guard interval, takes the two header symbols\nat s0 + 138 and s0 + 218 and the data symbols from s0 + 298, as the FPGA receiver does).\nIt runs in the Python interpreter that the other Python blocks of the flowgraph share, at 3.84 million samples per second, so it is written to make as few NumPy calls as possible: GNU Radio keeps the last 1024 input samples for it (the history), it\nlooks at M only when a frame is not being processed, and it writes its two outputs once per call. `found` and `rejected` count the frames.\"\"\"\nimport numpy as np\nfrom gnuradio import gr\n\nN, FS, HIST = 64, 3.84e6, 1024\n\n\nclass blk(gr.sync_block):\n    def __init__(self, threshold=0.65, delay=384):\n\
+      \        gr.sync_block.__init__(self, name=\"STS frame synchroniser\", in_sig=[np.complex64, np.float32, np.complex64], out_sig=[np.float32, np.uint8])\n        self.set_history(HIST)\n        self.threshold, self.delay = threshold, delay\n        self.scan = 0                                                       # absolute index of the first window not yet looked at\n        self.stage = 0; self.m0 = 0; self.s0 = 0; self.fc = 0.0              # 0: searching, 1: collecting the windows, 2: waiting for the training symbols\n        self.events = []                                                     # (absolute output index, kind, value): kind 0 = set the carrier, 1 = trigger\n        self.cfo = 0.0; self.found = 0; self.rejected = 0\n\n    def set_threshold(self, t): self.threshold = float(t)\n\n    def _step(self, x, M, S, base, end):\n        \"\"\"x, M, S: the input arrays, element i has the absolute index base + i; end = the absolute index after the last one\"\"\"\n        while\
+      \ True:\n            if self.stage == 0:\n                lo = max(self.scan, base) - base\n                if lo >= len(M): self.scan = end; return\n                idx = np.flatnonzero(M[lo:] >= self.threshold)\n                if len(idx) == 0: self.scan = end; return\n                self.m0 = base + lo + int(idx[0]); self.stage = 1\n            if self.stage == 1:\n                a = self.m0 - base\n                if a < 0: self.rejected += 1; self.scan = self.m0 + 144; self.stage = 0; continue\n                if a + 144 > len(M): return\n                seg = M[a:a + 144]; pk = float(seg.max()); pl = np.flatnonzero(seg >= pk * 24 / 32); first, last = int(pl[0]), int(pl[-1])\n                self.s0 = self.m0 - 63 + ((first + last + 1) >> 1) - 32\n                self.fc = float(np.angle(np.sum(S[a + first:a + last + 1])) / (2 * np.pi * 16 / FS))\n                self.stage = 2\n            if self.stage == 2:\n                i1, i2 = self.s0 + 154 - base, self.s0 + 218 -\
+      \ base\n                if i1 < 0: self.rejected += 1; self.scan = self.m0 + 144; self.stage = 0; continue\n                if i2 + N > len(x): return\n                rot = np.exp(-2j * np.pi * self.fc / FS * (np.arange(N) + 154))\n                a1 = x[i1:i1 + N] * rot; b1 = x[i2:i2 + N] * rot * np.exp(-2j * np.pi * self.fc / FS * 64)\n                P = np.sum(b1 * np.conj(a1)); e1 = float(np.sum(np.abs(a1) ** 2)); e2 = float(np.sum(np.abs(b1) ** 2))\n                if 2 * abs(P) ** 2 >= e1 * e2:\n                    ff = float(np.angle(P)) / (2 * np.pi * 64 / FS); f = self.fc + ff; val = np.pi * N * f / FS\n                    self.events.append((self.s0 + self.delay - 38, 0, val)); self.events.append((self.s0 + 122 + self.delay, 1, 0.0)); self.found += 1\n                else: self.rejected += 1\n                self.scan = self.m0 + 144; self.stage = 0; continue\n\n    def work(self, input_items, output_items):\n        x, M, S = input_items; out_cfo, out_trg = output_items;\
+      \ n = len(out_cfo)\n        end = self.nitems_read(0) + n; base = end - len(x)                                        # absolute index of x[0] (the history comes first)\n        self._step(x, M, S, base, end)\n        lo = end - n\n        out_trg[:] = 0\n        if not self.events: out_cfo[:] = self.cfo\n        else:\n            pos = 0\n            for ev in sorted(self.events):\n                if ev[0] >= end: break\n                i = max(ev[0] - lo, 0)\n                if ev[1] == 0: out_cfo[pos:i] = self.cfo; pos = i; self.cfo = ev[2]\n                else: out_trg[i] = 1\n            out_cfo[pos:] = self.cfo\n            self.events = [e for e in self.events if e[0] >= end]\n        return n\n"
+    threshold: threshold
+    delay: sync_delay
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '262144'
+    comment: 'THE ONE BLOCK THAT IS NOT STOCK in the front end: the stock Schmidl-and-Cox block needs a symbol of two equal halves of 32 samples; the 128-sample STS repeats every 16. This block finds the plateau of M, takes the start of the STS from it, measures the carrier (coarse from the angle of S, fine from the two training symbols) and gives the stock chain what ofdm_sync_sc_cfb gives it: the carrier offset (output 0) and the trigger of the Header/Payload Demux (output 1)'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 560
+    - 1000
+    rotation: 0
+    state: enabled
+    _io_cache: ('STS frame synchroniser', 'blk', [('threshold', '0.65'), ('delay', '384')], [('0', 'complex', 1), ('1', 'float', 1), ('2', 'complex', 1)], [('0', 'float', 1), ('1', 'byte', 1)], '', ['delay', 'threshold'])
+  name: sts_sync
+  id: epy_block
+- name: number_fnd
+  id: qtgui_number_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    autoscale: 'False'
+    avg: '0.0'
+    color1: ("black", "black")
+    color10: ("black", "black")
+    color2: ("black", "black")
+    color3: ("black", "black")
+    color4: ("black", "black")
+    color5: ("black", "black")
+    color6: ("black", "black")
+    color7: ("black", "black")
+    color8: ("black", "black")
+    color9: ("black", "black")
+    comment: ''
+    factor1: '1'
+    factor10: '1'
+    factor2: '1'
+    factor3: '1'
+    factor4: '1'
+    factor5: '1'
+    factor6: '1'
+    factor7: '1'
+    factor8: '1'
+    factor9: '1'
+    graph_type: qtgui.NUM_GRAPH_NONE
+    gui_hint: tabs@2:1,0,1,1
+    label1: '"found"'
+    label10: ''
+    label2: ''
+    label3: ''
+    label4: ''
+    label5: ''
+    label6: ''
+    label7: ''
+    label8: ''
+    label9: ''
+    max: '1'
+    min: '0'
+    name: '"frames found per frame period (1 = every frame is found)"'
+    nconnections: '1'
+    type: float
+    unit1: ''
+    unit10: ''
+    unit2: ''
+    unit3: ''
+    unit4: ''
+    unit5: ''
+    unit6: ''
+    unit7: ''
+    unit8: ''
+    unit9: ''
+    update_time: '0.25'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1100
+    - 1100
+    rotation: 0
+    state: enabled
+- parameters:
+    type: float
+    decim: '3840'
+    vlen: '1'
+    affinity: ''
+    alias: ''
+    comment: 'STOCK: sums 3840 samples (one frame period): 1 = one trigger per frame period, i.e. the frame was found'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1100
+    - 1100
+    rotation: 0
+    state: enabled
+  name: trg_sum
+  id: blocks_integrate_xx
+- parameters:
+    value: '8'
+    comment: the error counter (Python) checks 1 frame in check_n; the Python blocks that run once per frame at 1000 frames per second keep the interpreter busy, and the flowgraph could not follow the B210 (overflows of the sample stream). The decisions of every frame are made by the stock blocks anyway
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 200
+    - 880
+    rotation: 0
+    state: enabled
+  name: check_n
+  id: variable
+- parameters:
+    type: byte
+    m: '1056'
+    n: 1056 * check_n
+    offset: '0'
+    affinity: ''
+    alias: ''
+    comment: 'STOCK: of every check_n frames (1056 symbols each) one goes to the error counter'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1720
+    - 2100
+    rotation: 0
+    state: enabled
+  name: keep_chk
+  id: blocks_keep_m_in_n
+- parameters:
+    smooth: '1'
+    _source_code: "\"\"\"Pilot equalizer: the equalizer of the P501 OFDM receivers (the same method as `ofdm_model.receive`) in place of the stock Frame Equalizer, which updates its channel taps from its own decisions: a wrong decision then corrupts\nthe tap of its subcarrier for the symbols that follow (on a recording of the B210 with the P501 transmitting 4.7e-4 symbol errors, against none with the method of this block).\nInput: the FFT of the data symbols (64 values per symbol, DC in the middle) of the Header/Payload Demux, 44 symbols per frame; the first symbol of a frame carries the tag ofdm_sync_chan_taps (the channel estimate of the stock\nchannel estimator, from the first training symbol). The taps are NOT updated within the frame. For every symbol:\n  1. Z[k] = Y[k] / H[k] on the 24 data subcarriers and the 4 pilots (k = -11, -4, 4, 11)\n  2. the pilots must be PIL_V x polarity of the symbol (QPSK, PRBS-7 of IEEE 802.11): mean of Z[pilot] conj(reference) over the 4 pilots = the\
+      \ common complex gain g of the symbol (carrier residue and gain), and with `slope` 1 the straight\n     line of its phase against k is a timing drift; g (and the slope) are averaged over `smooth` symbols (centred; 1 = none)\n  3. the data are divided by g (and turned back by the slope).\nOutputs: 0: the decided points (the nearest of the 16 points, 24 per symbol: the stock slicer after this block gives the index 0 .. 15); 1: the 24 soft values per symbol, for the plot; 2: the error vector magnitude in dB,\nmeasured against the PRBS-15 payload that the transmitter sends, as a running average over about 30 frames (frames with an error above -6 dB, wrong cuts or the start-up, are not counted).\nAll the arithmetic of a frame is done in a few NumPy calls on all the symbols at once, because the Python interpreter is shared with the other Python blocks of the flowgraph and 1000 frames per second are to be done.\"\"\"\nimport numpy as np\nimport pmt\nfrom gnuradio import gr\n\nL_SYM = 44\n\
+      KP = np.array([-11, -4, 4, 11]); KD = np.array([k for k in range(-14, 15) if k != 0 and k not in (-11, -4, 4, 11)])\nIP, ID = 32 + KP, 32 + KD\nPIL_V = np.array([1 + 1j, 1 - 1j, -1 + 1j, -1 - 1j]) / np.sqrt(2)\nPOL = np.array([-1, -1, -1, -1, -1, -1, -1, 1, 1, 1, 1, 1, 1, -1, 1, 1, 1, 1, 1, -1, -1, 1, 1, 1, 1, -1, 1, -1, 1, 1, 1, -1, -1, -1, -1, 1, 1, -1, 1, 1, 1, -1, 1, -1, ], float)\nREF_P = PIL_V[None, :] * POL[:, None]\nLV = np.array([-3, -1, 1, 3]) / np.sqrt(10)\nGRAY = np.array([-3, -1, 3, 1]) / np.sqrt(10)\n\n\ndef prbs15_symbols(n):\n    s, bits = 0x7FFF, []\n    for _ in range(4 * n):\n        bits.append((s >> 14) & 1); s = ((s << 1) & 0x7FFF) | (((s >> 14) ^ (s >> 13)) & 1)\n    b = np.array(bits, int).reshape(n, 4)\n    return b[:, 0] * 8 + b[:, 1] * 4 + b[:, 2] * 2 + b[:, 3]\n\n\nIDX = prbs15_symbols(L_SYM * 24)\nREF_D = (GRAY[IDX >> 2] + 1j * GRAY[IDX & 3]).reshape(L_SYM, 24)\nP_REF = np.mean(np.abs(REF_D) ** 2)\n\n\ndef smoothing_matrix(n, L=L_SYM):\n    if n <= 1: return\
+      \ np.eye(L)\n    w = np.ones(n); M = np.zeros((L, L))\n    for j in range(L): M[:, j] = np.convolve(np.eye(L)[j], w, \"same\")\n    return M / M.sum(axis=1, keepdims=True)\n\n\nS10 = np.sqrt(10)\nLV32 = LV.astype(np.float32)\nREF_PC = np.conj(REF_P).astype(np.complex64)                  # [symbol, pilot]\n\n\ndef decide(z):\n    \"\"\"the nearest of the 16 points: the levels -3 -1 1 3 (over sqrt 10) on I and on Q\"\"\"\n    i = np.clip(np.floor(z.real * (S10 / 2) + 2), 0, 3).astype(np.intp); q = np.clip(np.floor(z.imag * (S10 / 2) + 2), 0, 3).astype(np.intp)\n    return LV32[i] + 1j * LV32[q]\n\n\nclass blk(gr.sync_block):\n    def __init__(self, smooth=1, slope=0, frames=16, evm_every=8):\n        gr.sync_block.__init__(self, name=\"Pilot equalizer (no decision feedback)\", in_sig=[(np.complex64, 64)], out_sig=[(np.complex64, 24), (np.complex64, 24), np.float32])\n        self.smooth = smooth; self.slope = slope; self.evm_every = max(int(evm_every), 1)\n        self.set_output_multiple(L_SYM\
+      \ * max(int(frames), 1))                       # many frames per call: the NumPy calls cost the same for 1 frame as for 16\n        self.pw = None; self.key = pmt.intern(\"ofdm_sync_chan_taps\")\n\n    @property\n    def smooth(self):\n        return self._smooth\n\n    @smooth.setter\n    def smooth(self, v):\n        self._smooth = int(v); self.M = smoothing_matrix(self._smooth)\n\n    def work(self, input_items, output_items):\n        y = input_items[0]; dec, soft, ev = output_items\n        n0 = self.nitems_read(0); nf = len(y) // L_SYM\n        Hi = np.zeros((nf, 64), np.complex64); ok = np.zeros(nf, bool)\n        for t in self.get_tags_in_window(0, 0, nf * L_SYM, self.key):\n            f, r = divmod(t.offset - n0, L_SYM)\n            if r == 0 and f < nf: Hi[f] = pmt.c32vector_elements(t.value); ok[f] = True\n        with np.errstate(divide=\"ignore\", invalid=\"ignore\"):\n            Hi = 1 / Hi                                                              # the taps are\
+      \ divided out: Y x (1 / H)\n        ok &= np.isfinite(Hi[:, IP]).all(axis=1) & np.isfinite(Hi[:, ID]).all(axis=1)\n        Hi[~ok] = 0\n        Y = y[:nf * L_SYM].reshape(nf, L_SYM, 64)\n        Zp = Y[:, :, IP] * Hi[:, None, IP]\n        if self.slope:                                                               # the straight line of the pilot phases against k: a timing drift\n            P = Zp * REF_PC[None]; ph = np.unwrap(np.angle(P), axis=2)\n            sl = np.einsum(\"ij,fj->fi\", self.M, (ph @ KP) / np.sum(KP ** 2)).astype(np.float32)\n            Zp = Zp * np.exp(-1j * sl[:, :, None] * KP[None, None, :]).astype(np.complex64)\n        g = np.einsum(\"fsp,sp->fs\", Zp, REF_PC) / 4                                  # the common complex gain of the symbol: mean of Z[pilot] conj(reference)\n        if self._smooth > 1: g = np.einsum(\"ij,fj->fi\", self.M, g)\n        gi = 1 / np.where(g == 0, 1, g)\n        Zd = Y[:, :, ID] * Hi[:, None, ID]\n        if self.slope: Zd = Zd *\
+      \ np.exp(-1j * sl[:, :, None] * KD[None, None, :]).astype(np.complex64)\n        out = Zd * gi[:, :, None].astype(np.complex64)\n        dec[:nf * L_SYM] = decide(out).reshape(-1, 24); soft[:nf * L_SYM] = out.reshape(-1, 24)\n        for f in range(0, nf, self.evm_every):                                       # the EVM of 1 frame in evm_every\n            if ok[f]:\n                e = np.mean(np.abs(out[f] - REF_D) ** 2) / P_REF\n                if e < 0.25: self.pw = e if self.pw is None else 0.9 * self.pw + 0.1 * e\n        ev[:nf * L_SYM] = 10 * np.log10(max(self.pw, 1e-12)) if self.pw is not None else 0.0\n        return nf * L_SYM\n"
+    affinity: ''
+    alias: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    comment: 'CUSTOM BLOCK (in place of the stock Frame Equalizer): the channel from the training symbol, the common phase and gain of every symbol from the 4 pilots, no update from the decisions; outputs the decided points, the soft values and the EVM'
+    slope: '0'
+    frames: '16'
+    evm_every: '8'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1000
+    - 2100
+    rotation: 0
+    state: enabled
+    _io_cache: ('Pilot equalizer (no decision feedback)', 'blk', [('smooth', '1'), ('slope', '0'), ('frames', '16'), ('evm_every', '8')], [('0', 'complex', 64)], [('0', 'complex', 24), ('1', 'complex', 24), ('2', 'float', 1)], '', ['evm_every', 'slope', 'smooth'])
+  name: pilot_eq
+  id: epy_block
+- parameters:
+    type: complex
+    num_items: '24'
+    vlen: '1'
+    comment: the decided points of 24 per symbol in a row
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate:
+    - 1240
+    - 2200
+    rotation: 0
+    state: enabled
+  name: v2s_dec
+  id: blocks_vector_to_stream
+connections:
+- - uhd_usrp_source_0
+  - '0'
+  - rx_in
+  - '0'
+- - file_source_0
+  - '0'
+  - throttle_0
+  - '0'
+- - throttle_0
+  - '0'
+  - rx_in
+  - '0'
+- - rx_in
+  - '0'
+  - dc_iir
+  - '0'
+- - rx_in
+  - '0'
+  - dc_sub
+  - '0'
+- - dc_iir
+  - '0'
+  - dc_sub
+  - '1'
+- - dc_sub
+  - '0'
+  - x_mag
+  - '0'
+- - rx_in
+  - '0'
+  - freq_sink_rx
+  - '0'
+- - x_mag
+  - '0'
+  - time_sink_rx
+  - '0'
+- - x_mag2
+  - '0'
+  - x_scale
+  - '0'
+- - dc_sub
+  - '0'
+  - x_mag2
+  - '0'
+- - x_scale
+  - '0'
+  - time_sink_det
+  - '0'
+- - detect_f
+  - '0'
+  - time_sink_det
+  - '1'
+- - cfo_hz_raw
+  - '0'
+  - time_sink_cfo
+  - '0'
+- - dc_sub
+  - '0'
+  - sym_delay
+  - '0'
+- - sym_delay
+  - '0'
+  - rot
+  - '0'
+- - osc
+  - '0'
+  - rot
+  - '1'
+- - rot
+  - '0'
+  - hpd
+  - '0'
+- - hpd
+  - '0'
+  - fft_hdr
+  - '0'
+- - fft_hdr
+  - '0'
+  - chanest
+  - '0'
+- - chanest
+  - '0'
+  - hdr
+  - '0'
+- - hdr
+  - header_data
+  - hpd
+  - header_data
+- - hdr
+  - '0'
+  - h_mag
+  - '0'
+- - hdr
+  - '0'
+  - h_arg
+  - '0'
+- - h_mag
+  - '0'
+  - vec_hmag
+  - '0'
+- - h_arg
+  - '0'
+  - vec_harg
+  - '0'
+- - hpd
+  - '1'
+  - fft_pay
+  - '0'
+- - fft_pay
+  - '0'
+  - fft_scale
+  - '0'
+- - fft_scale
+  - '0'
+  - fft_mag
+  - '0'
+- - fft_mag
+  - '0'
+  - fft_avg
+  - '0'
+- - fft_avg
+  - '0'
+  - vec_fft
+  - '0'
+- - fft_scale
+  - '0'
+  - v2s64
+  - '0'
+- - v2s64
+  - '0'
+  - keep29
+  - '0'
+- - keep29
+  - '0'
+  - const_raw
+  - '0'
+- - v2s_soft
+  - '0'
+  - keep_soft
+  - '0'
+- - keep_soft
+  - '0'
+  - const_soft
+  - '0'
+- - keep_evm
+  - '0'
+  - number_evm
+  - '0'
+- - dc_sub
+  - '0'
+  - sc_delay
+  - '0'
+- - sc_delay
+  - '0'
+  - sc_conj
+  - '0'
+- - dc_sub
+  - '0'
+  - sc_mult
+  - '0'
+- - sc_conj
+  - '0'
+  - sc_mult
+  - '1'
+- - sc_mult
+  - '0'
+  - sc_avg
+  - '0'
+- - sc_avg
+  - '0'
+  - sc_mag2
+  - '0'
+- - dc_sub
+  - '0'
+  - en_mag2
+  - '0'
+- - en_mag2
+  - '0'
+  - en_avg
+  - '0'
+- - en_avg
+  - '0'
+  - en_mult
+  - '1'
+- - en_avg
+  - '0'
+  - en_delay
+  - '0'
+- - en_delay
+  - '0'
+  - en_mult
+  - '0'
+- - en_mag2
+  - '0'
+  - guard_avg
+  - '0'
+- - guard_avg
+  - '0'
+  - guard_sq
+  - '0'
+- - guard_avg
+  - '0'
+  - guard_sq
+  - '1'
+- - guard_sq
+  - '0'
+  - guard_k
+  - '0'
+- - en_mult
+  - '0'
+  - guard_add
+  - '0'
+- - guard_k
+  - '0'
+  - guard_add
+  - '1'
+- - guard_add
+  - '0'
+  - en_eps
+  - '0'
+- - sc_mag2
+  - '0'
+  - sc_div
+  - '0'
+- - en_eps
+  - '0'
+  - sc_div
+  - '1'
+- - sc_div
+  - '0'
+  - time_sink_m
+  - '0'
+- - thr_src
+  - '0'
+  - time_sink_m
+  - '1'
+- - dc_sub
+  - '0'
+  - sts_sync
+  - '0'
+- - sc_div
+  - '0'
+  - sts_sync
+  - '1'
+- - sc_avg
+  - '0'
+  - sts_sync
+  - '2'
+- - sts_sync
+  - '1'
+  - detect_f
+  - '0'
+- - sts_sync
+  - '0'
+  - cfo_hz_raw
+  - '0'
+- - sts_sync
+  - '0'
+  - osc
+  - '0'
+- - sts_sync
+  - '1'
+  - hpd
+  - '1'
+- - counter
+  - '0'
+  - number_ser
+  - '0'
+- - counter
+  - '1'
+  - number_err
+  - '0'
+- - counter
+  - '2'
+  - number_frames
+  - '0'
+- - counter
+  - '3'
+  - number_recent
+  - '0'
+- - detect_f
+  - '0'
+  - trg_sum
+  - '0'
+- - trg_sum
+  - '0'
+  - number_fnd
+  - '0'
+- - dec
+  - '0'
+  - keep_chk
+  - '0'
+- - keep_chk
+  - '0'
+  - counter
+  - '0'
+- - fft_pay
+  - '0'
+  - pilot_eq
+  - '0'
+- - pilot_eq
+  - '0'
+  - v2s_dec
+  - '0'
+- - v2s_dec
+  - '0'
+  - const_eq
+  - '0'
+- - v2s_dec
+  - '0'
+  - dec
+  - '0'
+- - pilot_eq
+  - '1'
+  - v2s_soft
+  - '0'
+- - pilot_eq
+  - '2'
+  - keep_evm
+  - '0'
+metadata:
+  file_format: 1
+  grc_version: 3.10.12.0
