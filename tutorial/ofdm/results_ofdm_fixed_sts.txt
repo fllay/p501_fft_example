@@ -1,0 +1,22 @@
+EVM / SER of the float and the integer receiver, 120 frames per point, carrier +-20 kHz, delay 0-12, 10 ppm; ADC level = rms counts of the signal at the input
+Es/N0  ADC rms   float EVM  SER        int EVM   SER        int missed  start err mean/std   carrier err std   gain G
+  16     200      -13.6 dB  3.8e-02    -13.7 dB  4.5e-02      0       +0.83 / 0.94           266 Hz        504
+  20     200      -17.7 dB  1.1e-03    -17.5 dB  1.5e-03      0       +0.79 / 0.39           172 Hz        510
+  24     200      -21.6 dB  0.0e+00    -21.5 dB  0.0e+00      0       +0.76 / 0.31           109 Hz        512
+  28     200      -25.4 dB  0.0e+00    -25.4 dB  0.0e+00      0       +0.66 / 0.28            67 Hz        513
+  24      60      -21.6 dB  0.0e+00    -21.5 dB  0.0e+00      0       +0.75 / 0.30           110 Hz        1718
+  24      40      -21.6 dB  0.0e+00    -21.4 dB  0.0e+00      0       +0.76 / 0.30           110 Hz        2590
+  24     600      -21.6 dB  0.0e+00    -21.5 dB  0.0e+00      0       +0.76 / 0.31           109 Hz        170
+  24     900      -21.6 dB  0.0e+00    -21.3 dB  3.2e-05      0       +0.77 / 0.31           109 Hz        113
+
+false alarms on noise only (12-bit noise of 14 counts rms, 3840 samples, 2000 trials): detector alone 0, with the training-symbol check 0
+(6 s)
+
+At low ADC levels (python3 test_ofdm_lowlevel.py): bad = frame missed or SER > 0.2
+integer model, 300 frames per point, noise as 26 dB Es/N0 per subcarrier; ADC level = rms counts of the signal; bad = SER > 0.2 or frame missed
+level  60 counts: SC: bad   0 of 300, SER of the good frames 0.0e+00, start err std 0.35 | STS: bad   0 of 300, SER of the good frames 0.0e+00, start err std 0.31
+level  25 counts: SC: bad   0 of 300, SER of the good frames 1.6e-05, start err std 0.50 | STS: bad   0 of 300, SER of the good frames 0.0e+00, start err std 0.31
+level  16 counts: SC: bad   2 of 300, SER of the good frames 5.1e-05, start err std 1.06 | STS: bad   0 of 300, SER of the good frames 0.0e+00, start err std 0.33
+level  12 counts: SC: bad  45 of 300, SER of the good frames 4.8e-04, start err std 3.31 | STS: bad   0 of 300, SER of the good frames 0.0e+00, start err std 0.52
+level   9 counts: SC: bad  72 of 300, SER of the good frames 4.5e-03, start err std 3.98 | STS: bad   0 of 300, SER of the good frames 0.0e+00, start err std 1.02
+level   6 counts: SC: bad  43 of 300, SER of the good frames 0.0e+00, start err std 5.85 | STS: bad   5 of 300, SER of the good frames 1.4e-03, start err std 2.56

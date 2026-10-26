@@ -1,12 +1,13 @@
 `timescale 1ns/1ps
 // Whole-frame testbench of ofdm_rx.v: ADC samples from a hex file, one every 26 clocks; AXI-Lite writes and reads; per complete frame the registers and the corrected symbols are logged, at the end the capture RAM and H over AXI.
 module tb_ofdm_rx;
+  parameter STS = 0;                       // 0: Schmidl and Cox, 1: the 128-sample STS (xelab -generic_top STS=1)
   reg aclk = 0; always #5 aclk = ~aclk;
   reg aresetn = 0;
   reg [13:0] awaddr = 0, araddr = 0; reg awvalid = 0, wvalid = 0, arvalid = 0, bready = 1, rready = 1; reg [31:0] wdata = 0;
   wire awready, wready, bvalid, arvalid_o, arready, rvalid; wire [31:0] rdata; wire [1:0] bresp, rresp;
   reg adc_valid = 0; reg [15:0] adc_i = 0, adc_q = 0;
-  ofdm_rx dut (.aclk(aclk), .aresetn(aresetn), .s_axi_awaddr(awaddr), .s_axi_awvalid(awvalid), .s_axi_awready(awready), .s_axi_wdata(wdata), .s_axi_wstrb(4'hF), .s_axi_wvalid(wvalid), .s_axi_wready(wready),
+  ofdm_rx #(.STS(STS)) dut (.aclk(aclk), .aresetn(aresetn), .s_axi_awaddr(awaddr), .s_axi_awvalid(awvalid), .s_axi_awready(awready), .s_axi_wdata(wdata), .s_axi_wstrb(4'hF), .s_axi_wvalid(wvalid), .s_axi_wready(wready),
     .s_axi_bresp(bresp), .s_axi_bvalid(bvalid), .s_axi_bready(bready), .s_axi_araddr(araddr), .s_axi_arvalid(arvalid), .s_axi_arready(arready), .s_axi_rdata(rdata), .s_axi_rresp(rresp), .s_axi_rvalid(rvalid), .s_axi_rready(rready),
     .adc_clk(aclk), .adc_valid(adc_valid), .adc_i(adc_i), .adc_q(adc_q));
   task wr(input [13:0] ad, input [31:0] dd); begin

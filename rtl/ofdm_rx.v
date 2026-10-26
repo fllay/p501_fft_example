@@ -1,4 +1,7 @@
-// OFDM receiver with the Schmidl-and-Cox synchroniser (PLAN_OFDM.md section 12): ID 0xDD520007. Bit-exact model: tutorial/ofdm/ofdm_fixed.py (receive_fixed).
+// OFDM receiver (PLAN_OFDM.md section 12): ID 0xDD520007 with the Schmidl-and-Cox synchroniser (STS = 0), 0xDD520008 with the 128-sample short training field (STS = 1: the same blocks, another detector, preamble and
+// window offsets). Bit-exact model: tutorial/ofdm/ofdm_fixed.py (receive_fixed with the variant SC or STS).
+// Offsets after s0 (the start of the preamble, S&C symbol of 80 samples | STS of 128 samples): T1 window 90 | 154, T2 window 170 | 218 (T1 + 80 | T1 + 64: the lag of the fine carrier), first data window 250 | 298;
+// the fine carrier word is turns(P) x 2^12 / lag = x 52429 / 1024 | x 65536 / 1024.
 //
 //   adc samples (adc_clk) -> two sample RAMs of 1024 x {q, i} (12 bit): one read by the detector as a stream, one read by the window reader
 //   ofdm_detect (S&C detector, plateau, coarse carrier, gain) -> found: s0, w_c, G
@@ -13,7 +16,7 @@
 //   18 S0 (absolute sample index of the start of the S&C symbol)  19 W_C  1A W_F  1B W (carrier, turns x 2^32 per sample)  1C GAIN used (Q8)  1D NOISE_LO  1E NOISE_HI (sum of |A - B|^2)  1F WR_COUNT (samples written)  20 SAMPLES_LATE
 //   0x1000 .. 0x1FFC: capture RAM, the first 1024 corrected data symbols of a frame {zq[15:0], zi[15:0]} (saturated),   0x2000 .. 0x206C: H of the 28 used subcarriers {hi[15:0], hr[15:0]} (saturated)
 `timescale 1ns/1ps
-module ofdm_rx (
+module ofdm_rx #(parameter STS = 0) (
   (* X_INTERFACE_PARAMETER = "ASSOCIATED_BUSIF s_axi, ASSOCIATED_RESET aresetn" *)
   (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 aclk CLK" *)
   input  wire        aclk,
@@ -43,6 +46,8 @@ module ofdm_rx (
   input  wire [15:0] adc_i,
   input  wire [15:0] adc_q
 );
+  localparam [31:0] T1OFF = STS ? 32'd154 : 32'd90, T2OFF = STS ? 32'd218 : 32'd170, FWEND = STS ? 32'd282 : 32'd234, BASE = STS ? 32'd298 : 32'd250;
+  localparam signed [31:0] WFMUL = STS ? 32'sd65536 : 32'sd52429;
   // ======================= registers =======================
   reg [31:0] r_ctrl, r_thr, r_emin, r_target, r_gain;
   wire do_write = s_axi_awvalid & s_axi_wvalid & ~s_axi_bvalid;
@@ -92,9 +97,9 @@ module ofdm_rx (
   wire [31:0] avail = wr_sync - rd_ptr;
   wire        have = (avail != 32'd0) && !avail[31];
   wire        det_run = run && (rearm_hold == 3'd0);
-  wire        found; wire [31:0] d_n0; wire [6:0] d_first, d_last, d_pkidx; wire signed [31:0] d_s0, d_wc; wire [15:0] d_gain; wire [28:0] d_epk; wire signed [39:0] d_sr, d_si; wire [10:0] d_pk; wire det_late;
+  wire        found; wire [31:0] d_n0; wire [7:0] d_first, d_last, d_pkidx; wire signed [31:0] d_s0, d_wc; wire [15:0] d_gain; wire [28:0] d_epk; wire signed [39:0] d_sr, d_si; wire [10:0] d_pk; wire det_late;
   wire        w_pulse_unused; wire [31:0] w_n_unused; wire w_cond_unused; wire signed [29:0] w_sr_u, w_si_u; wire [28:0] w_e_u;
-  ofdm_detect u_det (.clk(aclk), .run(det_run), .s_valid(s_valid), .xi(ss_q[11:0]), .xq(ss_q[23:12]), .r_thr(r_thr[7:0]), .r_emin(r_emin[7:0]), .r_target(r_target[15:0]), .found(found),
+  ofdm_detect #(.STS(STS)) u_det (.clk(aclk), .run(det_run), .s_valid(s_valid), .xi(ss_q[11:0]), .xq(ss_q[23:12]), .r_thr(r_thr[7:0]), .r_emin(r_emin[7:0]), .r_target(r_target[15:0]), .found(found),
     .o_n0(d_n0), .o_first(d_first), .o_last(d_last), .o_pkidx(d_pkidx), .o_s0(d_s0), .o_wc(d_wc), .o_gain(d_gain), .o_epk(d_epk), .o_sr(d_sr), .o_si(d_si), .o_pk(d_pk), .late(det_late), .ready(det_ready),
     .w_pulse(w_pulse_unused), .w_n(w_n_unused), .w_cond(w_cond_unused), .w_sr(w_sr_u), .w_si(w_si_u), .w_e(w_e_u));
   always @(posedge aclk) begin
@@ -164,7 +169,7 @@ module ofdm_rx (
   reg [31:0] cap_mem [0:1023]; reg [31:0] h_mem [0:31];
   assign sel_data = (c_st == C_SYMF) || (c_st == C_SYMD);
   wire signed [63:0] ck_l = 2 * ((pr_acc >>> 10) * (pr_acc >>> 10) + (pi_acc >>> 10) * (pi_acc >>> 10)), ck_r = (e1_acc >>> 10) * (e2_acc >>> 10);
-  wire signed [31:0] wf_new = ($signed({{12{cord_ang[19]}}, cord_ang}) * 32'sd52429) >>> 10;
+  wire signed [31:0] wf_new = ($signed({{12{cord_ang[19]}}, cord_ang}) * WFMUL) >>> 10;
   function [15:0] sat16(input signed [31:0] v); sat16 = (v > 32'sd32767) ? 16'h7FFF : (v < -32'sd32768) ? 16'h8000 : v[15:0]; endfunction
   initial begin c_st = C_OFF; found_seen = 0; found_lost = 0; frames = 0; end
   always @(posedge aclk) begin
@@ -184,8 +189,8 @@ module ofdm_rx (
                 frame_start <= 1'b1; cap_active <= cap_pend; cap_pend <= 1'b0; if (cap_pend) cap_done <= 1'b0;
                 w_use <= l_wc; g_use <= l_gain; c_st <= C_FW;
               end
-      C_FW:   if (wr_sync >= l_s0 + 32'd234) begin
-                f_b1 <= l_s0 + 32'd90; f_b2 <= l_s0 + 32'd170; f_pair <= 1'b1; f_n <= 8'd128; cm_pair <= 1'b1; cm_fft <= 1'b0; pair_init <= 1'b1; f_go <= 1'b1; c_st <= C_FINE0;
+      C_FW:   if (wr_sync >= l_s0 + FWEND) begin
+                f_b1 <= l_s0 + T1OFF; f_b2 <= l_s0 + T2OFF; f_pair <= 1'b1; f_n <= 8'd128; cm_pair <= 1'b1; cm_fft <= 1'b0; pair_init <= 1'b1; f_go <= 1'b1; c_st <= C_FINE0;
               end
       C_FINE0: c_st <= C_FINE;                                                                       // the accumulators are cleared by pair_init one clock after it was set
       C_FINE: if (pair_cnt == 7'd64) begin cm_pair <= 1'b0; cord_start <= 1'b1; c_st <= C_FINEC; end
@@ -193,16 +198,16 @@ module ofdm_rx (
                 if (ck_l < ck_r) begin n_rej <= n_rej + 32'd1; found_seen <= 1'b0; rearm_req <= 1'b1; cap_active <= 1'b0; c_st <= C_WDET; end
                 else begin w_use <= l_wc + wf_new; w_c_last <= l_wc; w_f_last <= wf_new; s0_last <= l_s0; g_last <= {16'd0, l_gain}; c_st <= C_T1S; end
               end
-      C_T1S:  begin f_b1 <= l_s0 + 32'd90; f_pair <= 1'b0; f_n <= 8'd64; cm_fft <= 1'b1; fft_start <= 1'b1; f_go <= 1'b1; c_st <= C_T1W; end
+      C_T1S:  begin f_b1 <= l_s0 + T1OFF; f_pair <= 1'b0; f_n <= 8'd64; cm_fft <= 1'b1; fft_start <= 1'b1; f_go <= 1'b1; c_st <= C_T1W; end
       C_T1W:  if (f_done_fft) begin cmd_a <= 1'b1; dly <= 4'd3; c_st <= C_T1X0; end
       C_T1X0: begin if (dly != 4'd0) dly <= dly - 4'd1; else c_st <= C_T1X; end
       C_T1X:  if (!ch_busy) c_st <= C_T2S;
-      C_T2S:  begin f_b1 <= l_s0 + 32'd170; f_pair <= 1'b0; f_n <= 8'd64; cm_fft <= 1'b1; fft_start <= 1'b1; f_go <= 1'b1; c_st <= C_T2W; end
+      C_T2S:  begin f_b1 <= l_s0 + T2OFF; f_pair <= 1'b0; f_n <= 8'd64; cm_fft <= 1'b1; fft_start <= 1'b1; f_go <= 1'b1; c_st <= C_T2W; end
       C_T2W:  if (f_done_fft) begin cmd_b <= 1'b1; c_st <= C_T2X; end
       C_T2X:  if (ch_done) begin hc_active <= 1'b1; hc_idx <= 5'd0; c_st <= C_HC; end
       C_HC:   begin
                 h_mem[hc_idx] <= {sat16(ch_him), sat16(ch_hre)};
-                if (hc_idx == 5'd27) begin hc_active <= 1'b0; sl <= 6'd0; ws <= l_s0 + 32'd250; c_st <= C_SYMW; end else hc_idx <= hc_idx + 5'd1;
+                if (hc_idx == 5'd27) begin hc_active <= 1'b0; sl <= 6'd0; ws <= l_s0 + BASE; c_st <= C_SYMW; end else hc_idx <= hc_idx + 5'd1;
               end
       C_SYMW: if (wr_sync >= ws + 32'd64) begin
                 if (wr_sync - ws >= 32'd1000) overrun <= 1'b1;
@@ -242,7 +247,7 @@ module ofdm_rx (
         if (ar_h) s_axi_rdata <= h_rd;
         else if (ar_cap) s_axi_rdata <= cap_rd;
         else case (araddr_q[7:2])
-          6'h00: s_axi_rdata <= 32'hDD520007;
+          6'h00: s_axi_rdata <= STS ? 32'hDD520008 : 32'hDD520007;
           6'h01: s_axi_rdata <= r_ctrl; 6'h02: s_axi_rdata <= r_thr; 6'h03: s_axi_rdata <= r_emin; 6'h04: s_axi_rdata <= r_target; 6'h05: s_axi_rdata <= r_gain;
           6'h08: s_axi_rdata <= status; 6'h09: s_axi_rdata <= frames; 6'h0A: s_axi_rdata <= n_found; 6'h0B: s_axi_rdata <= n_rej; 6'h0C: s_axi_rdata <= n_bad;
           6'h0D: s_axi_rdata <= tot_sym; 6'h0E: s_axi_rdata <= tot_err; 6'h0F: s_axi_rdata <= tot_bit;

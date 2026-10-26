@@ -3,6 +3,7 @@
 current_bd_design system
 
 create_bd_cell -type module -reference ofdm_rx ofdm_rx
+if {[info exists ::p501_ofdm_rx_sts] && $::p501_ofdm_rx_sts} { set_property CONFIG.STS 1 [get_bd_cells ofdm_rx] }   ;# the 128-sample STS variant (OFDMRXSTS=1)
 connect_bd_net [get_bd_pins sys_ps8/pl_clk0]                [get_bd_pins ofdm_rx/aclk]
 connect_bd_net [get_bd_pins sys_rstgen/peripheral_aresetn]  [get_bd_pins ofdm_rx/aresetn]
 connect_bd_net [get_bd_pins axi_ad9361/l_clk]               [get_bd_pins ofdm_rx/adc_clk]

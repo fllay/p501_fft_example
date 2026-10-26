@@ -6,7 +6,9 @@
 # -----------------------------------------------------------------------------
 set ::p501_ofdm_rx_steps_dir [file join [file dirname [file dirname [file normalize [info script]]]] tutorial ofdm steps]
 
-proc p501_add_ofdm_rx_chain {} {
+# sts = 1: the receiver module is instantiated with its parameter STS = 1 (the 128-sample short training field, ID 0xDD520008); 0: the Schmidl-and-Cox symbol (ID 0xDD520007)
+proc p501_add_ofdm_rx_chain {{sts 0}} {
+  set ::p501_ofdm_rx_sts $sts
   foreach s {step1_rx step2_constraints} {
     source [file join $::p501_ofdm_rx_steps_dir $s.tcl]
   }

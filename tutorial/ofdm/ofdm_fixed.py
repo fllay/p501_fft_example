@@ -34,6 +34,16 @@ PV_S = np.sign(Fm.PIL_V.real * np.sqrt(2)).astype(np.int64), np.sign(Fm.PIL_V.im
 COS_L, SIN_L = Zc.COS_L, Zc.SIN_L
 SQ2 = 181                                                                                                 # 1 / sqrt 2 in Q8
 
+# the two synchronisers (PLAN_OFDM.md sections 4b and 12). The receiver is the same from the FFT on; what differs is the detector (lag, window), the preamble and the offsets of the training and data windows.
+#   lag, nw     the detector: c[n] = x[n+lag] conj x[n], S = sum of nw products, E = sum of nw |x[n+lag]|^2 (the window spans lag + nw = 64 samples in both)
+#   maxw        windows stored after the first one above the threshold (the plateau must fit: 17 positions of the S&C symbol, 65 of the STS)
+#   pl_num      the plateau = the stored windows with mq >= max x pl_num / 32;   s0 = n0 + ((first + last + 1) >> 1) - s0_off
+#   wc_shift    w_c = turns(S) x 2^wc_shift  (2^12 / lag);  gain from the energy at the maximum: G = 256 TARGET / isqrt(gsq(E))
+#   t1, tlag    start of the window of T1 after s0 (6 samples inside the prefix, BACK) and the distance T1 to T2 (the fine carrier lag);  wf_mul / 1024 = 2^12 / tlag
+#   base        start of the window of the first data symbol after s0
+SC = dict(name="sc", preamble="scu", sync="scu_plateau", lag=32, nw=32, maxw=72, pl_num=29, s0_off=8, wc_shift=7, t1=90, tlag=80, wf_mul=52429, base=250, gsq=lambda E: E >> 5, ring_x=32, pre=80)
+STS = dict(name="sts", preamble="sts16", sync="sts16", lag=16, nw=48, maxw=144, pl_num=24, s0_off=32, wc_shift=8, t1=154, tlag=64, wf_mul=65536, base=298, gsq=lambda E: (E * 43) >> 11, ring_x=16, pre=128)
+
 
 def rdiv(n, d):
     """integer division n / d rounded half away from zero (d > 0)"""
@@ -72,44 +82,45 @@ def norm14(re, im):
     return int(re) >> sh, int(im) >> sh
 
 
-def metric(xi, xq):
+def metric(xi, xq, var=SC):
+    lag, nw = var["lag"], var["nw"]
     xi, xq = xi.astype(np.int64), xq.astype(np.int64)
-    cr = xi[32:] * xi[:-32] + xq[32:] * xq[:-32]; ci = xq[32:] * xi[:-32] - xi[32:] * xq[:-32]; e = xi[32:] ** 2 + xq[32:] ** 2
+    cr = xi[lag:] * xi[:-lag] + xq[lag:] * xq[:-lag]; ci = xq[lag:] * xi[:-lag] - xi[lag:] * xq[:-lag]; e = xi[lag:] ** 2 + xq[lag:] ** 2
     cs = lambda a: np.concatenate([[0], np.cumsum(a)]); Cr, Ci, Ee = cs(cr), cs(ci), cs(e)
-    Sr, Si, E = Cr[32:] - Cr[:-32], Ci[32:] - Ci[:-32], Ee[32:] - Ee[:-32]
+    Sr, Si, E = Cr[nw:] - Cr[:-nw], Ci[nw:] - Ci[:-nw], Ee[nw:] - Ee[:-nw]
     Sr1, Si1, E1 = Sr >> 8, Si >> 8, E >> 8; S2 = Sr1 * Sr1 + Si1 * Si1; E2 = E1 * E1
-    Ea = np.concatenate([np.zeros(32, dtype=np.int64), E[:-32]])[:len(E)]                                # the energy of the multiplied samples = E of the window 32 earlier (0 before): a strong signal ending in a quiet slot is not a plateau
+    Ea = np.concatenate([np.zeros(lag, dtype=np.int64), E[:-lag]])[:len(E)]                              # the energy of the multiplied samples = E of the window lag earlier (0 before): a strong signal ending in a quiet slot is not a plateau
     cond = (E1 >= 4) & (S2 * 256 >= THR256 * E2) & (Ea <= 2 * E)
-    bl = np.array([int(v).bit_length() for v in E2]); sh = np.maximum(bl - 20, 0)                       # the quotient needs 20 bits of the divisor only
+    bl = np.array([int(e_).bit_length() for e_ in E2]); sh = np.maximum(bl - 20, 0)                       # the quotient needs 20 bits of the divisor only
     S2s, E2s = S2 >> sh, E2 >> sh; mq = np.minimum((S2s << 10) // np.maximum(E2s, 1), 2047)
     return cond, mq, Sr, Si, E
 
 
-def detect_info(xi, xq):
+def detect_info(xi, xq, var=SC):
     """the detector, the plateau, the coarse carrier and the gain (the part of the receiver that rtl/ofdm_detect.v implements); None if nothing is found"""
-    cond, mq, Sr, Si, E = metric(xi, xq); idx = np.nonzero(cond)[0]
-    if len(idx) == 0 or idx[0] + 72 > len(mq): return None
-    n0 = int(idx[0]); seg = mq[n0:n0 + 72]; pk = int(seg.max()); t90 = (pk * 29) >> 5; pl = np.nonzero(seg >= t90)[0]
-    first, last = int(pl[0]), int(pl[-1]); s0 = n0 + ((first + last + 1) >> 1) - 8
+    cond, mq, Sr, Si, E = metric(xi, xq, var); idx = np.nonzero(cond)[0]; mw = var["maxw"]
+    if len(idx) == 0 or idx[0] + mw > len(mq): return None
+    n0 = int(idx[0]); seg = mq[n0:n0 + mw]; pk = int(seg.max()); t90 = (pk * var["pl_num"]) >> 5; pl = np.nonzero(seg >= t90)[0]
+    first, last = int(pl[0]), int(pl[-1]); s0 = n0 + ((first + last + 1) >> 1) - var["s0_off"]
     sr, si = int(Sr[n0 + first:n0 + last + 1].sum()), int(Si[n0 + first:n0 + last + 1].sum())
-    w_c = signed(Zc.cordic_turns20(sr, si), 20) * 128
-    Epk = int(E[n0 + int(np.argmax(seg))]); G = min(65535, (TARGET * 256) // max(isqrt(Epk >> 5), 1))
+    w_c = signed(Zc.cordic_turns20(sr, si), 20) * (1 << var["wc_shift"])
+    Epk = int(E[n0 + int(np.argmax(seg))]); G = min(65535, (TARGET * 256) // max(isqrt(var["gsq"](Epk)), 1))
     return dict(n0=n0, first=first, last=last, s0=s0, w_c=w_c, G=G, Epk=Epk, sr=sr, si=si, pk=pk, cond=cond, mq=mq, Sr=Sr, Si=Si, E=E)
 
 
-def receive_fixed(xi, xq, track_win=5, check=True):
+def receive_fixed(xi, xq, track_win=5, check=True, var=SC):
     xi, xq = np.asarray(xi, dtype=np.int64), np.asarray(xq, dtype=np.int64)
-    d = detect_info(xi, xq)
+    d = detect_info(xi, xq, var)
     if d is None: return None
     n0, s0, w_c, G, first, last = d["n0"], d["s0"], d["w_c"], d["G"], d["first"], d["last"]; pl = (first, last)
-    t1 = s0 + SYM + CP - BACK; t2 = t1 + SYM
-    if s0 < 0 or t2 + N > len(xi) or s0 + 240 + 44 * SYM > len(xi): return None
+    t1 = s0 + var["t1"]; t2 = t1 + var["tlag"]
+    if s0 < 0 or t2 + N > len(xi) or s0 + var["base"] + 43 * SYM + N > len(xi): return None
     a_r, a_i = derotate(xi, xq, t1, N, s0, w_c, G); b_r, b_i = derotate(xi, xq, t2, N, s0, w_c, G)
     Pr = int((b_r * a_r + b_i * a_i).sum()); Pi = int((b_i * a_r - b_r * a_i).sum())
     if check:
         e1, e2 = int((a_r ** 2 + a_i ** 2).sum()) >> 10, int((b_r ** 2 + b_i ** 2).sum()) >> 10; p1, p2 = Pr >> 10, Pi >> 10
         if 2 * (p1 * p1 + p2 * p2) < e1 * e2: return None                                              # the two training symbols do not repeat: not a frame
-    w_f = (signed(Zc.cordic_turns20(Pr, Pi), 20) * 52429) >> 10
+    w_f = (signed(Zc.cordic_turns20(Pr, Pi), 20) * var["wf_mul"]) >> 10
     w = signed(w_c + w_f, 32)
     # channel
     a_r, a_i = derotate(xi, xq, t1, N, s0, w, G); b_r, b_i = derotate(xi, xq, t2, N, s0, w, G)
@@ -124,7 +135,7 @@ def receive_fixed(xi, xq, track_win=5, check=True):
     # data symbols
     L = 44; Zr = np.zeros((L, len(USED)), dtype=np.int64); Zi = np.zeros_like(Zr); g = np.zeros((L, 2), dtype=np.int64); sl = np.zeros(L, dtype=np.int64); wins = []
     for l in range(L):
-        ws = s0 + 240 + l * SYM + CP - BACK
+        ws = s0 + var["base"] + l * SYM
         yr, yi = derotate(xi, xq, ws, N, s0, w, G); wins.append((yr, yi)); Yr, Yi = fft64(yr, yi); Yr, Yi = Yr[KB], Yi[KB]
         Zr[l] = (Yr * Wr - Yi * Wi + 8192) >> 14; Zi[l] = (Yr * Wi + Yi * Wr + 8192) >> 14
         pol = Fm.POL[l]; ps = int(pol)

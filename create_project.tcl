@@ -29,21 +29,23 @@
 #                    (QPSK=1 QAM16RX=1: the 16-QAM frame transmitter + receiver in one overlay, p501_qam16_trx; the QPSK transmitter is replaced by rtl/qam16_tx_fr.v)
 #   OFDMRXSC=0       add the FPGA OFDM receiver with the Schmidl-and-Cox synchroniser (bd/ofdm_rx_chain.tcl, tutorial/ofdm); use it instead of the QPSKRX* / QAM16RX options (project p501_ofdm_rx_sc;
 #                    the transmitter is the base design's DAC DMA: the host sends the OFDM frame as a cyclic buffer, so use FFT=0 and no QPSK / DDS)
+#   OFDMRXSTS=0      the same OFDM receiver with the 128-sample short training field instead of the Schmidl-and-Cox symbol (rtl parameter STS=1: lag 16, 48 products, preamble 128 samples; ID 0xDD520008;
+#                    project p501_ofdm_rx_sts); it shares the address 0x9C470000 with OFDMRXSC, so use one of the two (the host sends the matching frame, tutorial/ofdm/make_ofdm_frame.py sts)
 #   NAME=...         project name (created in ./build/<NAME>). Default: p501_fft (FFT only), p501_dds (DDS only),
 #                    p501_fft_dds (both), p501_fft_tut (neither: the starting point of the tutorials)
 # -----------------------------------------------------------------------------
 set script_dir [file dirname [file normalize [info script]]]
 
-array set opt {NFFT_LOG2 10 SCALE_SHIFT {} LIB {} RUN none JOBS 8 NAME {} FFT 1 DDS 0 QPSK 0 QPSKRX 0 QPSKRXFLL 0 QPSKRXFE 0 QPSKRX4P 0 QPSKRXSYNC 0 QAM16RX 0 OFDMRXSC 0 PART xczu5ev-sfvc784-2-i}
+array set opt {NFFT_LOG2 10 SCALE_SHIFT {} LIB {} RUN none JOBS 8 NAME {} FFT 1 DDS 0 QPSK 0 QPSKRX 0 QPSKRXFLL 0 QPSKRXFE 0 QPSKRX4P 0 QPSKRXSYNC 0 QAM16RX 0 OFDMRXSC 0 OFDMRXSTS 0 PART xczu5ev-sfvc784-2-i}
 foreach a $argv {
   if {[regexp {^(\w+)=(.*)$} $a -> k v]} { set opt($k) $v }
 }
 
 if {$opt(NAME) eq {}} {
-  set opt(NAME) [expr {$opt(OFDMRXSC) ? "p501_ofdm_rx_sc" : $opt(QAM16RX) ? ($opt(QPSK) ? "p501_qam16_trx" : "p501_qam16_rx") : $opt(QPSKRXSYNC) ? ($opt(QPSK) ? "p501_qpsk_trx_sync" : "p501_qpsk_rx_sync") : $opt(QPSKRX4P) ? ($opt(QPSK) ? "p501_qpsk_trx_4p" : "p501_qpsk_rx_4p") : $opt(QPSKRXFE) ? ($opt(QPSK) ? "p501_qpsk_trx_fe" : "p501_qpsk_rx_fe") : $opt(QPSKRXFLL) ? ($opt(QPSK) ? "p501_qpsk_trx_fll" : "p501_qpsk_rx_fll") : $opt(QPSKRX) ? ($opt(QPSK) ? "p501_qpsk_trx" : "p501_qpsk_rx") : $opt(QPSK) ? ($opt(FFT) ? "p501_fft_qpsk" : "p501_qpsk") : ($opt(FFT) ? ($opt(DDS) ? "p501_fft_dds" : "p501_fft") : ($opt(DDS) ? "p501_dds" : "p501_fft_tut"))}]
+  set opt(NAME) [expr {$opt(OFDMRXSTS) ? "p501_ofdm_rx_sts" : $opt(OFDMRXSC) ? "p501_ofdm_rx_sc" : $opt(QAM16RX) ? ($opt(QPSK) ? "p501_qam16_trx" : "p501_qam16_rx") : $opt(QPSKRXSYNC) ? ($opt(QPSK) ? "p501_qpsk_trx_sync" : "p501_qpsk_rx_sync") : $opt(QPSKRX4P) ? ($opt(QPSK) ? "p501_qpsk_trx_4p" : "p501_qpsk_rx_4p") : $opt(QPSKRXFE) ? ($opt(QPSK) ? "p501_qpsk_trx_fe" : "p501_qpsk_rx_fe") : $opt(QPSKRXFLL) ? ($opt(QPSK) ? "p501_qpsk_trx_fll" : "p501_qpsk_rx_fll") : $opt(QPSKRX) ? ($opt(QPSK) ? "p501_qpsk_trx" : "p501_qpsk_rx") : $opt(QPSK) ? ($opt(FFT) ? "p501_fft_qpsk" : "p501_qpsk") : ($opt(FFT) ? ($opt(DDS) ? "p501_fft_dds" : "p501_fft") : ($opt(DDS) ? "p501_dds" : "p501_fft_tut"))}]
 }
 
-if {($opt(QPSKRX) + $opt(QPSKRXFLL) + $opt(QPSKRXFE) + $opt(QPSKRX4P) + $opt(QPSKRXSYNC) + $opt(QAM16RX) + $opt(OFDMRXSC)) > 1} { error "QPSKRX, QPSKRXFLL, QPSKRXFE, QPSKRX4P, QPSKRXSYNC, QAM16RX and OFDMRXSC all instantiate the receiver at 0x9C470000: choose one" }
+if {($opt(QPSKRX) + $opt(QPSKRXFLL) + $opt(QPSKRXFE) + $opt(QPSKRX4P) + $opt(QPSKRXSYNC) + $opt(QAM16RX) + $opt(OFDMRXSC) + $opt(OFDMRXSTS)) > 1} { error "QPSKRX, QPSKRXFLL, QPSKRXFE, QPSKRX4P, QPSKRXSYNC, QAM16RX, OFDMRXSC and OFDMRXSTS all instantiate the receiver at 0x9C470000: choose one" }
 if {$opt(LIB) eq {}} {
   foreach c [list [file join $script_dir .. pzsdr-p501 hdl library] \
                   [expr {[info exists ::env(P501_HDL_LIBRARY)] ? $::env(P501_HDL_LIBRARY) : {}}]] {
@@ -93,7 +95,8 @@ if {$opt(QPSKRXFE)} { p501_add_qpsk_rx_fe_chain }
 if {$opt(QPSKRX4P)} { p501_add_qpsk_rx_4p_chain }
 if {$opt(QPSKRXSYNC)} { p501_add_qpsk_rx_sync_chain }
 if {$opt(QAM16RX)} { p501_add_qam16_rx_chain }
-if {$opt(OFDMRXSC)} { p501_add_ofdm_rx_chain }
+if {$opt(OFDMRXSC)} { p501_add_ofdm_rx_chain 0 }
+if {$opt(OFDMRXSTS)} { p501_add_ofdm_rx_chain 1 }
 regenerate_bd_layout
 validate_bd_design
 save_bd_design
