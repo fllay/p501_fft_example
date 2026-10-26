@@ -160,7 +160,7 @@ At the closer position the stock transmitter is as clean as the other one at 82 
 ## The STS frame in GNU Radio
 
 The overlay `p501_ofdm_rx_sts` (the same RTL as the Schmidl-and-Cox overlay with the parameter `STS = 1`, `PLAN_OFDM.md` sections 4b and 14) receives a frame with the **128-sample short training field**: `STS (128) | LTS (32 prefix, T1 64, T2 64) | 44 data symbols of 80 | 32 idle` = 3840 samples.
-The STS is a 64-sample IFFT of 6 QPSK subcarriers (k = +-4, +-8, +-12) sent twice, so it repeats every 16 samples; the LTS is the training symbol twice with a prefix of 32 samples. The principle of the STS, of the IFFT and of the cyclic prefix is taught in [`TUTORIAL_OFDM.md`](../TUTORIAL_OFDM.md) A.3b and A.4b. Two flowgraphs and a notebook (`notebook/P501_OFDM_STS_Live.ipynb`) match it. **I made them without the hardware, so the numbers below are from the model and from offline runs; you then ran both flowgraphs and the notebook with the B210 and the P501 and found that they work (the readings of that run were not recorded).**
+The STS is a 64-sample IFFT of 6 QPSK subcarriers (k = +-4, +-8, +-12) sent twice, so it repeats every 16 samples; the LTS is the training symbol twice with a prefix of 32 samples. The principle of the STS, of the IFFT and of the cyclic prefix is taught in [`TUTORIAL_OFDM.md`](../TUTORIAL_OFDM.md) A.3b and A.4b. Two flowgraphs and a notebook (`notebook/P501_OFDM_STS_Live.ipynb`) match it. **I made them without the hardware, so the numbers below are from the model and from offline runs; you then ran both flowgraphs and the notebook with the B210 and the P501 and found that they work (screenshots of that run below).**
 
 ### Transmitter: `ofdm_b210_frame_tx_sts_stock.grc`
 
@@ -185,7 +185,37 @@ The delay is longer (384 samples against 80) because the carrier is known only a
 
 **Offline results** (the model's frames through a channel with 10 ppm and a delay of 3.4 samples; the generated flowgraph on a recording at real time, Qt off screen): 24 dB SNR and +9 kHz: 8,338 frames in 15 s, all found, none dropped, symbol error rate 2.2e-4, EVM -19.4 dB (the S&C stock receiver gives the same at that SNR). The carrier estimate has an error of 100 to 120 rms Hz (mean below 45 Hz) at 9 kHz and at 50 kHz.
 In a Python flowgraph of the same blocks at 26 dB SNR: **no symbol error in 299 frames at 0, +9, +30 and -30 kHz**; at 50 kHz a symbol error rate of 5.6e-3 (the EVM is only 0.7 dB worse; 50 kHz is far beyond the 9 kHz of the P501 and the B210); with a DC offset of 20 % of the rms the first 20 frames (the DC filter settling) have 975 symbol errors, the remaining 279 the same 70 as without the DC.
-**Tested by you on the B210, readings not recorded:** both flowgraphs and the notebook work. My own checks of the transmitter were against the model frame, sample by sample (not against the P501 receiving it); the receiver's numbers above are from model recordings.
+**A real run** (your screenshots; the transmitter and the notebook are B210 to P501, the receiver flowgraph is P501 to B210).
+
+*B210 to P501.* The transmitter flowgraph, Transmit ON, B210 TX gain **60 dB** (with the amplifier after the B210), digital amplitude 0.25; the spectrum tab shows what goes into the B210: the 28 subcarriers (about 1.7 MHz, edges near +-0.85 MHz), the notch at 0 Hz where no subcarrier is used, and a floor about 25 dB below the band.
+
+![the STS transmitter flowgraph](../img/ofdm_real_sts_grc_tx.png)
+
+The live notebook of the P501 (`P501_OFDM_STS_Live.ipynb`, RX gain 70, detector threshold 166 = 0.65), receiving that signal:
+
+![the live notebook with the STS overlay](../img/ofdm_real_sts_notebook.png)
+
+| Field | Value | Meaning |
+|---|---|---|
+| frames | 2,030,110 (1001 per second of about 1000) | about 34 minutes of reception, every frame found is decoded |
+| found / rejected / bad frames | 2,040,482 / 10,368 / 15,319 | cumulative since the receiver was started; the bad frames (0.75 % of the frames) are frames with more than 20 % symbol errors |
+| symbols checked, errors | 2,143,796,160, 15,246,970 | the cumulative totals: 7.1e-3, almost all of it in the bad frames (15,246,970 / 15,319 = about 1000 errors each: practically whole frames wrong, found at a wrong place or at a start-up) |
+| SER | **5.6e-6 since the display was started, 0 in the last 2 s** | the "since start" of the picture counts from *Start display* (the totals above from the start of the receiver) |
+| EVM, SNR | -30.8 dB (last frame), -29.2 dB (this picture); 35.7 dB | the link of the lab amplifier at close range: 16 clean clusters |
+| carrier | +8780 Hz (coarse +8827 Hz) | the natural offset of the two radios; the strip (scale 7752 to 9752 Hz) is steady |
+| level, gain | 485 counts rms at the ADC, gain 0.82 | far above the 25 counts below which the S&C overlay loses frames (C.7 of the tutorial) |
+| late, overflow | late 0, fft_ovf 0, overrun 0; `ovf` 1 | `ovf` is the sticky flag that a start or a change of the buffer sets |
+
+*P501 to B210.* The receiver flowgraph `ofdm_b210_frame_rx_sts_stock.grc` with the P501 transmitting (B210 RX gain 45 dB, threshold 0.65), tab 6:
+
+![tab 6 of the STS receiver flowgraph](../img/ofdm_real_sts_grc_rx_6.png)
+
+Left: the received data symbols after the soft equalizer, 16 clusters with the spread of the noise; right: the decided symbols of the stock equalizer, always perfect. The counters at the bottom: **9,801 frames decoded, 135,030 symbol errors, a symbol error rate of 0.0130 since the start and 0.0091 over the last 2000 frames, EVM -21.6 dB**
+(I read these off the screenshot). This link is weaker than the other direction (EVM -21.6 dB against -30.8 dB), and the symbol error rate is **higher than an EVM of -21.6 dB explains**: white noise at that EVM would give an error rate of the order of 1e-7, and the error rate of 0.9 % means about 10 errors per frame on average.
+The soft block leaves out frames with a gross error from its EVM average, so a small share of whole frames cut or lost (about 1 in 80 would do it) could produce this without showing in the EVM. **The screenshot does not show why:** tabs 2 and 3 (the trigger and the carrier of every frame) and the terminal (`O` = overflow of the B210's samples) would tell; I have not seen them.
+My own measurement on a synthetic recording gave 2.2e-4 at 24 dB SNR with the same flowgraph.
+
+My own checks of the transmitter were against the model frame, sample by sample (not against the P501 receiving it); the offline numbers of the receiver flowgraph earlier in this section are from model recordings.
 
 ### Notebook: `notebook/P501_OFDM_STS_Live.ipynb`
 

@@ -441,6 +441,25 @@ at 6 counts the STS fails too, 5 of 300). The cause inside the S&C detector is n
 **In GNU Radio** (`GRC_OFDM.md`): `ofdm_b210_frame_tx_sts_stock.grc` is the transmitter chain of A.3b with the preamble from a vector source (the STS and the LTS are not OFDM symbols with the usual prefix) and a mux of three inputs; `ofdm_b210_frame_rx_sts_stock.grc` is the stock receiver with one block of its own,
 `sts_sync.py`, which does what the stock Schmidl-and-Cox block cannot: find a preamble that repeats every 16 samples, measure the carrier (coarse from the STS, fine from T1 and T2) and trigger the stock Header/Payload Demux. Both were tried with the B210 and the P501 and work.
 
+### A real run of the STS overlay: B210 to P501, and P501 to B210
+
+The B210 transmits the frame from `ofdm_b210_frame_tx_sts_stock.grc` (Transmit ON, 60 dB with the lab's amplifier, digital amplitude 0.25); the spectrum tab is what goes into the B210: 28 subcarriers, 1.7 MHz, the notch at DC.
+
+![the STS transmitter](img/ofdm_real_sts_grc_tx.png)
+
+The P501 receives it with the notebook `P501_OFDM_STS_Live.ipynb` (RX gain 70, threshold 166):
+
+![the live notebook, STS overlay](img/ofdm_real_sts_notebook.png)
+
+Read the status block from the top: **2,030,110 frames at 1001 per second** (about 34 minutes of reception), SNR **35.7 dB**, EVM **-30.8 dB**, symbol error rate **0 in the last 2 s** and 5.6e-6 since the display was started, carrier **+8780 Hz** (the natural offset), level **485 counts** at the ADC, nothing late.
+The sixteen clusters are tight. Under *found / rejected / bad frames* the cumulative counts are 2,040,482 / 10,368 / 15,319: **0.75 % of the frames were bad** (more than 20 % symbol errors, a frame found at a wrong place or lost) and they account for nearly all of the 15 million errors counted since the receiver was started (7.1e-3);
+the picture's own "since start" starts at *Start display*. In the other direction (the P501 transmits, the B210 receives with the flowgraph `ofdm_b210_frame_rx_sts_stock.grc`, tab 6):
+
+![tab 6 of the STS receiver flowgraph](img/ofdm_real_sts_grc_rx_6.png)
+
+the soft clusters have more spread (EVM **-21.6 dB**, the weaker link), the decided symbols are perfect whatever the noise, and the counters read **0.0130 since the start and 0.0091 over the last 2000 frames**. That error rate is larger than an EVM of -21.6 dB alone would give (about 1e-7 for white noise): the EVM leaves out frames with a gross error, so a small share of whole frames cut or lost
+would explain it; the screenshot does not show whether that is so (tabs 2 and 3 and the terminal would). Compare with the same flowgraph on a synthetic recording at 24 dB SNR, 2.2e-4 (`GRC_OFDM.md`).
+
 ---
 
 # Part D. Reading a link
