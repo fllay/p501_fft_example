@@ -79,6 +79,131 @@ def fig_symbol():
     ax.set_title("OFDM sums 28 carriers: the power of a sample is spread (mean 0 dB)\npeaks 10 dB above the mean: the transmitter needs headroom"); ax.set_xlabel("sample power (dB relative to the mean)"); ax.grid(alpha=.3)
     fig.tight_layout(); fig.savefig(os.path.join(IMG, "ofdm_t_symbol.png"), dpi=130); plt.close(fig)
 
+
+# ---------------------------------------------------------------- 3b. the IFFT as a bank of oscillators
+def fig_ifft():
+    ks = np.array([-3, -1, 2, 5]); vals = np.array([1 + 1j, -1 + 1j, 1 - 1j, -1 - 1j]) / np.sqrt(2)
+    n = np.arange(N); waves = [v * np.exp(2j * np.pi * k * n / N) for k, v in zip(ks, vals)]
+    X = np.zeros(N, complex); X[np.mod(ks, N)] = vals; x = np.fft.ifft(X) * N
+    fig, axs = plt.subplots(1, 3, figsize=(14, 4.2))
+    ax = axs[0]; ax.stem(np.arange(-8, 8), np.abs(np.fft.fftshift(X))[N // 2 - 8:N // 2 + 8], basefmt=" "); ax.set_title("frequency: four subcarriers loaded,\nall the others are zero", fontsize=10); ax.set_xlabel("subcarrier k  (the IFFT bin is k mod 64)"); ax.set_ylabel("|X[k]|"); ax.set_ylim(0, 1.3); ax.grid(alpha=.3)
+    for k, v in zip(ks, vals): ax.text(k, 1.05, "%+.1f\n%+.1fj" % (v.real, v.imag), ha="center", fontsize=7)
+    ax = axs[1]
+    for k, w in zip(ks, waves): ax.plot(n, w.real, lw=0.9, alpha=.8, label="k = %d (%d periods)" % (k, abs(k)))
+    ax.plot(n, x.real, "k", lw=2, label="sum = the IFFT"); ax.set_title("time (real part): each subcarrier is an oscillator with k whole\nperiods in 64 samples; the signal sent is their sum", fontsize=10); ax.set_xlabel("sample n"); ax.legend(fontsize=7, ncol=2, loc="lower left"); ax.grid(alpha=.3)
+    ax = axs[2]; F = np.array([np.exp(2j * np.pi * k * n / N) for k in Fm.USED]) / np.sqrt(N); G = np.abs(F @ F.conj().T)
+    im = ax.imshow(G, cmap="Blues", vmin=0, vmax=1, extent=[-14.5, 14.5, 14.5, -14.5]); ax.set_title("orthogonality of the 28 subcarriers over 64 samples:\ninner products 1 on the diagonal, 0 elsewhere", fontsize=10); ax.set_xlabel("subcarrier k"); ax.set_ylabel("subcarrier k'")
+    fig.colorbar(im, ax=ax, fraction=0.046); fig.tight_layout(); fig.savefig(os.path.join(IMG, "ofdm_t_ifft.png"), dpi=130); plt.close(fig)
+
+# ---------------------------------------------------------------- 3c. the cyclic prefix: why one multiplication per subcarrier is enough, and how much timing it tolerates
+def fig_cp():
+    def echo(amp, delay, ph): t = np.zeros(delay + 1, complex); t[0] = 1.0; t[delay] = amp * np.exp(1j * ph); return t
+    x, d = Fm.tx_frame(preamble="scu"); back0 = Fm.BACK; out = {}
+    try:
+        for D in (0, 5, 10, 14):
+            row = []
+            for b in range(-8, 25):
+                Fm.BACK = b; y = Fm.channel(x, 40, cfo_hz=0.0, tau=0.0, taps=(echo(0.5, D, 1.0) if D else None), rng=np.random.default_rng(2), lead=300, phase=0.0)
+                r = Fm.receive(y, genie=(300, 0.0), sync="scu_plateau", return_all=True); row.append(Fm.metrics(r["Z"], d)[0] if r else np.nan)
+            out[D] = np.array(row)
+    finally: Fm.BACK = back0
+    fig = plt.figure(figsize=(14.5, 5.0)); ax = fig.add_axes([0.02, 0.05, 0.45, 0.88]); ax.set_xlim(0, 112); ax.set_ylim(0, 52); ax.axis("off")
+    def sym(x0, y0, name, fc, a=1.0):
+        ax.add_patch(plt.Rectangle((x0, y0), 10, 6, fc="#fbd38d", ec="k", alpha=a)); ax.add_patch(plt.Rectangle((x0 + 10, y0), 40, 6, fc=fc, ec="k", alpha=a)); ax.text(x0 + 5, y0 + 3, "CP", ha="center", va="center", fontsize=7); ax.text(x0 + 30, y0 + 3, name, ha="center", va="center", fontsize=8)
+    sym(0, 42, "symbol l-1", "#bee3f8"); sym(50, 42, "symbol l", "#c6f6d5"); ax.text(0, 50, "direct path", fontsize=8.5, weight="bold")
+    sym(8, 31, "symbol l-1", "#bee3f8", .55); sym(58, 31, "symbol l", "#c6f6d5", .55); ax.text(0, 39.3, "echo, delayed by D samples (drawn: D = 8 units)", fontsize=8.5, weight="bold")
+    ax.add_patch(plt.Rectangle((59, 19), 40, 7, fc="none", ec="#c53030", lw=2)); ax.text(79, 22.5, "FFT window: 64 samples", ha="center", va="center", fontsize=8.5, color="#c53030"); ax.plot([60, 60], [26, 38], color="#c53030", lw=0.8, ls=":"); ax.plot([58, 58], [26, 38], color="k", lw=0.8, ls=":")
+    ax.text(0, 14.5, "A window that starts inside the prefix, at least D samples after the prefix begins, contains the symbol\nitself, circularly shifted, and nothing else: the echo of symbol l-1 (its tail ends at the dotted line)\nhas died away. Every subcarrier then comes out multiplied by one complex number H[k]:\none division per subcarrier is the whole equaliser. A window that starts earlier, or later than the\nuseful part, sees the neighbour: intersymbol interference.", fontsize=8.3, va="top")
+    ax = fig.add_axes([0.55, 0.15, 0.43, 0.68]); bs = np.arange(-8, 25)
+    for D, c in zip((0, 5, 10, 14), ("#2e8b57", "#2b6cb0", "#e07020", "#c53030")): ax.plot(bs, out[D], "o-", ms=3, color=c, label=("echo of -6 dB, D = %d samples" % D) if D else "no echo")
+    ax.axvspan(0, 16, color="#fbd38d", alpha=.35); ax.set_xlabel("samples before the useful part at which the FFT window starts (BACK)\n0 .. 16 = inside the prefix"); ax.set_ylabel("EVM (dB), SNR 40 dB"); ax.legend(fontsize=7.5); ax.grid(alpha=.3)
+    ax.set_title("Measured on the model: the EVM is flat while the window starts\nbetween the beginning of the echo-free part (BACK = 16 - D) and the useful part (0)", fontsize=9.5)
+    fig.savefig(os.path.join(IMG, "ofdm_t_cp.png"), dpi=130); plt.close(fig)
+    return out
+
+# ---------------------------------------------------------------- 3d. the transmitter chain
+def fig_tx():
+    fig, ax = plt.subplots(figsize=(13.5, 5.2)); ax.set_xlim(0, 13.5); ax.set_ylim(0, 5.2); ax.axis("off")
+    xs = [0.1, 2.15, 4.2, 6.25, 8.3, 10.35]; labs = ["bits\n(PRBS-15 now,\nyour data later)", "mapper\n4 bits -> one\n16-QAM value", "carrier allocator\n24 data + 4 pilots\n+ zeros = X[k]", "IFFT\n64 points", "cyclic prefix\n16 samples copied\nfrom the end", "preamble + idle\n(tagged stream\nmux)"]
+    cols = [C["old"], C["py"], C["gnu"], C["gnu"], C["gnu"], C["gnu"]]
+    for x, l, c in zip(xs, labs, cols): box(ax, x, 3.1, 1.85, 1.4, l, c, 8)
+    for a, b in zip(xs[:-1], xs[1:]): arrow(ax, a + 1.85, 3.8, b, 3.8)
+    box(ax, 12.4, 3.1, 1.0, 1.4, "DAC\n3.84 MS/s", C["fpga"], 8); arrow(ax, 12.2, 3.8, 12.4, 3.8)
+    ax.text(0.1, 4.95, "The transmitter chain (GNU Radio flowgraphs ofdm_b210_frame_tx_stock.grc and ..._sts_stock.grc; the model ofdm_model.tx_frame)", fontsize=10, weight="bold")
+    ax.add_patch(plt.Rectangle((0.1, 0.1), 6.5, 2.6, fc="#edf2f7", ec="k")); ax.text(0.25, 2.55, "today, in the notebook (the P501 as transmitter)", fontsize=9.5, weight="bold", va="top")
+    ax.text(0.25, 2.15, "The whole chain runs once, on the PC (Python):\none frame of 3840 samples is saved (ofdm_frame_sts.npy).\nThe notebook copies it into a buffer and the DAC DMA\nreplays it every millisecond; the FPGA only moves samples.\nEvery frame is the same: the known PRBS-15 payload,\nwhich is what the error counters need.", fontsize=8.6, va="top")
+    ax.add_patch(plt.Rectangle((6.9, 0.1), 6.5, 2.6, fc="#ebf8ff", ec="k")); ax.text(7.05, 2.55, "an FPGA transmitter (not built yet)", fontsize=9.5, weight="bold", va="top")
+    ax.text(7.05, 2.15, "Mapper, allocator, one IFFT (the FFT block of the receiver run\nbackwards: conjugate in, conjugate out), the prefix from a small\nRAM, the preamble from a ROM, bits from a FIFO or a counter;\none frame every 3840 sample clocks. Then any payload can be\nsent, and an encoder (FEC) can sit in front of the mapper.", fontsize=8.6, va="top")
+    fig.tight_layout(); fig.savefig(os.path.join(IMG, "ofdm_t_tx.png"), dpi=130); plt.close(fig)
+
+# ---------------------------------------------------------------- 4b. the short training field
+def fig_sts():
+    x, d = Fm.tx_frame(preamble="sts16"); xs = x[:128]; Xs = np.fft.fft(xs[:64]) / np.sqrt(N)
+    fig, axs = plt.subplots(2, 2, figsize=(13, 6.6))
+    ax = axs[0, 0]; ax.stem(np.arange(-32, 32), np.abs(np.fft.fftshift(Xs)), basefmt=" ", linefmt="C1-", markerfmt="C1o"); ax.set_title("STS spectrum: only k = +-4, +-8, +-12 are loaded (QPSK)", fontsize=10); ax.set_xlabel("subcarrier k"); ax.set_ylim(0, 3.3); ax.grid(alpha=.3)
+    ax.text(-31, 2.75, "lines every 4 bins = a signal that repeats\nevery 64 / 4 = 16 samples", fontsize=8.5, bbox=dict(fc="white", ec=C["sc"]))
+    ax = axs[0, 1]; t = np.arange(128); ax.plot(t, xs.imag, "o-", ms=2.5, lw=.8, color=C["sc"])
+    for k in range(0, 129, 16): ax.axvline(k, color="k", lw=.5, ls=":")
+    ax.set_title("STS in time (imaginary part; the real part is zero for these QPSK values):\nthe same 16 samples eight times", fontsize=10); ax.set_xlabel("sample n (dotted: every 16)"); ax.grid(alpha=.3)
+    ax = axs[1, 0]; seg = xs.reshape(8, 16)
+    for r in seg: ax.plot(np.arange(16), r.imag, color=C["sc"], alpha=.5, lw=.9)
+    ax.set_title("the eight pieces of 16 samples on top of each other: they coincide", fontsize=10); ax.set_xlabel("sample in the piece"); ax.grid(alpha=.3)
+    ax = axs[1, 1]; sc = Fm.tx_frame(preamble="scu")[0][:80]; ax.plot(np.arange(80), np.abs(sc), color=C["sc"], lw=1, label="S&C symbol: 80 samples, repeats every 32 (14 even subcarriers)"); ax.plot(np.arange(128), np.abs(xs), color="#2b6cb0", lw=1, label="STS: 128 samples, repeats every 16 (6 subcarriers)")
+    ax.set_title("|x| of the two preambles, to the same scale", fontsize=10); ax.set_xlabel("sample n"); ax.legend(fontsize=7.5, loc="upper right"); ax.set_ylim(0, 2.2); ax.grid(alpha=.3)
+    fig.tight_layout(); fig.savefig(os.path.join(IMG, "ofdm_t_sts.png"), dpi=130); plt.close(fig)
+
+def fig_sts_metric(n_trials=300):
+    import ofdm_fixed as X
+    xs, _ = Fm.tx_frame(preamble="sts16"); xc, _ = Fm.tx_frame(preamble="scu")
+    ys = Fm.channel(xs, 20, cfo_hz=9000.0, tau=4.3, ppm=10.0, rng=np.random.default_rng(1), lead=300); yc = Fm.channel(xc, 20, cfo_hz=9000.0, tau=4.3, ppm=10.0, rng=np.random.default_rng(1), lead=300)
+    Ms, Ss = Fm.timing_metric(ys, 16, 48); Mc, Sc = Fm.timing_metric(yc, 32, 32)
+    fig, axs = plt.subplots(2, 2, figsize=(13, 6.8))
+    ax = axs[0, 0]; w = np.arange(150, 500); ax.plot(w - 304, Ms[w], color="#2b6cb0", label="STS: lag 16, 48 products"); ax.plot(w - 304, Mc[w], color=C["sc"], label="S&C: lag 32, 32 products"); ax.axhline(0.65, color="k", ls="--", lw=.8)
+    ax.set_title("M = |S|^2 / E^2 against the start of the 64-sample window (20 dB SNR, 9 kHz offset):\nthe plateau is about 65 windows long for the STS, 17 for S&C", fontsize=9.5); ax.set_xlabel("window start relative to the preamble start (samples)"); ax.legend(fontsize=8); ax.grid(alpha=.3)
+    ax = axs[0, 1]; cfos = np.linspace(-150e3, 150e3, 121); est_s, est_c = [], []
+    for f in cfos:
+        a = Fm.channel(xs, 40, cfo_hz=f, tau=0.0, rng=np.random.default_rng(3), lead=300, phase=0.0); b = Fm.channel(xc, 40, cfo_hz=f, tau=0.0, rng=np.random.default_rng(3), lead=300, phase=0.0)
+        Ma, Sa = Fm.timing_metric(a, 16, 48); Mb, Sb = Fm.timing_metric(b, 32, 32)
+        est_s.append(np.angle(Sa[320]) / (2 * np.pi * 16 / FS)); est_c.append(np.angle(Sb[308]) / (2 * np.pi * 32 / FS))
+    ax.plot(cfos / 1e3, np.array(est_s) / 1e3, ".-", ms=3, color="#2b6cb0", label="STS (lag 16): wraps at +-120 kHz"); ax.plot(cfos / 1e3, np.array(est_c) / 1e3, ".-", ms=3, color=C["sc"], label="S&C (lag 32): wraps at +-60 kHz")
+    ax.plot(cfos / 1e3, cfos / 1e3, "k:", lw=.8); ax.set_xlabel("true carrier offset (kHz)"); ax.set_ylabel("arg S / (2 pi lag / fs) (kHz)"); ax.set_title("the coarse carrier estimate: the shorter the lag, the larger the unambiguous range", fontsize=9.5); ax.legend(fontsize=8); ax.grid(alpha=.3)
+    es, ec = [], []
+    for i in range(n_trials):
+        r = np.random.default_rng(100 + i); tau = r.uniform(0, 12); cf = r.uniform(-20e3, 20e3)
+        a = Fm.channel(xs, 20, cfo_hz=cf, tau=tau, ppm=10.0, rng=r, lead=300); b = Fm.channel(xc, 20, cfo_hz=cf, tau=tau, ppm=10.0, rng=r, lead=300)
+        da = X.detect_info(*X.to_adc(a, 200), var=X.STS); db = X.detect_info(*X.to_adc(b, 200), var=X.SC)
+        if da: es.append(da["s0"] - (300 + tau))
+        if db: ec.append(db["s0"] - (300 + tau))
+    ax = axs[1, 0]; bins = np.linspace(-6, 6, 49); ax.hist(es, bins, color="#2b6cb0", alpha=.7, label="STS: mean %+.2f, std %.2f" % (np.mean(es), np.std(es))); ax.hist(ec, bins, color=C["sc"], alpha=.6, label="S&C: mean %+.2f, std %.2f" % (np.mean(ec), np.std(ec)))
+    ax.set_title("error of the frame start of the integer receivers (samples):\n%d frames at 20 dB SNR, delays 0 to 12 samples, carrier +-20 kHz" % n_trials, fontsize=9.5); ax.set_xlabel("estimated start - true start (the window of 6 samples early tolerates 6 late, 10 early)"); ax.legend(fontsize=8); ax.grid(alpha=.3)
+    ax = axs[1, 1]; ax.axis("off")
+    rows = [("", "S&C symbol", "128-sample STS"), ("length of the preamble", "80 samples", "128 samples"), ("repeats every", "32 samples", "16 samples"), ("loaded subcarriers", "14 (even k)", "6 (k = +-4, +-8, +-12)"), ("correlation window", "32 products", "48 products"),
+            ("plateau of M", "17 windows", "65 windows"), ("carrier range (coarse)", "+-60 kHz", "+-120 kHz"), ("idle slot of the frame", "80 samples", "32 samples"), ("price", "short plateau (17 windows)", "48 more samples per frame")]
+    for i, r in enumerate(rows):
+        for j, t in enumerate(r): ax.text([0.0, 0.42, 0.72][j], 0.95 - i * 0.1, t, fontsize=9, weight="bold" if i == 0 or j == 0 else "normal", transform=ax.transAxes)
+    fig.tight_layout(); fig.savefig(os.path.join(IMG, "ofdm_t_sts_metric.png"), dpi=130); plt.close(fig)
+    return np.mean(es), np.std(es), np.mean(ec), np.std(ec)
+
+def fig_frame_sts():
+    fig = plt.figure(figsize=(13.5, 6.2)); gs = fig.add_gridspec(2, 2, width_ratios=[1, 1.5], hspace=0.55, wspace=0.08)
+    def draw(ax, segs, lo, hi, title, labels=True):
+        x0 = 0
+        for name, w, c, tc in segs:
+            ax.add_patch(plt.Rectangle((x0, 0.1), w, 0.8, fc=c, ec="k", lw=0.6))
+            if labels and x0 + w > lo and x0 < hi: ax.text(max(x0, lo) + (min(x0 + w, hi) - max(x0, lo)) / 2, 0.5, name, ha="center", va="center", fontsize=8.5, color=tc, rotation=90 if w < 70 else 0)
+            x0 += w
+        ax.set_xlim(lo, hi); ax.set_ylim(-0.1, 1.5); ax.set_yticks([]); ax.set_title(title, fontsize=9.5, loc="left")
+    sc = [("S&C", 80, C["sc"], "white"), ("T1", 80, C["tr"], "white"), ("T2", 80, C["tr"], "white")] + [("data %d" % i, 80, C["data"] if i % 2 == 0 else C["data2"], "white") for i in range(44)] + [("idle", 80, "white", "k")]
+    sts = [("STS (128)", 128, C["sc"], "white"), ("GI2", 32, "#9ae6b4", "k"), ("T1", 64, C["tr"], "white"), ("T2", 64, C["tr"], "white")] + [("data %d" % i, 80, C["data"] if i % 2 == 0 else C["data2"], "white") for i in range(44)] + [("idle", 32, "white", "k")]
+    a = fig.add_subplot(gs[0, 0]); draw(a, sc, 0, 3840, "S&C frame, 3840 samples", labels=False); a.text(1900, 0.5, "S&C | T1 | T2 | 44 data symbols | idle 80", ha="center", va="center", fontsize=8.5, color="white", bbox=dict(fc=C["data"], ec="none"))
+    b = fig.add_subplot(gs[0, 1]); draw(b, sc, 0, 560, "the start of the S&C frame (overlay p501_ofdm_rx_sc)")
+    for xw, t in ((90, "T1 window\n(s0+90)"), (170, "T2 window\n(s0+170)"), (250, "first data\nwindow (s0+250)")): b.annotate(t, xy=(xw, 0.9), xytext=(xw, 1.35), ha="center", fontsize=7.5, arrowprops=dict(arrowstyle="-|>", color="#c53030"))
+    c = fig.add_subplot(gs[1, 0]); draw(c, sts, 0, 3840, "128-sample STS frame, 3840 samples", labels=False); c.text(1900, 0.5, "STS | LTS | 44 data symbols | idle 32", ha="center", va="center", fontsize=8.5, color="white", bbox=dict(fc=C["data"], ec="none"))
+    d = fig.add_subplot(gs[1, 1]); draw(d, sts, 0, 560, "the start of the STS frame (overlay p501_ofdm_rx_sts)")
+    for xw, t in ((154, "T1 window\n(s0+154)"), (218, "T2 window\n(s0+218)"), (298, "first data\nwindow (s0+298)")): d.annotate(t, xy=(xw, 0.9), xytext=(xw, 1.35), ha="center", fontsize=7.5, arrowprops=dict(arrowstyle="-|>", color="#c53030"))
+    d.text(0, -0.08, "the T1 and T2 windows start 6 samples before the symbols; the lag of the fine carrier is 80 samples (S&C) or 64 (STS)", fontsize=7.5)
+    fig.savefig(os.path.join(IMG, "ofdm_t_frame_sts.png"), dpi=130, bbox_inches="tight"); plt.close(fig)
+
 # ---------------------------------------------------------------- 4. Schmidl and Cox on a real frame
 def fig_sc():
     x, M, S, n0, s0, fc = real_frame(); a = s0 - 400; b = s0 + 3840 + 400
@@ -186,7 +311,7 @@ def fig_grc():
     ax.set_title("The receiver in GNU Radio Companion: ofdm_b210_frame_rx.grc", fontsize=11); fig.tight_layout(); fig.savefig(os.path.join(IMG, "ofdm_t_grc_chain.png"), dpi=130); plt.close(fig)
 
 if __name__ == "__main__":
-    for f in (fig_method, fig_frame, fig_symbol, fig_guard, fig_block_rx, fig_grc, fig_sc, fig_cfo, fig_equalizer):
+    for f in (fig_method, fig_frame, fig_symbol, fig_ifft, fig_cp, fig_tx, fig_guard, fig_block_rx, fig_grc, fig_sc, fig_cfo, fig_equalizer, fig_sts, fig_sts_metric, fig_frame_sts):
         try: f(); print("ok", f.__name__)
         except Exception as e:
             import traceback; print("FAILED", f.__name__, repr(e)); traceback.print_exc()

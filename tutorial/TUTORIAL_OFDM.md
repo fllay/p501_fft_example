@@ -1,16 +1,16 @@
-# Tutorial 6: 16-QAM OFDM with a Schmidl-and-Cox synchroniser in the FPGA, and a receiver in GNU Radio block by block
+# Tutorial 6: 16-QAM OFDM in the FPGA with a Schmidl-and-Cox or a short-training-field synchroniser, and receivers in GNU Radio block by block
 
 This tutorial builds on [tutorial 5 (16-QAM)](TUTORIAL_QAM16.md). It does not repeat what is there (the 16-QAM constellation and its Gray code, the PRBS-15 payload and the error counters, EVM, the register block and the capture RAM); it explains what changes when one fast carrier is replaced by 28 slow ones (OFDM), how the frame is found with a Schmidl-and-Cox symbol, why the receiver needs no timing loop and no phase loop, how the receiver was verified, how to run it on the board and in GNU Radio, and how to read the numbers. The engineering record behind it is [`ofdm/PLAN_OFDM.md`](ofdm/PLAN_OFDM.md) (design, studies, every RTL step) and [`ofdm/REPORT_OFDM.md`](ofdm/REPORT_OFDM.md) (the measurements, the problems found, the open items).
 
-**What you need:** the P501 with the overlay `p501_ofdm_rx_sc` (build below), a PC with GNU Radio and a USRP B210 for the over-the-air part and for the GNU Radio receiver (the first two tests need only the P501; the GNU Radio receiver also runs on a recording), and tutorial 5 read.
+**What you need:** the P501 with the overlay `p501_ofdm_rx_sc` (or `p501_ofdm_rx_sts`, C.7; build below), a PC with GNU Radio and a USRP B210 for the over-the-air part and for the GNU Radio receiver (the first two tests need only the P501; the GNU Radio receiver also runs on a recording), and tutorial 5 read.
 
 **What you get:** a receiver that finds the frame, estimates the carrier and the channel from known symbols, equalises every subcarrier with one complex multiplication, tracks the rest with four pilots, decodes 16-QAM and counts errors against a known pattern, all in the FPGA with no software in the loop; and the same chain in GNU Radio, one block per step, with a plot after every stage.
 
 | Part | Content |
 |---|---|
-| A | The concepts: OFDM, the frame, Schmidl and Cox, the idle slot and the guard, the carrier, the channel, the pilots, the receiver |
+| A | The concepts: OFDM, the frame, **the IFFT and the cyclic prefix (A.3b)**, Schmidl and Cox, **the short training field (A.4b)**, the idle slot and the guard, the carrier, the channel, the pilots, the receiver |
 | B | How it was verified: model first, bit-exact, then the board |
-| C | Run it: build, digital loopback, over the air, the B210, the GNU Radio receiver, the registers |
+| C | Run it: build, digital loopback, over the air, the B210, the GNU Radio receiver, the registers, **the 128-sample STS overlay (C.7)** |
 | D | Reading a link: SNR, EVM and the error rate, what limits the link, start-up, troubleshooting |
 | E | Exercises and where next |
 
@@ -60,7 +60,59 @@ Left: the receiver costs about 2 to 2.5 dB against ideal knowledge of the channe
 | S&C symbol | only the even subcarriers loaded: the 64 samples are two equal halves of 32 |
 | T1, T2 | the same known QPSK value on all 28 used subcarriers, twice (the best of 4000 random sequences by peak-to-average ratio, 3.6 dB) |
 
-The **idle slot** is there so that a host can send the frame as a repeated buffer of exactly 1 ms and the receiver has time to finish; it turns out to matter for the detector (A.5).
+The **idle slot** is there so that a host can send the frame as a repeated buffer of exactly 1 ms and the receiver has time to finish; it turns out to matter for the detector (A.5). How the 80 samples of a symbol are made is the subject of A.3b; the frame with the 128-sample short training field instead of the S&C symbol is in A.4b and C.7.
+
+## A.3b From bits to samples: the IFFT and the cyclic prefix
+
+The receiver of this tutorial is in the FPGA, the transmitter is not (yet): the frame is made once, on the PC, by the same steps that an FPGA transmitter would do, and the board's DAC DMA replays it. These steps are the heart of OFDM, so here they are one by one.
+
+![the transmitter chain](img/ofdm_t_tx.png)
+
+| Step | What it does | Where it is in the repository |
+|---|---|---|
+| bits | the known PRBS-15 payload, 4224 bits per frame (your own data, later) | `ofdm_model.payload_bits` |
+| mapper | 4 bits -> one 16-QAM value (Gray code of tutorial 5), unit average power | `ofdm_model.qam_syms`; GNU Radio: *Chunks to Symbols* |
+| carrier allocator | the 24 data values go to 24 subcarriers, 4 QPSK pilots to 4 more, zeros on the rest of the 64 bins, DC unused | `ofdm_model.tx_frame`; GNU Radio: *OFDM Carrier Allocator* |
+| IFFT | 64 frequency values -> 64 time samples | `np.fft.ifft`; GNU Radio: *FFT* (inverse) |
+| cyclic prefix | the last 16 samples are copied in front: 80 samples per symbol | `tx_frame`; GNU Radio: *OFDM Cyclic Prefixer* |
+| preamble, idle slot | the training symbols in front, the empty slot behind (A.3, A.4b) | GNU Radio: *Tagged Stream Mux* |
+
+**The IFFT is a bank of oscillators.** The value X[k] on subcarrier k becomes a complex oscillation with k whole periods in the 64 samples, and the signal sent is the sum of all of them:
+
+`x[n] = (1 / sqrt N) * sum over k of X[k] exp(j 2 pi k n / N)`,   N = 64, n = 0 .. 63.
+
+![the IFFT](img/ofdm_t_ifft.png)
+
+Two oscillators with different k are **orthogonal** over the 64 samples: `sum over n of exp(j 2 pi (k - k') n / N)` is N for k = k' and exactly 0 otherwise (right panel). That is why the 28 data streams do not disturb each other although their spectra overlap, and why the receiver's FFT gives back exactly the X[k] that were sent:
+`X[k] = (1 / sqrt N) * sum over n of x[n] exp(-j 2 pi k n / N)`. The spacing of the subcarriers is `fs / N` = 3.84 MHz / 64 = **60 kHz = 1 / the symbol duration** (16.7 us): the smallest spacing that keeps them orthogonal. A direct bank of 28 oscillators would need N x 28 multiplications per symbol,
+the FFT about (N / 2) log2 N = 192 butterflies; in the FPGA the same butterfly does it in 768 clocks (`ofdm_fft.v`, A.9). In code (this is `ofdm_model.tx_frame` for one data symbol):
+
+```python
+X = np.zeros(64, complex)
+X[np.mod(DATA, 64)] = qam16_values              # 24 data subcarriers
+X[np.mod(PIL, 64)]  = pilot_values              # 4 pilots; the negative k go to the upper bins (k mod 64)
+x   = np.fft.ifft(X) * np.sqrt(64)              # unit power per loaded subcarrier: mean |x|^2 = 28 / 64
+sym = np.concatenate([x[-16:], x])              # the cyclic prefix: the last 16 samples in front
+# receiver: Y = np.fft.fft(rx[start:start + 64]) / np.sqrt(64)   ->  Y[k] = H[k] X[k]   (see below)
+```
+
+(GNU Radio's *FFT* block has no 1/N in the inverse direction: its output is 8 = sqrt 64 times the frame of the model. The transmitter flowgraphs multiply by 1/8 and by the amplitude.)
+
+**The cyclic prefix turns the channel into one number per subcarrier.** A channel with echoes does a *linear convolution* of the sent samples with its impulse response, and a convolution mixes neighbouring samples; but the **FFT diagonalises a circular convolution**: if the output were the *circular* convolution of one symbol with the channel,
+the FFT of the received 64 samples would be exactly `Y[k] = H[k] X[k]`, with H[k] the channel's value on subcarrier k. The prefix makes the linear convolution look circular: the 16 copied samples are the tail of the symbol, so a window of 64 samples that starts inside the prefix contains the symbol,
+circularly shifted by the start offset, and the echoes of the *previous* symbol have died away if the delay spread D is shorter than the part of the prefix in front of the window.
+
+![the cyclic prefix](img/ofdm_t_cp.png)
+
+Right panel (measured on the model, an echo of -6 dB, 40 dB SNR, the one-tap equaliser of A.7): **the EVM is flat, at the noise floor, as long as the window starts between `16 - D` samples and 0 samples before the useful part**, and rises by 30 dB when the window leaves that range. That is the timing tolerance of the receiver and the reason for `BACK` = 6:
+the FFT window starts 6 samples early, so the frame start may be estimated up to 6 samples late or (16 - 6 - D) early without a penalty; a window that starts later or earlier only turns every subcarrier by a known angle, which the channel estimate takes out (A.7). The same figure says how long an echo may be: D up to 16 samples = 4.2 us = 1.25 km of path difference.
+
+**What it costs.** The prefix carries no data: 64 of every 80 samples are useful, so 20 % of the time (0.97 dB) is spent on it. A longer prefix tolerates longer echoes and costs more, a shorter one the reverse; Wi-Fi uses the same 16 of 64 (0.8 us at 20 MHz), the extended prefix of LTE is 25 % of the symbol.
+A **pilot**, a known QPSK value on a few subcarriers of every symbol, follows what the prefix cannot (A.8). The price of the sum of oscillators is the peak-to-average ratio of A.2.
+
+**Where the P501 transmits from.** In the notebook the P501 sends one frame of 3840 samples, made by the steps above on the PC and saved as `ofdm_frame.npy` (`ofdm_frame_sts.npy` for the STS frame); the DAC DMA replays the buffer every millisecond. Every frame is the same, which is what the error counters need (the payload is the known PRBS-15).
+An **FPGA transmitter** would do the table above in the fabric: a mapper, the allocator as an address generator, one IFFT (the receiver's FFT block run backwards: swap the real and imaginary parts at the input and at the output), the prefix from a small RAM, the preamble from a ROM, bits from a FIFO, one frame every 3840 sample clocks;
+it is on the list (E). It matters for the application stage, where every frame must carry other bits, and for forward error correction, whose encoder sits in front of the mapper. The two stock-block flowgraphs `ofdm_b210_frame_tx_stock.grc` and `ofdm_b210_frame_tx_sts_stock.grc` (C.5, C.7) are the same chain in GNU Radio, one block per step.
 
 ## A.4 Schmidl and Cox: finding the frame and the coarse carrier
 
@@ -78,6 +130,40 @@ The decisions (the numbers are those of the FPGA and of the model, `ofdm_detect.
 * **The plateau rule** (not the largest value): the windows with M above 29/32 of the largest form the plateau; the symbol starts at `window start + (first + last + 1) / 2 - 8`. The largest value alone is noisy and wrong by several samples; the middle of the plateau is robust (compared in `ofdm_sync_compare.py`: the plateau rule matches the 128-sample short-training-field detector of Wi-Fi at 22 dB and better, with a symbol that is 48 samples shorter; it needs a threshold of at least 0.6 and has half the carrier range).
 * **The gain.** The energy at the peak sets a gain G so that the samples have 400 counts rms after it (the integer model's unit rms is 12,953 counts: the 16-QAM levels are +-4096 and +-12,288, the thresholds 0 and +-8192).
 * **Every frame is found again** (no lock, no tracker): the detector is re-armed as soon as its last window has been read, so the next frame is found while the previous one is still being decoded. A *false* detection costs nothing but a rejected frame (A.6).
+
+## A.4b The short training field (STS): the same idea with a shorter period
+
+Schmidl and Cox is one way to build a preamble that the receiver can recognise without knowing anything about the channel, the carrier or the timing. The **short training field of Wi-Fi (IEEE 802.11a)** is another (Wi-Fi loads 12 subcarriers and repeats the 16 samples ten times; the lab's has 6 and eight), and the second overlay `p501_ofdm_rx_sts` uses it. Both rest on one idea:
+**a signal that repeats with the period L can be compared with itself, delayed by L**.
+
+**1. How to make a signal that repeats: load only every m-th subcarrier.** If only the subcarriers k = m i (i whole) carry a value, then x[n + N / m] = x[n]: the exponentials `exp(j 2 pi m i n / N)` do not change when n grows by N / m (they turn by i whole periods). So m = 2 gives the Schmidl-and-Cox symbol (two halves of 32 samples, 14 loaded subcarriers),
+**m = 4 gives the STS: only k = +-4, +-8, +-12 are loaded (6 QPSK values, scaled to the power of a data symbol), and the 64 samples are four copies of 16**. The STS of the frame is that IFFT output sent twice, without a prefix: 128 samples, eight copies of the same 16.
+
+![the STS](img/ofdm_t_sts.png)
+
+(The six QPSK values of the lab happen to give a purely imaginary signal; any other choice works the same way, only the shape of the 16-sample piece changes. A good choice also keeps the peaks low: the STS has a peak-to-average ratio of 7 dB.)
+
+**2. The receiver correlates the signal with its copy L samples earlier.** The metric of A.4 with L = 16 and a window of 48 products:
+
+`S[n] = sum over 48 products of x[n+16] conj x[n]`,   `E[n] = energy of the newer 48 samples`,   `M[n] = |S|^2 / E^2`.
+
+Inside the STS every product is `|x|^2` rotated by the carrier offset, so |S| = E and M = 1; anywhere else the products have random phases and M is small. The window of 64 samples (48 + 16) fits inside the 128 periodic samples at **65 positions**, and M is on a plateau there
+(Schmidl and Cox: 17 positions, the 80 samples of the symbol with its prefix). The detector takes the windows with M above 24/32 of the largest value, the start of the STS is the middle of the plateau minus 32 samples.
+
+![the STS metric against Schmidl and Cox](img/ofdm_t_sts_metric.png)
+
+**3. The same sum gives the carrier.** Every product carries the rotation of the carrier offset f during L samples, `2 pi f L / fs`, so `f = arg S fs / (2 pi L)`. The angle is unambiguous up to plus or minus pi, that is for `|f| < fs / (2 L)`: **+-120 kHz for L = 16, +-60 kHz for L = 32** (top right: the estimate wraps at those offsets).
+The STS covers four times the range of the natural 9 kHz of the P501 and the B210. The estimate of a short lag is the rougher one (the lag is 16 samples, the fine one's 64); the **fine** estimate comes from the two long training symbols T1 and T2, 64 samples apart (`arg P fs / (2 pi 64)`, range +-30 kHz, error about 100 Hz), applied after the coarse correction, and the check that T1 and T2 repeat throws false detections away (A.6).
+
+**4. Why a longer plateau is better.** The plateau gives the receiver 65 windows instead of 17 to average over: the position of the middle and the angle of the sum are less noisy. In the integer model the error of the frame start at 20 dB SNR has a standard deviation of 0.4 samples against 1.3 for Schmidl and Cox (bottom left; `results_ofdm_fixed_sts.txt`),
+and the detector found nothing in 2000 records of noise (Schmidl and Cox: two false detections, thrown away by the check). That precision matters when the signal is weak or small: **on the air, at an ADC level of 9 to 12 counts, the Schmidl-and-Cox overlay cut 13 to 16 % of the frames at the wrong place, the STS overlay none** (C.7).
+
+**5. The LTS, the long training field.** After the STS come 160 samples: a prefix of 32 samples (GI2: the last 32 of the training symbol T) and the symbol T twice. The three pieces together repeat with 64 samples, so any 64 consecutive samples in it are T shifted circularly, and the receiver may take its FFT windows 6 samples early (A.3b) exactly as for the data.
+T1 and T2 give the channel (A.7) and the fine carrier.
+
+![the two frames](img/ofdm_t_frame_sts.png)
+
+**What it costs.** The preamble is 128 samples instead of 80: 48 samples more of every 3840 (1.3 %). The frame keeps its length of 1 ms because the idle slot is 32 samples instead of 80 (the slot only gives the receiver time to re-arm the detector, A.3); 32 samples are enough: the simulation sends two frames back to back and finds both. In the FPGA nothing else changes: the same RTL with the parameter `STS = 1` (lag 16, 48 products, 144 stored windows, plateau at 24/32, start = middle - 32, carrier word times 2^8 instead of 2^7, the training windows at 154 and 218 samples after the start and the first data window at 298, `ofdm_rx.v`).
 
 ## A.5 The idle slot and the guard
 
@@ -119,6 +205,8 @@ The bottom row of the figure shows the three stages on the same frame: after the
 
 ## A.9 The receiver in the FPGA
 
+(The same RTL builds the overlay with the short training field: the parameter `STS` of `ofdm_detect.v` and `ofdm_rx.v`, A.4b and C.7.)
+
 ![receiver](img/ofdm_t_block_rx.png)
 
 * **Sample RAMs:** two 1024-word RAMs written in the ADC clock domain (Gray-coded write pointer into the engine's clock); everything else runs at 100 MHz with 26 clocks per sample, so the detector sees every sample (it reports `late` if a sample comes sooner than its 25 clocks).
@@ -152,6 +240,8 @@ The engine is fast enough for every frame: 44 symbols x (768 + 175 + 333) clocks
 | Step 4: data symbols | `sim/run_data.sh` | 10 frames, bit-exact |
 | Step 5: the whole receiver from ADC samples | `sim/run_rx.sh` | eight frames at Es/N0 16 to 30 dB, ADC levels 60 to 800 counts, carriers -15 to +31 kHz, echoes, +-40 ppm; two frames per record; every register, 1056 symbols per frame, H and the capture RAM equal |
 | Resources | Vivado | 31,426 LUT (26.8 %), 27,599 FF, 9 BRAM, 176 DSP (14.1 %); setup +0.417 ns, hold +0.011 ns at 100 MHz (one pulse-width endpoint at -0.002 ns, the base design's) |
+| The STS variant: model | `test_ofdm_fixed.py sts`, `test_ofdm_lowlevel.py` | the same accuracy as S&C (EVM -13.7 / -17.5 / -21.5 dB at 16 / 20 / 24 dB), start-error spread 0.4 samples against 1.3 at 20 dB, no false alarm in 2000 noise records (`results_ofdm_fixed_sts.txt`) |
+| The STS variant: RTL | `sim/run_sync.sh all sts`, `sim/run_rx.sh all sts` | the detector on 7 records and 4 whole frames, each followed by a second frame (the 32-sample idle slot is enough), 0 mismatches; the S&C regressions pass with the same source; 31,664 LUT, 175 DSP, setup +0.417 ns |
 
 ---
 
@@ -307,6 +397,50 @@ Byte offsets; the whole list is in the header of `rtl/ofdm_rx.v`.
 
 The driver `notebook/p501_ofdm_rx.py` (`P501OfdmRx`) hides the numbers: `configure(thr, emin, target, gain_override)`, `start()`, `stop()`, `wait_frames(n)`, `stats()` (rates, EVM, SNR, carrier, level, flags), `poll_capture()` (a new frame's soft symbols and H, with the re-arm of A.10), `capture()`, `channel()`. The live notebook is built on it: the constellation, the channel, the EVM per subcarrier and the strips.
 
+## C.7 The 128-sample STS overlay
+
+**Build and run** are the same with other names (A.4b has the principle; `ofdm_fixed.py` the model, the table `STS`):
+
+```bash
+vivado -mode batch -source create_project.tcl -tclargs FFT=0 OFDMRXSTS=1 RUN=bit JOBS=8   # about 11 minutes: p501_ofdm_rx_sts, ID 0xDD520008
+python3 tools/fix_hwh.py build/overlay/p501_ofdm_rx_sts.hwh
+python3 tutorial/ofdm/make_ofdm_frame.py tutorial/ofdm/ofdm_frame_sts.npy sts            # the frame with the STS (3840 samples)
+OFDM_VARIANT=sts python3 /tmp/p501_ofdm_loopback.py /tmp/ofdm_frame_sts.npy 300,100,600   # on the board: the digital loopback
+```
+
+The notebook is `notebook/P501_OFDM_STS_Live.ipynb` (the live notebook of C.2 to C.4 for this overlay, plus a cell that sweeps the RX gain). **The two overlays do not find each other's frames:** the host must send the frame that belongs to the overlay
+(`ofdm_frame_tx.py --sts` for the B210, `ofdm_frame_sts.npy` for the DAC); a P501 with the STS overlay listening to a Schmidl-and-Cox frame finds nothing, and the reverse. The board scripts take `OFDM_VARIANT=sts`.
+
+**Digital loopback:** 2003 frames in 2 s at three levels, none rejected, none bad, **0 symbol errors in 2,115,168 symbols** each, EVM -43 to -46 dB (as with Schmidl and Cox, `results_board_loopback.txt`).
+
+**Over the air, P501 to P501** (alternating the two overlays on the same antennas, `results_board_air.txt` I; each point 4.2 M symbols; the levels at the ADC of the two runs agree within 0.5 dB). *Bad* = a frame with more than 20 % symbol errors, in 4 s of about 4000 frames:
+
+| TX attenuation | SNR (S&C / STS) | S&C: SER (bad) | STS: SER (bad) |
+|---|---|---|---|
+| 20 dB | 25.0 / 24.7 dB | 0 (0) | 7.1e-7 (0) |
+| 22 dB | 20.9 / 23.1 | 4.4e-4 (3) | 5.9e-5 (0) |
+| 24 dB | 20.3 / 22.3 | 3.1e-3 (18) | 1.3e-3 (0) |
+| 26 dB | 19.4 / 18.2 | 1.7e-2 (68) | 1.0e-2 (0) |
+| 28 dB | 16.4 / 15.8 | 5.8e-2 (167) | 4.3e-2 (0) |
+
+At the same SNR and EVM the STS decodes more symbols correctly, and **never loses a whole frame**: the frame start of Schmidl and Cox sometimes lands where the prefix cannot absorb it, the plateau of the STS is long enough to average that out (A.4b).
+
+**With the B210 and an amplifier at 65 dB, the P501's RX gain stepped down** (`p501_ofdm_rxsweep.py`, the transmitter stays on; the ADC level and the SNR fall together; two runs of each overlay, `results_board_air.txt` J):
+
+| RX gain index | level at the ADC | SNR | S&C: SER (bad frames), 2 runs | STS: SER (bad frames), 2 runs |
+|---|---|---|---|---|
+| 40 | 25 counts | 33 dB | 0 / 0 | 0 / 0 |
+| 36 | 16 | 29 to 31 | 6.8e-4 (7) / 5.7e-4 (6) | 0 / 0 |
+| 32 | 12 | 25 to 26 | 6.0e-2 (576) / 5.7e-2 (541) | 9.5e-7 / 4.7e-7 (0) |
+| 30 | 9 | 25 | 6.5e-2 (626) / 6.4e-2 (624) | 3.8e-5 / 7.6e-6 (0) |
+| 28 | 7 | 21 to 22 | 1.2e-1 (1025) / 1.1e-1 (1000) | 5.6e-3 / 3.2e-3 (0 and 1) |
+
+Both are error-free above 25 counts. Below that **Schmidl and Cox loses 13 to 16 % of its frames** (index 34 to 30) at an SNR of 25 dB, where the STS has none: **an effect of the ADC level, not of the SNR**. The integer model reproduces it (`test_ofdm_lowlevel.py`, Es/N0 26 dB: at 12 counts 45 of 300 Schmidl-and-Cox frames are bad, none of the STS;
+at 6 counts the STS fails too, 5 of 300). The cause inside the S&C detector is not proven; a likely one is that the sums are shifted right by 8 bits before they are compared, which leaves the 32-product sum with few bits when the signal is a few counts strong. In practice: **keep the ADC level above about 25 counts** (the *level* line of the notebook; RX gain index 40 and up with the amplifier of the lab).
+
+**In GNU Radio** (`GRC_OFDM.md`): `ofdm_b210_frame_tx_sts_stock.grc` is the transmitter chain of A.3b with the preamble from a vector source (the STS and the LTS are not OFDM symbols with the usual prefix) and a mux of three inputs; `ofdm_b210_frame_rx_sts_stock.grc` is the stock receiver with one block of its own,
+`sts_sync.py`, which does what the stock Schmidl-and-Cox block cannot: find a preamble that repeats every 16 samples, measure the carrier (coarse from the STS, fine from T1 and T2) and trigger the stock Header/Payload Demux. Both were tried with the B210 and the P501 and work.
+
 ---
 
 # Part D. Reading a link
@@ -322,6 +456,7 @@ The receiver reports the **SNR** it measures (the channel estimate over the nois
 
 ![a tone through TX1 and RX1](img/ofdm_iq_image.png)
 
+* **The ADC level**, for the Schmidl-and-Cox overlay: below about 25 counts at the ADC it cuts frames at the wrong place even at a good SNR (C.7); lower the RX gain only as far as the level stays above that, or use the STS overlay.
 * **The antennas.** The level changed by 4 dB between two sessions at the same settings; the received level depends on the position of the antennas by more than the gain you can set. For lab work use the wired setups first: the digital loopback, then TX1 to RX1 through a cable and a fixed attenuator, and the B210 over the air last.
 
 ## D.3 Start-up
@@ -335,9 +470,11 @@ The counters since *Start receiver* include the first seconds, when the receiver
 | no frame found (FOUND does not grow) | no signal: check the transmitter, the LO against the B210's `--freq` (a wrong LO moves the signal by the difference), the RX gain, the detector threshold; the level at the ADC should be 50 to 400 counts |
 | many rejected frames, few decoded | listening to noise or a weak signal (start order, D.3); a threshold below 0.5 adds false detections |
 | everything rejected at a strong, clean signal | the idle-slot detection of A.5: update the overlay (`EA <= 2 E`) or, in GNU Radio, use the DC removal and the guard |
+| S&C overlay: *bad frames* grow, the SNR looks fine, the level is below 25 counts | the ADC level is too low (D.2): raise the RX gain, or the transmit power, or use the STS overlay |
 | frames found, SER 1e-3 to 1e-2, EVM -18 dB | low level (SNR): move the antennas, raise the transmit gain or lower the attenuation (D.2) |
 | constellation of the live notebook frozen | a stale driver module (restart the kernel after copying `p501_ofdm_rx.py`); `poll_capture` must exist |
 | `ovf` or `fft_ovf` set | a garbled frame (a change of the DMA buffer, a start-up); sticky until the overlay is loaded again; the counters are not affected |
+| STS overlay finds nothing, the S&C one worked | the host sends the wrong frame: the overlays do not find each other's frames (`--sts`, `ofdm_frame_sts.npy`, C.7) |
 | `late` not 0 | a sample came sooner than the engine's 25 clocks: the ADC clock is not 3.84 MS/s |
 | GNU Radio: tabs 3 to 6 empty | the detector fires in the wrong place: tab 2 shows two spikes per frame (idle slot): DC removal and guard (A.5); or a false "accepted = 0" at a low SNR |
 | GNU Radio: `O` in the terminal | the PC cannot keep up: raise *decode 1 frame in N*, close other programs |
@@ -357,4 +494,10 @@ The counters since *Start receiver* include the first seconds, when the receiver
 7. Lower the S&C threshold in the GNU Radio flowgraph to 0.3 and count the accepted flag of tab 3: how many false detections does the T1/T2 check throw away?
 8. In `ofdm_b210_frame_rx_stock.grc` set the *detector dither* to 0, then to 0.05, 0.12 and 0.4, and *carrier offset averaging* to 1 and 60: for each, note tab 2 (pulses per frame), tab 3 and *SER now*. Which of the two matters more? What does a large dither do to M of the real S&C symbol?
 
-**Where next in the lab:** the **128-sample short-training-field detector** as a second overlay (the same blocks with another delay and window) and the comparison of the two synchronisers on the air; the **relative energy guard in the FPGA** and the re-arm of the capture in the reject path (one overlay rebuild); an **FPGA transmitter** (an inverse FFT and the prefix instead of the host's buffer); the **common soft-output interface** (a signed 8-bit soft value per coded bit and a frame flag: the equaliser's weights and the noise estimate are what the soft values need), and then **forward error correction**, which turns an uncoded link of -18 dB EVM into an error-free one (simulation in `qam16/results_fec.txt`). The roadmap is in the [README](../README.md).
+9. **The IFFT.** Load only k = 3 in a 64-point symbol and plot Re and Im of the IFFT: how many periods in 64 samples? Shift the 64-sample window by 5 samples (circularly) and compare the FFT before and after: the magnitude is the same, the phase has turned by `2 pi k 5 / 64`. Why is that useful for the receiver (A.7)?
+10. **The prefix.** Reproduce the right panel of `ofdm_t_cp.png` with your own echo (`make_figures_ofdm_tutorial.py`, `fig_cp`): predict the range of BACK in which the EVM is flat for D = 8, then measure it. Set CP = 0 in the model (frame and receiver) and compare the EVM with an echo of 5 samples: what does the one-tap equaliser do now?
+11. **The STS.** Load only every 8th subcarrier (inside the used band k = +-8: two subcarriers) instead of every 4th: what is the period, the plateau length for a window of 64 samples, and the carrier range? What do you lose (fewer loaded subcarriers: how much energy does the correlator get at the same peak power)? Check your answers with `Fm.timing_metric(x, lag, win)` on the modified frame.
+12. **Low level.** Run `test_ofdm_lowlevel.py` and explain the 15 % bad frames of Schmidl and Cox at 12 counts: print `ofdm_fixed.metric` for one frame at 12 and at 60 counts (the values of `S` after the shift by 8 bits) and look at the start estimate frame by frame (`detect_info`). Is the STS affected at 6 counts, and why later?
+13. **Both overlays on the air.** With the B210 and the sweep cell of `P501_OFDM_STS_Live.ipynb`, repeat the table of C.7 with your own transmit level; compare the ADC level at which the first bad frame appears for the two overlays.
+
+**Where next in the lab:** the **relative energy guard in the FPGA** (and, with it, a look at why the Schmidl-and-Cox detector is weak at a low ADC level) and the re-arm of the capture in the reject path (one overlay rebuild); an **FPGA transmitter** (the chain of A.3b in the fabric: mapper, allocator, the receiver's FFT run as an IFFT, the prefix from a RAM, the preamble from a ROM, instead of the host's buffer); the **common soft-output interface** (a signed 8-bit soft value per coded bit and a frame flag: the equaliser's weights and the noise estimate are what the soft values need), and then **forward error correction**, which turns an uncoded link of -18 dB EVM into an error-free one (simulation in `qam16/results_fec.txt`). The roadmap is in the [README](../README.md).

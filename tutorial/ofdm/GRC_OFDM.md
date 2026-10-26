@@ -160,7 +160,7 @@ At the closer position the stock transmitter is as clean as the other one at 82 
 ## The STS frame in GNU Radio
 
 The overlay `p501_ofdm_rx_sts` (the same RTL as the Schmidl-and-Cox overlay with the parameter `STS = 1`, `PLAN_OFDM.md` sections 4b and 14) receives a frame with the **128-sample short training field**: `STS (128) | LTS (32 prefix, T1 64, T2 64) | 44 data symbols of 80 | 32 idle` = 3840 samples.
-The STS is a 64-sample IFFT of 6 QPSK subcarriers (k = +-4, +-8, +-12) sent twice, so it repeats every 16 samples; the LTS is the training symbol twice with a prefix of 32 samples. Two flowgraphs and a notebook (`notebook/P501_OFDM_STS_Live.ipynb`) match it. **I made them without the hardware, so the numbers below are from the model and from offline runs; you then ran both flowgraphs and the notebook with the B210 and the P501 and found that they work (the readings of that run were not recorded).**
+The STS is a 64-sample IFFT of 6 QPSK subcarriers (k = +-4, +-8, +-12) sent twice, so it repeats every 16 samples; the LTS is the training symbol twice with a prefix of 32 samples. The principle of the STS, of the IFFT and of the cyclic prefix is taught in [`TUTORIAL_OFDM.md`](../TUTORIAL_OFDM.md) A.3b and A.4b. Two flowgraphs and a notebook (`notebook/P501_OFDM_STS_Live.ipynb`) match it. **I made them without the hardware, so the numbers below are from the model and from offline runs; you then ran both flowgraphs and the notebook with the B210 and the P501 and found that they work (the readings of that run were not recorded).**
 
 ### Transmitter: `ofdm_b210_frame_tx_sts_stock.grc`
 

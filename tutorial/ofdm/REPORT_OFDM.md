@@ -111,9 +111,9 @@ One RTL source builds both overlays (the parameter `STS`). **Model** (`results_o
 
 **On the air** (`results_board_air.txt` I and J):
 * P501 to P501, four runs alternating the overlays at the same antennas: the STS has **no bad frame at any TX attenuation (20 to 28 dB)**, S&C has 3, 18, 68 and 167 at 22 to 28 dB; the symbol error rate of the STS is 1.4 to 7 times lower at the same level (22 dB: 5.9e-5 against 4.4e-4; 24 dB: 1.3e-3 against 3.1e-3), the SNR and the EVM are the same.
-* B210 with your amplifier at 65 dB, the P501 RX gain index swept: error-free for both down to index 40 (25 counts at the ADC, SNR 33 dB); from index 36 (16 counts, SNR 29 dB) S&C has 13 to 16 % bad frames, the STS none down to index 30 (9 counts) and 1 at index 28. The model reproduces it
+* B210 with your amplifier at 65 dB, the P501 RX gain index swept: error-free for both down to index 40 (25 counts at the ADC, SNR 33 dB); from index 36 (16 counts, SNR 29 dB) S&C has a few bad frames (6 to 7 of 4000) and **13 to 16 % at index 34 to 30** (9 to 12 counts, SNR 25 to 27 dB), the STS none down to index 30 (9 counts) and 1 at index 28. The model reproduces it
   (`test_ofdm_lowlevel.py`: at 12 counts 45 of 300 S&C frames bad, none for the STS): it is an effect of the **ADC level**, not of the SNR. The cause inside the S&C detector is not proven. At TX gain 60 dB and RX gain index 70 nothing was found (overload).
-* **Not done:** the B210 sweep at normal ADC levels by stepping the B210's TX gain; the STS in the tutorial text and the README (the GNU Radio side is in `GRC_OFDM.md`: `ofdm_b210_frame_tx_sts_stock.grc`, `ofdm_b210_frame_rx_sts_stock.grc` with its own synchroniser block, and `P501_OFDM_STS_Live.ipynb`; tested offline and headless by me, then by you on the hardware: they work, no readings recorded).
+* **Not done:** the B210 sweep at normal ADC levels by stepping the B210's TX gain. The tutorial has the principle of the STS (`TUTORIAL_OFDM.md` A.4b), the IFFT and the cyclic prefix (A.3b) and the STS overlay on the board (C.7); the GNU Radio side is in `GRC_OFDM.md`: `ofdm_b210_frame_tx_sts_stock.grc`, `ofdm_b210_frame_rx_sts_stock.grc` with its own synchroniser block, and `P501_OFDM_STS_Live.ipynb`; tested offline and headless by me, then by you on the hardware: they work, no readings recorded).
 
 ## 3. Problems found and fixed
 
@@ -130,7 +130,7 @@ One RTL source builds both overlays (the parameter `STS`). **Model** (`results_o
 
 1. **Relative energy guard in `rtl/ofdm_detect.v`** (an average of the window energy, a comparison, no divider; the model and `sc_q`-like vectors with DC; one overlay rebuild of 11 minutes) and the capture re-arm in the reject path, in the same rebuild.
 2. **The STS variant** is done (section 2d). Left: the STS in the tutorial, a B210 sweep at normal ADC levels, and the question whether the S&C detector's low-level weakness can be removed in the RTL (a wider S word, or the shift of 8 bits made smaller at low energy).
-3. **The tutorial chapter** (`TUTORIAL_OFDM.md`, like `TUTORIAL_QAM16.md`): the frame, the S&C metric (the figures `img/ofdm_fig_*.png` exist), the GNU Radio receiver as the lab, the FPGA receiver as the reference, the results above.
+3. **The tutorial chapter** (`TUTORIAL_OFDM.md`) is written, with sections on the IFFT and the cyclic prefix (A.3b, figures `img/ofdm_t_ifft.png`, `ofdm_t_cp.png`, `ofdm_t_tx.png`), the principle of the short training field (A.4b, `ofdm_t_sts.png`, `ofdm_t_sts_metric.png`, `ofdm_t_frame_sts.png`) and the STS overlay (C.7); left: the figures of the STS from a real recording.
 4. **FPGA OFDM transmitter** (an IFFT and a cyclic prefix instead of the DMA buffer), then the **common soft-output interface** for the FEC stage (signed 8-bit soft values per coded bit and a frame flag): the equaliser already has the per-subcarrier weights; the soft values are the data values scaled by the noise estimate.
 5. **A wired lab setup**: the TX1 to RX1 cable with an attenuator removes the antenna dependence (the level changed by 4 dB between sessions with the antennas) and makes the SNR a number that can be set.
 
