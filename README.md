@@ -3,7 +3,7 @@
 A starting point for doing signal processing in the FPGA on the PZSDR P501 (Zynq UltraScale+ XCZU5EV + AD9361).
 > **Layout:** clone this repository next to the [puzi501iio](https://github.com/fllay/puzi501iio) repository (folder `pzsdr-p501`), so that `../pzsdr-p501/hdl/library` exists: it provides the packaged ADI IP the design uses. Otherwise pass `LIB=<path to its hdl/library>` or set `P501_HDL_LIBRARY`.
 
-**New here? Two tutorials start from the base design and add blocks one by one: [FFT on the ADC data](tutorial/TUTORIAL.md) and [a hardware DDS on the DAC](tutorial/TUTORIAL_DDS.md). A third puts them together: [tone in, spectrum out, over the air, all in hardware](tutorial/TUTORIAL_DDS_FFT.md).**
+**Method: [the design flow](tutorial/DESIGN_FLOW.md)** (float model, integer model, RTL, overlay, board, GNU Radio) behind every chapter. **New here? Two tutorials start from the base design and add blocks one by one: [FFT on the ADC data](tutorial/TUTORIAL.md) and [a hardware DDS on the DAC](tutorial/TUTORIAL_DDS.md). A third puts them together: [tone in, spectrum out, over the air, all in hardware](tutorial/TUTORIAL_DDS_FFT.md).**
 
 ## What is in this repository: the overlays at a glance
 

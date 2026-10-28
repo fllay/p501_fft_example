@@ -20,7 +20,7 @@ This tutorial builds on [tutorial 5 (16-QAM)](TUTORIAL_QAM16.md). It does not re
 
 ## A.1 Method
 
-The same method as in tutorials 4 and 5: **every stage must reproduce the previous one to the last bit** before the next is built. New here: a second implementation of the algorithm in GNU Radio, in floating point, written as one block per step, which is the lab bench for the students.
+The same method as in tutorials 4 and 5 (written down in general in [DESIGN_FLOW.md](DESIGN_FLOW.md)): **every stage must reproduce the previous one to the last bit** before the next is built. New here: a second implementation of the algorithm in GNU Radio, in floating point, written as one block per step, which is the lab bench for the students.
 
 ![the method](img/ofdm_t_method.png)
 
