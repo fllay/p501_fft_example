@@ -1,0 +1,107 @@
+site_name: P501 FPGA radio lab
+site_description: "PYNQ overlays, tutorials and a design flow for the PZSDR P501 (Zynq UltraScale+ and AD9361): FFT, DDS, QPSK, 16-QAM and OFDM, tested against a USRP B210 and GNU Radio."
+site_url: https://fllay.github.io/p501_fft_example/
+repo_url: https://github.com/fllay/p501_fft_example
+repo_name: fllay/p501_fft_example
+edit_uri: edit/main/
+copyright: "Open lab material. The screenshots and measurements are from the lab's own runs."
+site_dir: build/site
+
+docs_dir: build/docs_src             # made by tools/docs_stage.py (the pages and images of the repository, same layout)
+
+hooks:
+  - hooks/p501_docs.py
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: deep orange
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: deep orange
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/radio-tower
+
+plugins:
+  - search
+  - glightbox
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Start here: docs/getting-started.md
+      - The overlays at a glance: docs/overlays.md
+      - Built overlays and the SD card image: docs/images.md
+  - Tutorials:
+      - 1. FFT on the ADC data: tutorial/TUTORIAL.md
+      - 2. A hardware DDS: tutorial/TUTORIAL_DDS.md
+      - 3. DDS and FFT together: tutorial/TUTORIAL_DDS_FFT.md
+      - 4. QPSK:
+          - The tutorial: tutorial/TUTORIAL_QPSK.md
+          - 4.0 Link up, P501 to B210: tutorial/qpsk/link_up/RESULTS.md
+          - 4a GNU Radio reference link: tutorial/qpsk/gnuradio/README.md
+          - 4b The P501 receives (offline decode): tutorial/qpsk/p501_capture/README.md
+          - 4c The transmitter in the FPGA: tutorial/qpsk/p501_tx/README.md
+          - 4d The receiver in the FPGA: tutorial/qpsk/p501_rx/README.md
+          - 4d+ Band-edge FLL: tutorial/qpsk/p501_rx_fll/README.md
+          - 4d++ 4th-power estimator: tutorial/qpsk/p501_rx_fe/README.md
+          - 4d+++ No software in the loop: tutorial/qpsk/p501_rx_4p/README.md
+          - 4e Frame synchronisation: tutorial/qpsk/p501_sync/README.md
+      - 5. 16-QAM: tutorial/TUTORIAL_QAM16.md
+      - 6. OFDM:
+          - The tutorial: tutorial/TUTORIAL_OFDM.md
+          - OFDM in GNU Radio: tutorial/ofdm/GRC_OFDM.md
+  - Design flow: tutorial/DESIGN_FLOW.md
+  - Plans and reports:
+      - QPSK plan: tutorial/PLAN_QPSK.md
+      - 16-QAM plan: tutorial/qam16/PLAN_QAM16.md
+      - 16-QAM link report: tutorial/qam16/LINK_REPORT_QAM16.md
+      - OFDM plan: tutorial/ofdm/PLAN_OFDM.md
+      - OFDM report: tutorial/ofdm/REPORT_OFDM.md
