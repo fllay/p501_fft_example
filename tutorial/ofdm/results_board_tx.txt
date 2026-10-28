@@ -22,3 +22,18 @@ B. Over the air, P501 TX1 -> RX1 (850 MHz, RX gain index 70, antennas a few cent
    22 dB  4006    0         0     3               7.1e-07    -26.0    27.9    181
    20 dB  4006    0         0     3               7.1e-07    -29.0    33.1    225
    (the earlier P501-to-P501 runs with the host frame through the DAC DMA, results_board_air.txt I, gave 9.5e-7 at 20 dB with EVM -21 dB; the placement of the antennas was not the same, so the two are not a like-for-like comparison)
+
+C. Over the air, P501 TX1 -> RX1, STS overlay (p501_ofdm_trx_sts), same settings as B (850 MHz, RX gain index 70, amp 0.9, 4 s windows), 2026-10-28, and the S&C overlay again
+   The level at the ADC at the same attenuation differs by up to 14 dB between runs (every run brings the AD9361 up again; the earlier note of 2.5 dB in section 5 of results_board_air.txt was too small), whatever the overlay:
+   run 1 (S&C, section B)  20 dB: 225 counts | run 2 (STS): 46 counts | run 3 (S&C): 38 | run 4 (STS): 226 | run 5 (S&C): 37 | run 6 (STS): 225. At 22 dB: 181 / 35 / 31 / 179 / 30 / 177.
+   Strong level (about 180 to 225 counts, SNR 26 to 34 dB):
+     STS 22 dB: SER 2.4e-5 (102 errors in 4.2 M symbols, EVM -24.6 dB) and 3.6e-6 (15 errors, EVM -26.5 dB);  STS 20 dB: 0 errors in 4.2 M symbols twice (EVM -31.0 and -29.8 dB), 4005 of 4005 frames found, none rejected
+     S&C 22 dB / 20 dB (section B): 7.1e-7 and 7.1e-7 (3 errors in 4.2 M symbols)
+   Weak level (30 to 46 counts, SNR 7 to 18 dB), the same for both overlays: STS 20 dB 46 counts SER 4.3e-2, 22 dB (35 counts) 8.0e-2; S&C 20 dB 38 counts SER 7.6e-2 and 8.4e-2, 22 dB (30 counts) 1.6e-1 to 1.8e-1; at 40 dB (23 counts) the STS detector found 46 frames and the check rejected all of them.
+   The transmitters do the same in both overlays; the difference between runs is the analog level, which the detector (25 counts and more) and the SNR decide. Keep the ADC level above about 100 counts for a clean link (RX gain index 70, attenuation 20 to 22 dB, antennas a few centimetres apart).
+
+D. The B210 receives the FPGA transmitter (GNU Radio, 850 MHz), read off two screenshots of tab 6 (tutorial/img/ofdm_real_fpgatx_sc_b210_6.png, ofdm_real_fpgatx_sts_b210_6.png), 2026-10-28
+   S&C overlay (p501_ofdm_trx_sc), ofdm_b210_frame_rx_stock.grc, B210 RX gain 40 dB:  51,817 frames, 52,534 symbol errors, SER 9.6e-4 since the start, 7e-6 over the last 2000 frames, EVM -27.4 dB
+   STS overlay (p501_ofdm_trx_sts), ofdm_b210_frame_rx_sts_stock.grc (the stock equalizer), B210 RX gain 41 dB:  9,641 frames checked (1 in 8), 51,934 symbol errors, SER 5.1e-3 since the start, 2.7e-4 over the last 2000 checked frames, EVM -23.8 dB
+   The two are not a like-for-like comparison: the B210 gain differs by 1 dB, the P501 attenuation and level of the two runs are not recorded, the EVM differs by 3.6 dB (the level at the ADC of the P501 link changed by up to 14 dB between runs: section C), and the stock equalizer of the STS flowgraph makes errors
+   of its own on the real link (4.7e-4 against almost none for ofdm_b210_frame_rx_sts_pilot.grc, GRC_OFDM.md). Not measured: the STS overlay with the pilot-equalizer flowgraph, and both with the same signal.
