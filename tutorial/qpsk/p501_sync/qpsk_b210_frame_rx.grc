@@ -32,6 +32,7 @@ options:
     bus_source: false
     bus_structure: null
     coordinate: [8, 8]
+    rotation: 0
     state: enabled
 
 blocks:
@@ -64,6 +65,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [240, 200]
+    rotation: 0
     state: enabled
 - name: bw_div
   id: variable_qtgui_range
@@ -85,6 +87,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [240, 140]
+    rotation: 0
     state: enabled
 - name: const_dqpsk
   id: variable
@@ -96,6 +99,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [8, 280]
+    rotation: 0
     state: enabled
 - name: excess_bw
   id: variable
@@ -107,6 +111,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [8, 180]
+    rotation: 0
     state: enabled
 - name: fll_on
   id: variable_qtgui_chooser
@@ -136,6 +141,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [240, 260]
+    rotation: 0
     state: enabled
 - name: freq
   id: variable
@@ -147,6 +153,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [8, 230]
+    rotation: 0
     state: enabled
 - name: nfilts
   id: variable
@@ -158,6 +165,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [8, 380]
+    rotation: 0
     state: enabled
 - name: payload_syms
   id: variable
@@ -169,6 +177,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [8, 330]
+    rotation: 0
     state: enabled
 - name: rrc_taps
   id: variable
@@ -180,6 +189,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [8, 430]
+    rotation: 0
     state: enabled
 - name: rx_gain
   id: variable_qtgui_range
@@ -201,6 +211,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [240, 60]
+    rotation: 0
     state: enabled
 - name: samp_rate
   id: variable
@@ -212,6 +223,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [8, 80]
+    rotation: 0
     state: enabled
 - name: sps
   id: variable
@@ -223,6 +235,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [8, 130]
+    rotation: 0
     state: enabled
 - name: analog_agc2_xx_0
   id: analog_agc2_xx
@@ -242,7 +255,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [520, 240]
+    coordinate: [512, 76.0]
+    rotation: 0
     state: enabled
 - name: analog_rail_ff_0
   id: analog_rail_ff
@@ -258,7 +272,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [760, 200]
+    coordinate: [936, 60.0]
+    rotation: 0
     state: enabled
 - name: analog_rail_ff_1
   id: analog_rail_ff
@@ -274,7 +289,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [760, 300]
+    coordinate: [928, 132.0]
+    rotation: 0
     state: enabled
 - name: blocks_complex_to_float_0
   id: blocks_complex_to_float
@@ -289,7 +305,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [700, 240]
+    coordinate: [712, 64.0]
+    rotation: 0
     state: enabled
 - name: blocks_float_to_complex_0
   id: blocks_float_to_complex
@@ -304,7 +321,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [880, 240]
+    coordinate: [1152, 56.0]
+    rotation: 0
     state: enabled
 - name: blocks_keep_one_in_n_0
   id: blocks_keep_one_in_n
@@ -322,6 +340,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1300, 400]
+    rotation: 0
     state: enabled
 - name: blocks_keep_one_in_n_1
   id: blocks_keep_one_in_n
@@ -339,6 +358,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1300, 480]
+    rotation: 0
     state: enabled
 - name: blocks_keep_one_in_n_2
   id: blocks_keep_one_in_n
@@ -356,6 +376,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1300, 560]
+    rotation: 0
     state: enabled
 - name: blocks_keep_one_in_n_3
   id: blocks_keep_one_in_n
@@ -373,6 +394,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1300, 640]
+    rotation: 0
     state: enabled
 - name: blocks_keep_one_in_n_4
   id: blocks_keep_one_in_n
@@ -390,6 +412,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1300, 720]
+    rotation: 0
     state: enabled
 - name: blocks_null_sink_0
   id: blocks_null_sink
@@ -406,6 +429,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1700, 240]
+    rotation: 0
     state: enabled
 - name: blocks_null_sink_1
   id: blocks_null_sink
@@ -422,6 +446,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1700, 240]
+    rotation: 0
     state: enabled
 - name: blocks_null_sink_2
   id: blocks_null_sink
@@ -438,6 +463,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1700, 240]
+    rotation: 0
     state: enabled
 - name: blocks_null_sink_3
   id: blocks_null_sink
@@ -454,6 +480,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1700, 240]
+    rotation: 0
     state: enabled
 - name: blocks_null_sink_4
   id: blocks_null_sink
@@ -470,6 +497,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1700, 240]
+    rotation: 0
     state: enabled
 - name: blocks_null_sink_5
   id: blocks_null_sink
@@ -486,6 +514,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1700, 240]
+    rotation: 0
     state: enabled
 - name: blocks_unpack_k_bits_bb_0
   id: blocks_unpack_k_bits_bb
@@ -501,6 +530,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [860, 420]
+    rotation: 0
     state: enabled
 - name: digital_constellation_decoder_cb_0
   id: digital_constellation_decoder_cb
@@ -516,6 +546,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [240, 420]
+    rotation: 0
     state: enabled
 - name: digital_costas_loop_cc_0
   id: digital_costas_loop_cc
@@ -533,6 +564,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1700, 240]
+    rotation: 0
     state: enabled
 - name: digital_diff_decoder_bb_0
   id: digital_diff_decoder_bb
@@ -549,6 +581,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [460, 420]
+    rotation: 0
     state: enabled
 - name: digital_fll_band_edge_cc_0
   id: digital_fll_band_edge_cc
@@ -568,6 +601,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1040, 240]
+    rotation: 0
     state: enabled
 - name: digital_map_bb_0
   id: digital_map_bb
@@ -583,6 +617,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [660, 420]
+    rotation: 0
     state: enabled
 - name: digital_pfb_clock_sync_xxx_0
   id: digital_pfb_clock_sync_xxx
@@ -605,6 +640,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1260, 240]
+    rotation: 0
     state: enabled
 - name: epy_block_0
   id: epy_block
@@ -692,6 +728,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1480, 120]
+    rotation: 0
     state: enabled
 - name: epy_block_1
   id: epy_block
@@ -777,6 +814,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1060, 420]
+    rotation: 0
     state: enabled
 - name: import_firdes
   id: import
@@ -789,6 +827,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [8, 480]
+    rotation: 0
     state: enabled
 - name: qtgui_const_sink_x_0
   id: qtgui_const_sink_x
@@ -880,6 +919,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1480, 680]
+    rotation: 0
     state: enabled
 - name: qtgui_freq_sink_x_0
   id: qtgui_freq_sink_x
@@ -960,6 +1000,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [240, 560]
+    rotation: 0
     state: enabled
 - name: qtgui_number_sink_0
   id: qtgui_number_sink
@@ -1022,6 +1063,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1480, 400]
+    rotation: 0
     state: enabled
 - name: qtgui_number_sink_1
   id: qtgui_number_sink
@@ -1084,6 +1126,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1480, 480]
+    rotation: 0
     state: enabled
 - name: qtgui_number_sink_2
   id: qtgui_number_sink
@@ -1147,6 +1190,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1480, 640]
+    rotation: 0
     state: enabled
 - name: qtgui_number_sink_3
   id: qtgui_number_sink
@@ -1209,6 +1253,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1480, 720]
+    rotation: 0
     state: enabled
 - name: qtgui_number_sink_4
   id: qtgui_number_sink
@@ -1271,6 +1316,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [1480, 560]
+    rotation: 0
     state: enabled
 - name: uhd_usrp_source_0
   id: uhd_usrp_source
@@ -1706,6 +1752,7 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [240, 340]
+    rotation: 0
     state: enabled
 
 connections:
