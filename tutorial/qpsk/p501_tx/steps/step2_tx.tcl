@@ -13,4 +13,9 @@ connect_bd_net [get_bd_pins qpsk_rstn_inv/Res]       [get_bd_pins qpsk_tx/resetn
 connect_bd_net [get_bd_pins axi_ad9361/dac_valid_i0] [get_bd_pins qpsk_tx/ce]
 connect_bd_net [get_bd_pins qpsk_regs/enable]        [get_bd_pins qpsk_tx/enable]
 connect_bd_net [get_bd_pins qpsk_regs/amp]           [get_bd_pins qpsk_tx/amp]
-if {$txmod eq "qpsk_tx_fr" || $txmod eq "qam16_tx_fr"} { connect_bd_net [get_bd_pins qpsk_regs/ftw] [get_bd_pins qpsk_tx/cfg] }
+if {$txmod eq "ofdm_tx"} {                                                                          ;# the OFDM transmitter makes its symbols (IFFT) on the AXI clock
+  if {[info exists ::p501_ofdm_tx_sts] && $::p501_ofdm_tx_sts} { set_property CONFIG.STS 1 [get_bd_cells qpsk_tx] }
+  connect_bd_net [get_bd_pins sys_ps8/pl_clk0]               [get_bd_pins qpsk_tx/fclk]
+  connect_bd_net [get_bd_pins sys_rstgen/peripheral_aresetn] [get_bd_pins qpsk_tx/fresetn]
+}
+if {$txmod eq "qpsk_tx_fr" || $txmod eq "qam16_tx_fr" || $txmod eq "ofdm_tx"} { connect_bd_net [get_bd_pins qpsk_regs/ftw] [get_bd_pins qpsk_tx/cfg] }

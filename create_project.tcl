@@ -31,21 +31,28 @@
 #                    the transmitter is the base design's DAC DMA: the host sends the OFDM frame as a cyclic buffer, so use FFT=0 and no QPSK / DDS)
 #   OFDMRXSTS=0      the same OFDM receiver with the 128-sample short training field instead of the Schmidl-and-Cox symbol (rtl parameter STS=1: lag 16, 48 products, preamble 128 samples; ID 0xDD520008;
 #                    project p501_ofdm_rx_sts); it shares the address 0x9C470000 with OFDMRXSC, so use one of the two (the host sends the matching frame, tutorial/ofdm/make_ofdm_frame.py sts)
+#   OFDMTXSC=0       add the FPGA OFDM transmitter of the Schmidl-and-Cox frame (rtl/ofdm_tx.v, STS = 0): the frame is made in the PL (PRBS-15 payload, IFFT, prefix) and replaces the DAC DMA path for TX1 through the
+#                    register block of the QPSK chain (bd/qpsk_chain.tcl: 0x9C460000 enable, amplitude); alone: project p501_ofdm_tx_sc; with OFDMRXSC=1: transmitter + receiver in one overlay, p501_ofdm_trx_sc
+#   OFDMTXSTS=0      the same for the frame with the 128-sample short training field (rtl/ofdm_tx.v, STS = 1; p501_ofdm_tx_sts, with OFDMRXSTS=1 p501_ofdm_trx_sts)
 #   NAME=...         project name (created in ./build/<NAME>). Default: p501_fft (FFT only), p501_dds (DDS only),
 #                    p501_fft_dds (both), p501_fft_tut (neither: the starting point of the tutorials)
 # -----------------------------------------------------------------------------
 set script_dir [file dirname [file normalize [info script]]]
 
-array set opt {NFFT_LOG2 10 SCALE_SHIFT {} LIB {} RUN none JOBS 8 NAME {} FFT 1 DDS 0 QPSK 0 QPSKRX 0 QPSKRXFLL 0 QPSKRXFE 0 QPSKRX4P 0 QPSKRXSYNC 0 QAM16RX 0 OFDMRXSC 0 OFDMRXSTS 0 PART xczu5ev-sfvc784-2-i}
+array set opt {NFFT_LOG2 10 SCALE_SHIFT {} LIB {} RUN none JOBS 8 NAME {} FFT 1 DDS 0 QPSK 0 QPSKRX 0 QPSKRXFLL 0 QPSKRXFE 0 QPSKRX4P 0 QPSKRXSYNC 0 QAM16RX 0 OFDMRXSC 0 OFDMRXSTS 0 OFDMTXSC 0 OFDMTXSTS 0 PART xczu5ev-sfvc784-2-i}
 foreach a $argv {
   if {[regexp {^(\w+)=(.*)$} $a -> k v]} { set opt($k) $v }
 }
 
 if {$opt(NAME) eq {}} {
-  set opt(NAME) [expr {$opt(OFDMRXSTS) ? "p501_ofdm_rx_sts" : $opt(OFDMRXSC) ? "p501_ofdm_rx_sc" : $opt(QAM16RX) ? ($opt(QPSK) ? "p501_qam16_trx" : "p501_qam16_rx") : $opt(QPSKRXSYNC) ? ($opt(QPSK) ? "p501_qpsk_trx_sync" : "p501_qpsk_rx_sync") : $opt(QPSKRX4P) ? ($opt(QPSK) ? "p501_qpsk_trx_4p" : "p501_qpsk_rx_4p") : $opt(QPSKRXFE) ? ($opt(QPSK) ? "p501_qpsk_trx_fe" : "p501_qpsk_rx_fe") : $opt(QPSKRXFLL) ? ($opt(QPSK) ? "p501_qpsk_trx_fll" : "p501_qpsk_rx_fll") : $opt(QPSKRX) ? ($opt(QPSK) ? "p501_qpsk_trx" : "p501_qpsk_rx") : $opt(QPSK) ? ($opt(FFT) ? "p501_fft_qpsk" : "p501_qpsk") : ($opt(FFT) ? ($opt(DDS) ? "p501_fft_dds" : "p501_fft") : ($opt(DDS) ? "p501_dds" : "p501_fft_tut"))}]
+  set opt(NAME) [expr {$opt(OFDMTXSTS) ? ($opt(OFDMRXSTS) ? "p501_ofdm_trx_sts" : "p501_ofdm_tx_sts") : $opt(OFDMTXSC) ? ($opt(OFDMRXSC) ? "p501_ofdm_trx_sc" : "p501_ofdm_tx_sc") : $opt(OFDMRXSTS) ? "p501_ofdm_rx_sts" : $opt(OFDMRXSC) ? "p501_ofdm_rx_sc" : $opt(QAM16RX) ? ($opt(QPSK) ? "p501_qam16_trx" : "p501_qam16_rx") : $opt(QPSKRXSYNC) ? ($opt(QPSK) ? "p501_qpsk_trx_sync" : "p501_qpsk_rx_sync") : $opt(QPSKRX4P) ? ($opt(QPSK) ? "p501_qpsk_trx_4p" : "p501_qpsk_rx_4p") : $opt(QPSKRXFE) ? ($opt(QPSK) ? "p501_qpsk_trx_fe" : "p501_qpsk_rx_fe") : $opt(QPSKRXFLL) ? ($opt(QPSK) ? "p501_qpsk_trx_fll" : "p501_qpsk_rx_fll") : $opt(QPSKRX) ? ($opt(QPSK) ? "p501_qpsk_trx" : "p501_qpsk_rx") : $opt(QPSK) ? ($opt(FFT) ? "p501_fft_qpsk" : "p501_qpsk") : ($opt(FFT) ? ($opt(DDS) ? "p501_fft_dds" : "p501_fft") : ($opt(DDS) ? "p501_dds" : "p501_fft_tut"))}]
 }
 
 if {($opt(QPSKRX) + $opt(QPSKRXFLL) + $opt(QPSKRXFE) + $opt(QPSKRX4P) + $opt(QPSKRXSYNC) + $opt(QAM16RX) + $opt(OFDMRXSC) + $opt(OFDMRXSTS)) > 1} { error "QPSKRX, QPSKRXFLL, QPSKRXFE, QPSKRX4P, QPSKRXSYNC, QAM16RX, OFDMRXSC and OFDMRXSTS all instantiate the receiver at 0x9C470000: choose one" }
+if {$opt(OFDMTXSC) && $opt(OFDMTXSTS)} { error "OFDMTXSC and OFDMTXSTS both instantiate the transmitter: choose one" }
+if {$opt(OFDMTXSC) && $opt(OFDMRXSTS)} { error "OFDMTXSC sends the Schmidl-and-Cox frame: pair it with OFDMRXSC, not OFDMRXSTS" }
+if {$opt(OFDMTXSTS) && $opt(OFDMRXSC)} { error "OFDMTXSTS sends the STS frame: pair it with OFDMRXSTS, not OFDMRXSC" }
+if {($opt(OFDMTXSC) || $opt(OFDMTXSTS)) && ($opt(QPSK) || $opt(DDS) || $opt(QAM16RX))} { error "the OFDM transmitter drives TX1 through the register block of the QPSK chain: do not combine it with QPSK, DDS or QAM16RX" }
 if {$opt(LIB) eq {}} {
   foreach c [list [file join $script_dir .. pzsdr-p501 hdl library] \
                   [expr {[info exists ::env(P501_HDL_LIBRARY)] ? $::env(P501_HDL_LIBRARY) : {}}]] {
@@ -88,6 +95,11 @@ if {$opt(FFT)} { p501_add_fft_chain $opt(NFFT_LOG2) $opt(SCALE_SHIFT) }
 if {$opt(DDS)} { p501_add_dds_chain }
 if {$opt(QPSKRXSYNC)} { set ::p501_qpsk_tx_module qpsk_tx_fr }     ;# the overlay with the frame synchroniser transmits frames too (cfg = the FTW register: bit 31 frames, bits 15:0 payload symbols; 0 = the continuous PRBS-15)
 if {$opt(QAM16RX)} { set ::p501_qpsk_tx_module qam16_tx_fr }        ;# the 16-QAM overlay transmits 16-QAM frames (rtl/qam16_tx_fr.v, same ports as qpsk_tx_fr)
+if {$opt(OFDMTXSC) || $opt(OFDMTXSTS)} {
+  set ::p501_qpsk_tx_module ofdm_tx                                  ;# the OFDM overlay transmits OFDM frames (rtl/ofdm_tx.v, same ports as qpsk_tx_fr plus the AXI clock for the IFFT)
+  set ::p501_ofdm_tx_sts $opt(OFDMTXSTS)
+  p501_add_qpsk_chain
+}
 if {$opt(QPSK)} { p501_add_qpsk_chain }
 if {$opt(QPSKRX)} { p501_add_qpsk_rx_chain }
 if {$opt(QPSKRXFLL)} { p501_add_qpsk_rx_fll_chain }

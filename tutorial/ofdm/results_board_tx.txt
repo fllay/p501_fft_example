@@ -1,0 +1,24 @@
+FPGA OFDM transmitter (rtl/ofdm_tx.v), 2026-10-28. Overlays p501_ofdm_trx_sc (ID 0xDD520007) and p501_ofdm_trx_sts (0xDD520008): the transmitter and the receiver in one design, the frame made in the PL
+(PRBS-15 payload, pilots, IFFT, prefix), no DMA. Timing of both builds: WNS +0.417 ns, WHS +0.007 / +0.010 ns (the pulse-width check of one endpoint, -0.002 ns, is the one of the other overlays too).
+Simulation (sim/run_tx.sh, bit-exact against ofdm_tx_fixed.py): both variants, DAC strobe every 2, 3 and 4 clocks, amplitudes 8192 / 20000 / 32767, 12000 to 23000 samples: 0 mismatches, no underrun;
+the integer model of the receiver decodes the simulated frames: SER 0, EVM -46 dB (sim/check_tx_rx.py).
+
+A. Digital loopback of the AD9361 (nothing is radiated), p501_ofdm_txtest.py, RX gain index 45, 2 s windows unless noted
+   variant amp   ADC counts  frames     symbol errors    EVM
+   sc      0.80  395         2003/2 s   0 of 2,115,168   -46.2 dB
+   sc      0.40  197         2003/2 s   0 of 2,115,168   -44.2 dB
+   sc      0.20   98         2003/2 s   0 of 2,115,168   -42.9 dB
+   sc      0.50  246         120,026 / 120 s   0 of 126,748,512   -45.2 dB
+   sts     0.80  403         2003/2 s   0 of 2,115,168   -45.3 dB
+   sts     0.20  100         2003/2 s   0 of 2,115,168   -43.4 dB
+   sts     0.50  252         120,093 / 120 s   0 of 126,818,208   -44.8 dB
+   (rejected 0, bad frames 0, late 0, no overflow in any run; the level at the ADC is 502 x amp counts, as ofdm_tx_fixed.py predicts; the carrier reads +10 Hz: the transmitter and the receiver share the clock)
+
+B. Over the air, P501 TX1 -> RX1 (850 MHz, RX gain index 70, antennas a few centimetres apart, amp 0.9, 4 s windows = 4.2 M symbols), p501_ofdm_txair.py, S&C overlay
+   atten  frames  rejected  bad   symbol errors   SER        EVM      SNR     level
+   40 dB  3954    27        2842  1,146,865       2.75e-01   -11.7    13.3    23 counts (below the 25 counts the detector needs)
+   30 dB  4005    0         5     2,911           6.9e-04    -19.9    23.6    71
+   26 dB  4005    0         1     800             1.9e-04    -23.9    25.5    115
+   22 dB  4006    0         0     3               7.1e-07    -26.0    27.9    181
+   20 dB  4006    0         0     3               7.1e-07    -29.0    33.1    225
+   (the earlier P501-to-P501 runs with the host frame through the DAC DMA, results_board_air.txt I, gave 9.5e-7 at 20 dB with EVM -21 dB; the placement of the antennas was not the same, so the two are not a like-for-like comparison)
