@@ -1,0 +1,77 @@
+E1: rms error of the carrier estimate (Hz); carrier offset uniform in +-30 kHz, random fractional delay, AWGN at the given SNR per subcarrier; 150 frames per point
+    theory for the two-symbol estimate (lag 64, 64 products): sigma_f = sqrt(1 / (64 SNR_t)) / (2 pi 64 / fs), SNR_t = 0.4375 / noise variance per sample
+
+long field L = 1 (frame preamble 224 samples, overhead 6.8 %)
+  method                                            23 dB    18 dB    14 dB    10 dB
+  coarse only (STS lag 16)                            136      261      473     1001
+  short_multi (lags 16 .. 112, no long field)         162      253      555     2845
+  lag1: lag 64, whole long field                      254      400      534     1917
+  theory, orig                                        128      227      360      571
+
+long field L = 2 (frame preamble 288 samples, overhead 8.3 %)
+  method                                            23 dB    18 dB    14 dB    10 dB
+  coarse only (STS lag 16)                            131      259      412      999
+  short_multi (lags 16 .. 112, no long field)         139      263      546     2160
+  orig: lag 64, T1 and T2                             171      270      394      691
+  lag1: lag 64, whole long field                      105      177      275      470
+  multi: lags 64 .. L x 64                            127      212      311      901
+  short_multi, then multi                             127      212      311      901
+  theory, orig                                        128      227      360      571
+
+long field L = 4 (frame preamble 416 samples, overhead 11.3 %)
+  method                                            23 dB    18 dB    14 dB    10 dB
+  coarse only (STS lag 16)                            121      256      434     1050
+  short_multi (lags 16 .. 112, no long field)         160      309      936     2148
+  orig: lag 64, T1 and T2                             126      213      398      640
+  lag1: lag 64, whole long field                       46       75      110      210
+  multi: lags 64 .. L x 64                             67       95      147      490
+  short_multi, then multi                              67       95      147      490
+  theory, orig                                        128      227      360      571
+
+long field L = 8 (frame preamble 672 samples, overhead 16.7 %)
+  method                                            23 dB    18 dB    14 dB    10 dB
+  coarse only (STS lag 16)                            141      249      505      854
+  short_multi (lags 16 .. 112, no long field)         163      284      460     2046
+  orig: lag 64, T1 and T2                             135      236      375      544
+  lag1: lag 64, whole long field                       25       39       59      113
+  multi: lags 64 .. L x 64                             34       52       67      154
+  short_multi, then multi                              34       52       67      154
+  theory, orig                                        128      227      360      571
+
+E2: what a carrier error costs. Frame A (STS 128, L = 2); the receiver is given the true carrier + the error (no estimate of its own); EVM (dB) and symbol error rate, mean over 150 frames
+    inter-carrier interference of an error df: (pi df / 60 kHz)^2 / 3, i.e. -41 dB at 290 Hz, -29 dB at 1 kHz, -19 dB at 3 kHz
+  SNR 23 dB:
+    error Hz     EVM dB        SER
+           0     -20.26    6.3e-06   (frames lost 0 %)
+         100     -20.25    0.0e+00   (frames lost 0 %)
+         300     -20.17    6.3e-06   (frames lost 0 %)
+        1000     -19.45    3.2e-05   (frames lost 0 %)
+        3000     -15.72    5.8e-03   (frames lost 0 %)
+        6000     -10.64    1.3e-01   (frames lost 0 %)
+  SNR 18 dB:
+    error Hz     EVM dB        SER
+           0     -15.26    1.2e-02   (frames lost 0 %)
+         100     -15.25    1.2e-02   (frames lost 0 %)
+         300     -15.22    1.2e-02   (frames lost 0 %)
+        1000     -14.94    1.4e-02   (frames lost 0 %)
+        3000     -13.13    4.4e-02   (frames lost 0 %)
+        6000      -9.63    1.8e-01   (frames lost 27 %)
+  SNR 14 dB:
+    error Hz     EVM dB        SER
+           0     -11.05    1.3e-01   (frames lost 0 %)
+         100     -11.05    1.3e-01   (frames lost 0 %)
+         300     -11.03    1.3e-01   (frames lost 0 %)
+        1000     -10.89    1.3e-01   (frames lost 0 %)
+        3000      -9.99    1.7e-01   (frames lost 13 %)
+        6000        nan        nan   (frames lost 100 %)
+
+E1b: the carrier left after the fine estimate, measured by the PILOTS: the slope of the phase of the pilot gain over the 44 data symbols (a baseline of 3520 samples, no extra sequence).
+     Frame A, fine = orig; rms error (Hz) of the pilot estimate of the residual (true carrier - the receiver's carrier) and of the receiver's own carrier before it
+     theory: phase noise of one symbol's gain, 4 pilots: var = noise / 8; slope of a line through 44 points; sigma_f = sigma_slope / (2 pi 80 / fs)
+     SNR dB    own estimate (Hz)  pilot estimate (Hz)     theory
+         23                  161                  2.3        2.3
+         18                  280                  4.0        4.0
+         14                  392                  6.8        6.4
+         10                  671                 11.9       10.1
+     a carrier measured to a few Hz per frame, and the frame-to-frame average of it, is far more accurate than any preamble; it can only be used for the NEXT frame (the data have gone by),
+     which is fine because the carrier of two oscillators does not move in a millisecond.

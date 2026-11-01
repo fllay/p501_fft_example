@@ -98,6 +98,9 @@ nav:
       - 6. OFDM:
           - The tutorial: tutorial/TUTORIAL_OFDM.md
           - OFDM in GNU Radio: tutorial/ofdm/GRC_OFDM.md
+      - 7. OFDM synchronisation study:
+          - Results and verdict: tutorial/ofdm_sync/README.md
+          - Plan: tutorial/ofdm_sync/PLAN_OFDM_SYNC.md
   - Design flow: tutorial/DESIGN_FLOW.md
   - Plans and reports:
       - QPSK plan: tutorial/PLAN_QPSK.md

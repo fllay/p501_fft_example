@@ -1,0 +1,56 @@
+Conditions: carrier offset uniform in +-30 kHz (+-20 kHz for the frames with a long field only), random fractional delay and carrier phase, AWGN at the SNR per subcarrier, 150 frames per point, floating point
+Fine carrier: 'lag1' (lag 64 over the whole long field, the guard interval included). Data: 44 symbols, per-symbol pilot gain. 'start OK' = the window of every symbol stays inside its prefix.
+
+E3: detection and timing against the short field (long field L = 2 behind it)
+ timing: plateau centre (tutorial 6)
+   short field                    14 dB: found / start OK   8 dB: found / start OK   4 dB: found / start OK   0 dB: found / start OK
+   STS 64 (4 x 16)                            1.00 / 1.00              0.87 / 0.77              0.11 / 0.07              0.00 / 0.00
+   STS 128 (8 x 16)                           1.00 / 0.99              0.99 / 0.61              0.07 / 0.01              0.00 / 0.00
+   STS 160 (802.11a)                          1.00 / 0.98              1.00 / 0.61              0.09 / 0.01              0.00 / 0.00
+   STS 192                                    1.00 / 0.97              1.00 / 0.51              0.15 / 0.03              0.00 / 0.00
+   S&C 80 (period 32)                         1.00 / 0.98              0.91 / 0.77              0.17 / 0.12              0.00 / 0.00
+   none: long field, lag 64                   1.00 / 1.00              0.95 / 0.75              0.07 / 0.03              0.00 / 0.00
+   none: L = 4                                1.00 / 0.89              1.00 / 0.53              0.09 / 0.00              0.00 / 0.00
+ timing: cross-correlation with the known long symbol
+   short field                    14 dB: found / start OK   8 dB: found / start OK   4 dB: found / start OK   0 dB: found / start OK
+   STS 64 (4 x 16)                            1.00 / 1.00              0.87 / 0.87              0.11 / 0.11              0.00 / 0.00
+   STS 128 (8 x 16)                           1.00 / 1.00              0.99 / 0.93              0.07 / 0.05              0.00 / 0.00
+   STS 160 (802.11a)                          1.00 / 1.00              1.00 / 0.92              0.09 / 0.04              0.00 / 0.00
+   STS 192                                    1.00 / 0.99              1.00 / 0.83              0.15 / 0.07              0.00 / 0.00
+   S&C 80 (period 32)                         1.00 / 1.00              0.91 / 0.91              0.17 / 0.17              0.00 / 0.00
+   none: long field, lag 64                   1.00 / 1.00              0.95 / 0.95              0.07 / 0.07              0.00 / 0.00
+   none: L = 4                                1.00 / 0.97              1.00 / 0.78              0.09 / 0.02              0.00 / 0.00
+
+E4: what the long field buys: the channel estimate and the carrier against L (STS 128 in front); EVM in dB (lower is better), carrier error rms in Hz
+   L       overhead    23 dB: EVM / carrier Hz    18 dB: EVM / carrier Hz    14 dB: EVM / carrier Hz
+   1           6.8%            -19.06 dB / 207           -14.00 dB / 341           -10.09 dB / 522
+   2           8.3%             -20.28 dB / 89           -15.27 dB / 141           -11.21 dB / 228
+   4          11.3%             -21.08 dB / 41            -15.98 dB / 68           -11.98 dB / 117
+   8          16.7%             -21.52 dB / 19            -16.47 dB / 34            -12.46 dB / 59
+   (EVM gain of L = 4 over L = 2: 0.80, 0.71, 0.78 dB at 23, 18, 14 dB; of L = 8 over L = 2: 1.24, 1.20, 1.25 dB; the theory for averaging noise in the channel estimate is 10 log10(L / 2) at most)
+
+E5: the whole link (timing: cross-correlation). found / bad frames / EVM / SER / goodput (Mbit/s of payload that arrive, uncoded 16-QAM)
+   frame                           overhead                              23 dB                             18 dB                             14 dB                             10 dB
+   A  STS128 + L2 (tutorial 6)         8.3%       1.00/0.00/-20.3dB/2e-05/4.22      1.00/0.00/-15.2dB/1e-02/4.17      1.00/0.00/-11.2dB/1e-01/3.70          1.00/1.00/nandB/nan/0.00
+   B  S&C80 + L2                       7.2%       1.00/0.00/-20.3dB/6e-06/4.28      1.00/0.00/-15.3dB/1e-02/4.23      1.00/0.01/-11.1dB/1e-01/3.69          0.99/0.99/nandB/nan/0.00
+   C1 STS64 + L2                       6.8%       1.00/0.00/-20.2dB/2e-05/4.30      1.00/0.00/-15.2dB/1e-02/4.24      1.00/0.00/-11.2dB/1e-01/3.74          1.00/1.00/nandB/nan/0.00
+   C2 STS192 + L2                      9.8%       1.00/0.00/-20.3dB/6e-06/4.15      1.00/0.00/-15.2dB/1e-02/4.11      1.00/0.01/-11.2dB/1e-01/3.61          1.00/1.00/nandB/nan/0.00
+   D1 STS128 + L1                      6.8%       1.00/0.00/-19.0dB/2e-04/4.29      1.00/0.00/-14.0dB/3e-02/4.17      1.00/0.33/-10.1dB/2e-01/2.41          1.00/1.00/nandB/nan/0.00
+   D2 STS128 + L4                     11.3%       1.00/0.00/-21.0dB/0e+00/4.09      1.00/0.00/-16.0dB/6e-03/4.06      1.00/0.00/-12.0dB/9e-02/3.70          1.00/1.00/nandB/nan/0.00
+   D3 STS128 + L8                     16.7%       1.00/0.00/-21.5dB/0e+00/3.84      1.00/0.00/-16.5dB/4e-03/3.83      1.00/0.00/-12.5dB/8e-02/3.55          1.00/1.00/nandB/nan/0.00
+   E1 no short + L2                    5.2%       1.00/0.00/-20.3dB/1e-05/4.37      1.00/0.00/-15.2dB/1e-02/4.32      1.00/0.02/-11.1dB/1e-01/3.73          1.00/1.00/nandB/nan/0.00
+   E2 no short + L4                    8.3%       1.00/0.00/-21.1dB/0e+00/4.22      1.00/0.00/-16.0dB/6e-03/4.20      1.00/0.02/-11.9dB/9e-02/3.75          1.00/1.00/nandB/nan/0.00
+
+E5b: the number of pilots (frame A): fewer data subcarriers, a better gain estimate per symbol
+   pilots       data                              23 dB                             18 dB                             14 dB                             10 dB
+   2              26       1.00/0.00/-19.5dB/6e-05/4.58      1.00/0.00/-14.4dB/2e-02/4.47      1.00/0.22/-10.3dB/2e-01/3.02          1.00/1.00/nandB/nan/0.00
+   4              24       1.00/0.00/-20.2dB/6e-06/4.22      1.00/0.00/-15.3dB/1e-02/4.17      1.00/0.01/-11.1dB/1e-01/3.63          1.00/1.00/nandB/nan/0.00
+   6              22       1.00/0.00/-20.5dB/0e+00/3.87      1.00/0.00/-15.6dB/9e-03/3.84      1.00/0.00/-11.5dB/1e-01/3.43          1.00/1.00/nandB/nan/0.00
+   8              20       1.00/0.00/-20.7dB/0e+00/3.52      1.00/0.00/-15.7dB/8e-03/3.49      1.00/0.00/-11.7dB/1e-01/3.15          1.00/1.00/nandB/nan/0.00
+
+E6: robustness (SNR 18 dB). found / bad frames / EVM / SER
+   frame                                   no echo             echo 8 samples         echo 20 (> prefix)           carrier +-50 kHz
+   A  STS128 + L2          1.00/0.00/-15.2dB/1e-02   1.00/0.00/-13.2dB/6e-02       1.00/1.00/nandB/nan   1.00/0.00/-15.2dB/1e-02
+   B  S&C80 + L2           1.00/0.00/-15.2dB/1e-02   1.00/0.00/-13.2dB/6e-02       1.00/1.00/nandB/nan   1.00/0.00/-15.3dB/1e-02
+   D2 STS128 + L4          1.00/0.00/-16.1dB/6e-03   1.00/0.00/-14.1dB/4e-02       1.00/1.00/nandB/nan   1.00/0.00/-16.1dB/5e-03
+   E2 no short + L4        1.00/0.00/-16.0dB/6e-03   1.00/0.00/-14.1dB/4e-02       1.00/1.00/nandB/nan   1.00/0.44/-16.0dB/6e-03
