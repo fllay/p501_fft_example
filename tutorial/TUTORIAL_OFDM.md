@@ -147,6 +147,16 @@ Schmidl and Cox is one way to build a preamble that the receiver can recognise w
 
 `S[n] = sum over 48 products of x[n+16] conj x[n]`,   `E[n] = energy of the newer 48 samples`,   `M[n] = |S|^2 / E^2`.
 
+The textbook form of this detector (delay-and-correlate; `L` is 16 for the STS and 32 for Schmidl and Cox):
+
+![the textbook detector](img/ofdm_t_detector_textbook.png)
+
+and the detector of this design, block by block with its numbers (the STS variant; S&C changes only the lag, the number of products and the constants):
+
+![the detector as a block diagram](img/ofdm_t_detector.png)
+
+The lower path of the diagram, the **moving sum of `|x|^2`, normalises the amplitude**: `M` is the same at 25 counts and at 1000 counts at the ADC (the level of the P501 link swung by 14 dB between runs of the same setting), so one threshold serves every level. The FPGA does not divide: it compares `256 |S'|^2 >= THR E'^2` (THR = 166, M >= 0.65). What the textbook diagram (divide, absolute value, `max`) does not have is in orange: a guard against a quiet slot after a strong frame, and a plateau rule in place of `max`, which also gives the carrier and the gain. The GNU Radio flowgraphs divide by `Ea Eb + guard` (the two energies and a term of 0.1 of the long-term power, squared) for the same reason.
+
 Inside the STS every product is `|x|^2` rotated by the carrier offset, so |S| = E and M = 1; anywhere else the products have random phases and M is small. The window of 64 samples (48 + 16) fits inside the 128 periodic samples at **65 positions**, and M is on a plateau there
 (Schmidl and Cox: 17 positions, the 80 samples of the symbol with its prefix). The detector takes the windows with M above 24/32 of the largest value, the start of the STS is the middle of the plateau minus 32 samples.
 
@@ -180,6 +190,15 @@ Three remedies, in the order they were found:
 The lesson: **a normalised correlator does not know how strong the signal is.** Whatever is perfectly correlated with itself, a constant, a tone, a carrier, looks like a preamble unless the detector also asks for energy.
 
 ## A.6 The carrier: coarse, then fine, then checked
+
+The textbook estimator of the fine carrier from two identical symbols (Moose, 1994): the second symbol against the first, one symbol later, summed over the symbol; the angle of the sum is the phase the carrier offset turned in one symbol time.
+
+![the textbook fine carrier estimator](img/ofdm_t_fine_cfo_textbook.png)
+
+The fine estimate, from the two long training symbols T1 and T2, as the FPGA does it (`ofdm_rx.v`, `receive_fixed` in `ofdm_fixed.py`):
+
+![the fine carrier from T1 and T2](img/ofdm_t_fine_cfo.png)
+
 
 ![the carrier estimates](img/ofdm_t_cfo.png)
 

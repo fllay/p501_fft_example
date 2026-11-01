@@ -6,7 +6,7 @@ import sys, os
 import numpy as np
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyBboxPatch
+from matplotlib.patches import FancyBboxPatch, Circle
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import ofdm_model as Fm
 IMG = os.path.join(HERE, "..", "img")
@@ -309,6 +309,14 @@ def fig_grc():
     box(ax, 0.2, 0.1, 2.3, 0.6, "stock GNU Radio block", C["gnu"], 8); box(ax, 2.7, 0.1, 2.3, 0.6, "embedded Python block", C["py"], 8)
     ax.text(5.3, 0.4, "Every stage has its own plot tab. Behind the detector the stream has exactly 3760 samples\n(47 symbols of 80) per frame, so the blocks that follow stay in step without tags.", fontsize=8.5, va="center")
     ax.set_title("The receiver in GNU Radio Companion: ofdm_b210_frame_rx.grc", fontsize=11); fig.tight_layout(); fig.savefig(os.path.join(IMG, "ofdm_t_grc_chain.png"), dpi=130); plt.close(fig)
+
+# ---------------------------------------------------------------- the detector as a block diagram
+
+# ---------------------------------------------------------------- the textbook delay-and-correlate detector
+
+# ---------------------------------------------------------------- the fine carrier from T1 and T2
+
+# ---------------------------------------------------------------- the textbook fine-carrier estimator (two identical symbols)
 
 if __name__ == "__main__":
     for f in (fig_method, fig_frame, fig_symbol, fig_ifft, fig_cp, fig_tx, fig_guard, fig_block_rx, fig_grc, fig_sc, fig_cfo, fig_equalizer, fig_sts, fig_sts_metric, fig_frame_sts):
