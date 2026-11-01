@@ -278,22 +278,6 @@ def fig_equalizer():
     fig.tight_layout(); fig.savefig(os.path.join(IMG, "ofdm_t_equalizer.png"), dpi=130); plt.close(fig)
 
 # ---------------------------------------------------------------- 8. the receiver in the FPGA, as built
-def fig_block_rx():
-    fig, ax = plt.subplots(figsize=(13, 5.2)); ax.set_xlim(0, 13); ax.set_ylim(0, 5.2); ax.axis("off")
-    box(ax, 0.1, 3.6, 1.7, 1.2, "ADC 3.84 MS/s\nsample RAMs (two\n1024-word, clock\ncrossing)", C["old"], 8)
-    box(ax, 2.2, 3.6, 2.1, 1.2, "ofdm_detect.v\nS&C: 32 products,\nplateau of M,\nCORDIC: coarse w,\ngain G", C["fpga"], 8)
-    box(ax, 4.7, 3.6, 2.0, 1.2, "controller (ofdm_rx.v)\nwait for T2, fine w\nfrom T1 and T2,\nT1/T2 check,\nwindow addresses", C["fpga"], 8)
-    box(ax, 7.1, 3.6, 1.8, 1.2, "ofdm_derot.v\nNCO, gain,\nderotation\n(latency 7)", C["fpga"], 8)
-    box(ax, 9.3, 3.6, 1.7, 1.2, "ofdm_fft.v\n64 points,\nradix 2,\n768 clocks", C["fpga"], 8)
-    box(ax, 11.3, 3.6, 1.6, 1.2, "ofdm_chan.v\nH from T1 + T2,\nnoise, weights\nW = conj(H) R/|H|^2", C["fpga"], 8)
-    box(ax, 1.4, 1.2, 3.2, 1.5, "ofdm_data.v (per data symbol, 175 + 333 clocks)\nequaliser W Y, pilot gain g and slope\n(CORDIC), 5-symbol average, correction", C["fpga"], 8)
-    box(ax, 5.0, 1.2, 2.6, 1.5, "slicer and checker\nGray bits, PRBS-15,\nsymbol and bit errors,\nEVM sums", C["fpga"], 8)
-    box(ax, 8.0, 1.2, 2.5, 1.5, "capture RAM (1024 soft\nsymbols), H copy,\ncounters", C["old"], 8); box(ax, 10.9, 1.2, 2.0, 1.5, "AXI-Lite\nregisters\n(driver, notebook)", C["old"], 8)
-    for a, b in ((1.8, 2.2), (4.3, 4.7), (6.7, 7.1), (8.9, 9.3), (11.0, 11.3)): arrow(ax, a, 4.2, b, 4.2)
-    arrow(ax, 12.1, 3.6, 4.0, 2.7); arrow(ax, 10.15, 3.6, 3.2, 2.7); arrow(ax, 4.6, 1.95, 5.0, 1.95); arrow(ax, 7.6, 1.95, 8.0, 1.95); arrow(ax, 10.5, 1.95, 10.9, 1.95)
-    ax.text(0.2, 0.5, "A frame is found while the previous one is still being finished: the detector re-arms as soon as its last window has been read. Every block is bit-exact against ofdm_fixed.py.", fontsize=9)
-    ax.set_title("The receiver in the FPGA (blue: new for OFDM; grey: as in the earlier overlays)", fontsize=11); fig.tight_layout(); fig.savefig(os.path.join(IMG, "ofdm_t_block_rx.png"), dpi=130); plt.close(fig)
-
 # ---------------------------------------------------------------- 9. the receiver in GNU Radio
 def fig_grc():
     fig, ax = plt.subplots(figsize=(14, 5.6)); ax.set_xlim(0, 14); ax.set_ylim(0, 5.6); ax.axis("off")
@@ -319,7 +303,7 @@ def fig_grc():
 # ---------------------------------------------------------------- the textbook fine-carrier estimator (two identical symbols)
 
 if __name__ == "__main__":
-    for f in (fig_method, fig_frame, fig_symbol, fig_ifft, fig_cp, fig_tx, fig_guard, fig_block_rx, fig_grc, fig_sc, fig_cfo, fig_equalizer, fig_sts, fig_sts_metric, fig_frame_sts):
+    for f in (fig_method, fig_frame, fig_symbol, fig_ifft, fig_cp, fig_tx, fig_guard, fig_grc, fig_sc, fig_cfo, fig_equalizer, fig_sts, fig_sts_metric, fig_frame_sts):
         try: f(); print("ok", f.__name__)
         except Exception as e:
             import traceback; print("FAILED", f.__name__, repr(e)); traceback.print_exc()

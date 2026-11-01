@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Block diagrams of tutorial 6, A.4b and A.6, each block with a small plot of the signal at that point.
 The signals come from the model: an STS frame (ofdm_model.tx_frame, 'sts16') through a channel with a carrier offset of 9 kHz, a fractional delay and noise at 22 dB per subcarrier, 100 samples of noise in front of the frame.
-    python3 make_figures_ofdm_diagrams.py        writes ofdm_t_detector_textbook.png, ofdm_t_detector.png, ofdm_t_fine_cfo_textbook.png, ofdm_t_fine_cfo.png, ofdm_t_rx_textbook.png, ofdm_t_rx_ours.png in ../img"""
+    python3 make_figures_ofdm_diagrams.py        writes ofdm_t_detector_textbook.png, ofdm_t_detector.png, ofdm_t_fine_cfo_textbook.png, ofdm_t_fine_cfo.png, ofdm_t_rx_textbook.png, ofdm_t_rx_ours.png, ofdm_t_block_rx.png in ../img"""
 import os, sys
 import numpy as np
 import matplotlib; matplotlib.use("Agg")
@@ -215,26 +215,25 @@ def fig_fine_cfo():
 
 
 # ---------------------------------------------------------------- 5. and 6. the whole receiver: the textbook block diagram and ours
-def make_rx_signals():
-    rng = np.random.default_rng(6)
-    x, d = Fm.tx_frame(preamble="sts16"); y = Fm.channel(x, SNR, cfo_hz=CFO, tau=0.3, lead=LEAD, trail=60, rng=rng)
-    R = Fm.receive(y, track="complex", return_all=True); Z0 = Fm.receive(y, track="none", return_all=True)["Z"]
+def make_rx_signals(pre="sts16"):
+    sc = pre == "sc"; PL = 80 if sc else 128; lag, win = (32, 32) if sc else (16, 48); rng = np.random.default_rng(6)
+    x, d = Fm.tx_frame(preamble=pre); y = Fm.channel(x, SNR, cfo_hz=CFO, tau=0.3, lead=LEAD, trail=60, rng=rng)
+    R = Fm.receive(y, track="complex", return_all=True, sync=pre); Z0 = Fm.receive(y, track="none", return_all=True, sync=pre)["Z"]
     s0, f = R["s0"], R["f"]; n = np.arange(len(y)); xr = y * np.exp(-2j * np.pi * f / FS * (n - s0))
-    t1 = s0 + 128 + 2 * Fm.CP - Fm.BACK
+    t1 = s0 + PL + 2 * Fm.CP - Fm.BACK
     pb = y[t1 + 64:t1 + 128] * np.conj(y[t1:t1 + 64]); pa = xr[t1 + 64:t1 + 128] * np.conj(xr[t1:t1 + 64])
-    base = s0 + 128 + Fm.LTS_LEN; st = base + 10 * Fm.SYM
+    base = s0 + PL + Fm.LTS_LEN; st = base + 10 * Fm.SYM
     Y = np.fft.fftshift(np.fft.fft(xr[st + Fm.CP - Fm.BACK:st + Fm.CP - Fm.BACK + 64]) / 8)
     w = y[LEAD:LEAD + 3840]; P = np.mean(np.abs(np.fft.fft(w.reshape(-1, 64), axis=1)) ** 2, axis=0)
-    M, _ = Fm.timing_metric(y, 16)
+    M, _ = Fm.timing_metric(y, lag, win)
     return dict(y=y, R=R, Z0=Z0, Z=R["Z"], xr=xr, pb=pb, pa=pa, sym=xr[st:st + Fm.SYM], Y=Y, P=np.fft.fftshift(P), M=M, s0=s0, d=d)
 
 
-RXS = None
+RXS = {}
 
 
 def fig_rx(ours):
-    global RXS
-    RXS = RXS or make_rx_signals(); S = RXS; y = S["y"]; R = S["R"]; BL = C["fpga"]; GR = "#edf2f7"; DG = "#a0aec0"
+    S = RXS.setdefault("sts16", make_rx_signals("sts16")); y = S["y"]; R = S["R"]; BL = C["fpga"]; GR = "#edf2f7"; DG = "#a0aec0"
     cv = Canvas(17.4, 12.0, (17.4, 12.0)); fb = BL if ours else "white"
     # ---- top row: x, width, text
     top = [(0.9, 1.6, "AD9361\n3.84 MS/s" if ours else "Radio Rx", GR if ours else "white"),
@@ -261,7 +260,7 @@ def fig_rx(ours):
     else:
         cv.text(3.7, 7.35, "no AGC loop: fixed RF gain, digital gain G from E at the peak", fontsize=7.8, ha="center", va="top", color="#444")
     # ---- the data path and the estimator's output go to the demapper
-    cv.line([16.3, 16.9, 16.9, 3.0], [yc, yc, 4.0, 4.0]); cv.arrow(3.0, 4.0, 3.0, 3.1)
+    cv.line([16.3, 16.9, 16.9, 3.0], [yc, yc, 3.7, 3.7]); cv.arrow(3.0, 3.7, 3.0, 3.1)
     cv.line([7.4, 7.4, 1.6], [ey, 4.6, 4.6], ls=":"); cv.arrow(1.6, 4.6, 1.6, 3.1, ls=":")
     f_txt = "Δf̂ = %.0f Hz (coarse %.0f + fine %.0f);  true 9000 Hz" % (R["f"], R["f_c"], R["f_f"])
     cv.text(7.6, 5.1, f_txt, fontsize=7.8, va="center", color=C["im"])
@@ -289,8 +288,12 @@ def fig_rx(ours):
     a = ins(12.0, 9.0, 1.8, 1.75, "|Y[k]|, one symbol:\n24 data, 4 pilots"); k = np.arange(-32, 32); Yk = np.abs(S["Y"]); ku = np.array([kk in Fm.USED for kk in k]); kp = np.array([kk in Fm.PIL for kk in k])
     a.vlines(k[ku & ~kp], 0, Yk[ku & ~kp], color=C["re"], lw=1); a.vlines(k[kp], 0, Yk[kp], color=C["sc"], lw=1.4); a.vlines(k[~ku], 0, Yk[~ku], color=C["grey"], lw=0.6); a.set_yticks([]); a.set_xticks([-14, 0, 14])
     g = R["gains"]; a = ins(14.1, 9.0, 2.2, 1.75, "pilot gain g per symbol (Re, Im):\nthe small residual carrier turns it"); a.plot(g.real, color=C["re"], lw=0.8); a.plot(g.imag, color=C["im"], lw=0.8); a.set_xticks([0, 44])
-    a = ins(11.1, 5.0, 2.0, 1.75, "|H[k]|: flat"); H = R["H"]; a.plot(Fm.USED, np.abs(H), ".-", color=C["re"], ms=2, lw=0.6); a.set_ylim(0, 1.5 * np.abs(H).max()); a.set_xticks([-14, 14])
-    a = ins(13.4, 5.0, 2.0, 1.75, "arg H[k]: a straight line\n(the delay)"); a.plot(Fm.USED, np.unwrap(np.angle(H)), ".-", color=C["im"], ms=2, lw=0.6); a.set_xticks([-14, 14])
+    a = ins(11.1, 4.2, 2.0, 1.4, "|H[k]|: flat"); H = R["H"]; a.plot(Fm.USED, np.abs(H), ".-", color=C["re"], ms=2, lw=0.6); a.set_ylim(0, 1.5 * np.abs(H).max()); a.set_xticks([-14, 14])
+    a = ins(13.4, 4.2, 2.0, 1.4, "arg H[k]: a straight line\n(the delay)"); a.plot(Fm.USED, np.unwrap(np.angle(H)), ".-", color=C["im"], ms=2, lw=0.6); a.set_xticks([-14, 14])
+    for x0, Zc, tl in ((14.0, S["Z0"], "before the pilots"), (15.25, S["Z"], "after the pilots")):
+        a = ins(x0, 6.2, 1.15, 1.15, tl); a.scatter(Zc.real.ravel(), Zc.imag.ravel(), s=0.8, color=C["re"], alpha=0.6); a.set_xlim(-1.6, 1.6); a.set_ylim(-1.6, 1.6)
+        for v in (-2 / np.sqrt(10), 0, 2 / np.sqrt(10)): a.axvline(v, color=C["sc"], lw=0.4, ls="--"); a.axhline(v, color=C["sc"], lw=0.4, ls="--")
+        a.set_aspect("equal"); a.set_xticks([]); a.set_yticks([])
     Z = S["Z"]; a = ins(1.2, 0.3, 2.2, 1.45, "Z after the pilots: 16 clusters;\ndecisions at 0, ±2/√10"); a.scatter(Z.real.ravel(), Z.imag.ravel(), s=1.2, color=C["re"], alpha=0.6)
     for v in (-2 / np.sqrt(10), 0, 2 / np.sqrt(10)): a.axvline(v, color=C["sc"], lw=0.6, ls="--"); a.axhline(v, color=C["sc"], lw=0.6, ls="--")
     a.set_aspect("equal"); a.set_xticks([]); a.set_yticks([])
@@ -307,8 +310,47 @@ def fig_rx(ours):
     cv.save("ofdm_t_rx_ours.png" if ours else "ofdm_t_rx_textbook.png")
 
 
+# ---------------------------------------------------------------- 7. the receiver in the FPGA (A.9), with the signal at every block
+def fig_block_rx():
+    S = RXS.setdefault("sc", make_rx_signals("sc")); y = S["y"]; R = S["R"]; BL, OLD = C["fpga"], C["old"]; n = np.arange(len(y))
+    cv = Canvas(13.4, 8.4, (13.4, 8.4), y0=-2.2)
+    cv.text(6.7, 7.9, "The receiver in the FPGA (S&C overlay; blue: new for OFDM; grey: as in the earlier overlays), with the signal at every block", fontsize=11, ha="center", va="center")
+    cv.box(0.1, 3.6, 1.7, 1.2, "ADC 3.84 MS/s\nsample RAMs (two\n1024-word, clock\ncrossing)", OLD, 8)
+    cv.box(2.2, 3.6, 2.1, 1.2, "ofdm_detect.v\nS&C: 32 products,\nplateau of M,\nCORDIC: coarse w,\ngain G", BL, 8)
+    cv.box(4.7, 3.6, 2.0, 1.2, "controller (ofdm_rx.v)\nwait for T2, fine w\nfrom T1 and T2,\nT1/T2 check,\nwindow addresses", BL, 8)
+    cv.box(7.1, 3.6, 1.8, 1.2, "ofdm_derot.v\nNCO, gain,\nderotation\n(latency 7)", BL, 8)
+    cv.box(9.3, 3.6, 1.7, 1.2, "ofdm_fft.v\n64 points,\nradix 2,\n768 clocks", BL, 8)
+    cv.box(11.3, 3.6, 1.6, 1.2, "ofdm_chan.v\nH from T1 + T2,\nnoise, weights\nW = conj(H) R/|H|²", BL, 8)
+    cv.box(1.4, 1.2, 3.2, 1.5, "ofdm_data.v (per data symbol, 175 + 333 clocks)\nequaliser W Y, pilot gain g and slope\n(CORDIC), 5-symbol average, correction", BL, 8)
+    cv.box(5.0, 1.2, 2.6, 1.5, "slicer and checker\nGray bits, PRBS-15,\nsymbol and bit errors,\nEVM sums", BL, 8)
+    cv.box(8.0, 1.2, 2.5, 1.5, "capture RAM (1024 soft\nsymbols), H copy,\ncounters", OLD, 8); cv.box(10.9, 1.2, 2.0, 1.5, "AXI-Lite\nregisters\n(driver, notebook)", OLD, 8)
+    for a, b in ((1.8, 2.2), (4.3, 4.7), (6.7, 7.1), (8.9, 9.3), (11.0, 11.3)): cv.arrow(a, 4.2, b, 4.2)
+    cv.arrow(12.1, 3.6, 4.0, 2.7); cv.arrow(10.15, 3.6, 3.2, 2.7); cv.arrow(4.6, 1.95, 5.0, 1.95); cv.arrow(7.6, 1.95, 8.0, 1.95); cv.arrow(10.5, 1.95, 10.9, 1.95)
+    # the signals above the first row
+    yy, hh = 5.2, 1.7; tt = np.arange(64); def_ = lambda a: (a.set_xticks([]), a.set_yticks([]))
+    a = cv.inset(0.1, yy, 1.7, hh, "x[n] (Re): noise,\nthen the frame"); a.plot(n[:420], y.real[:420], color=C["re"], lw=0.5); a.axvline(LEAD, color=C["ref"], lw=0.7, ls="--"); def_(a)
+    a = cv.inset(2.2, yy, 2.1, hh, "M = |S|²/E²: plateau\n(17 windows), threshold"); a.plot(np.arange(len(S["M"])) + 63, S["M"], color=C["re"], lw=0.8); a.axhline(0.5, color=C["sc"], lw=0.7, ls="--"); a.set_xlim(0, 420); a.set_ylim(0, 1.15); a.set_xticks([])
+    sc = np.mean(np.abs(S["pb"])); a = cv.inset(4.9, yy, 1.6, hh, "T2·conj T1: before (red),\nafter (blue) the fine w")
+    a.scatter(S["pb"].real / sc, S["pb"].imag / sc, s=2, color=C["im"]); a.scatter(S["pa"].real / sc, S["pa"].imag / sc, s=2, color=C["re"]); a.axhline(0, color=C["ref"], lw=0.5); a.axvline(0, color=C["ref"], lw=0.5); a.set_aspect("equal"); def_(a)
+    a = cv.inset(7.1, yy, 1.8, hh, "one symbol after the\nderotation: prefix + window"); a.plot(np.arange(80), S["sym"].real, color=C["re"], lw=0.6); a.axvspan(0, 16, color=C["sc"], alpha=0.25, lw=0); a.axvspan(Fm.CP - Fm.BACK, Fm.CP - Fm.BACK + 64, color=C["tr"], alpha=0.12, lw=0); a.set_xticks([0, 16, 80]); a.set_yticks([])
+    a = cv.inset(9.3, yy, 1.7, hh, "|Y[k]|: 24 data,\n4 pilots"); k = np.arange(-32, 32); Yk = np.abs(S["Y"]); ku = np.array([kk in Fm.USED for kk in k]); kp = np.array([kk in Fm.PIL for kk in k])
+    a.vlines(k[ku & ~kp], 0, Yk[ku & ~kp], color=C["re"], lw=1); a.vlines(k[kp], 0, Yk[kp], color=C["sc"], lw=1.4); a.vlines(k[~ku], 0, Yk[~ku], color=C["grey"], lw=0.6); a.set_yticks([]); a.set_xticks([-14, 0, 14])
+    H = R["H"]; a = cv.inset(11.5, yy, 1.5, hh, "H[k]: |H| (blue),\narg H (red)"); a.plot(Fm.USED, np.abs(H), color=C["re"], lw=0.8); a.set_ylim(0, 1.6 * np.abs(H).max()); a.set_xticks([-14, 14]); a.set_yticks([])
+    b = a.twinx(); b.plot(Fm.USED, np.unwrap(np.angle(H)), color=C["im"], lw=0.8); b.set_yticks([]); b.tick_params(length=0)
+    # the signals under the second row
+    g = R["gains"]; a = cv.inset(0.9, -1.1, 1.5, 1.8, "pilot gain g per symbol\n(Re, Im)"); a.plot(g.real, color=C["re"], lw=0.8); a.plot(g.imag, color=C["im"], lw=0.8); a.set_xticks([0, 44])
+    for x0, Zc, tl in ((2.65, S["Z0"], "before the pilots"), (4.15, S["Z"], "after the pilots")):
+        a = cv.inset(x0, -1.1, 1.3, 1.8, tl); a.scatter(Zc.real.ravel(), Zc.imag.ravel(), s=0.8, color=C["re"], alpha=0.6); a.set_xlim(-1.6, 1.6); a.set_ylim(-1.6, 1.6)
+        for v in (-2 / np.sqrt(10), 0, 2 / np.sqrt(10)): a.axvline(v, color=C["sc"], lw=0.4, ls="--"); a.axhline(v, color=C["sc"], lw=0.4, ls="--")
+        a.set_aspect("equal"); a.set_xticks([]); a.set_yticks([])
+    Z = S["Z"]; err = Z - Fm.hard(Z); a = cv.inset(5.9, -1.1, 1.5, 1.8, "decision error Z − decision\n(what the EVM sums add)"); a.scatter(err.real.ravel(), err.imag.ravel(), s=0.8, color=C["im"], alpha=0.6); a.axhline(0, color=C["ref"], lw=0.5); a.axvline(0, color=C["ref"], lw=0.5); a.set_aspect("equal"); def_(a)
+    cv.text(8.0, -0.4, "Signals: the model's S&C frame, carrier offset 9 kHz,\ndelay 0.3 sample, SNR 22 dB per subcarrier. The constellations:\nthe 24 data subcarriers of the 44 symbols; dashed: the\ndecision thresholds 0, ±2/√10.", fontsize=7.8, color="#444", va="center")
+    cv.text(0.1, -1.95, "A frame is found while the previous one is still being finished: the detector re-arms as soon as its last window has been read. Every block is bit-exact against ofdm_fixed.py.", fontsize=9, va="center")
+    cv.save("ofdm_t_block_rx.png")
+
+
 if __name__ == "__main__":
-    for f in (fig_detector_textbook, fig_detector, fig_fine_cfo_textbook, fig_fine_cfo, lambda: fig_rx(False), lambda: fig_rx(True)):
+    for f in (fig_detector_textbook, fig_detector, fig_fine_cfo_textbook, fig_fine_cfo, lambda: fig_rx(False), lambda: fig_rx(True), fig_block_rx):
         try: f(); print("ok", getattr(f, "__name__", "fig_rx"))
         except Exception as e:
             import traceback; print("FAILED", f.__name__, repr(e)); traceback.print_exc()

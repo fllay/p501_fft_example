@@ -46,7 +46,7 @@ Our receiver is the same diagram, cut off at the demapper, with the module that 
 Three differences from the textbook are worth reading the figure for:
 
 * **No AGC loop.** The radio gain is set by hand (`rx_gain` in the scripts, C.3) and the receiver scales the samples digitally; the loop in the textbook figure is dotted for that reason.
-* **The equaliser comes before the pilot step.** The textbook puts the channel estimate into the demapper; here `W = conj(H) R / |H|^2` is applied to every subcarrier first, and the pilots then correct only what the training could not know (the gain `g` in the top right plot slowly turns, because the carrier estimate still has an error of some hundred hertz).
+* **The equaliser comes before the pilot step.** The textbook puts the channel estimate into the demapper; here `W = conj(H) R / |H|^2` is applied to every subcarrier first, and the pilots then correct only what the training could not know (the gain `g` in the top right plot slowly turns, because the carrier estimate still has an error of some hundred hertz: the constellation under the pilot block is a set of rings before the pilot step and 16 clusters after it).
 * **The estimators run before the data.** The carrier offset comes from the training fields at the start of the frame, so the data symbols are corrected as they arrive, and nothing needs to be fed back.
 
 ## A.1 Method
