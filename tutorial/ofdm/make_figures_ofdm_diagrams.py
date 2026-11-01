@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Block diagrams of tutorial 6, A.4b and A.6, each block with a small plot of the signal at that point.
 The signals come from the model: an STS frame (ofdm_model.tx_frame, 'sts16') through a channel with a carrier offset of 9 kHz, a fractional delay and noise at 22 dB per subcarrier, 100 samples of noise in front of the frame.
-    python3 make_figures_ofdm_diagrams.py        writes ofdm_t_detector_textbook.png, ofdm_t_detector.png, ofdm_t_fine_cfo_textbook.png, ofdm_t_fine_cfo.png in ../img"""
+    python3 make_figures_ofdm_diagrams.py        writes ofdm_t_detector_textbook.png, ofdm_t_detector.png, ofdm_t_fine_cfo_textbook.png, ofdm_t_fine_cfo.png, ofdm_t_rx_textbook.png, ofdm_t_rx_ours.png in ../img"""
 import os, sys
 import numpy as np
 import matplotlib; matplotlib.use("Agg")
@@ -41,8 +41,8 @@ class Canvas:
         self.fig = plt.figure(figsize=figsize); self.W, self.H, self.y0 = W, H, y0
         self.ax = self.fig.add_axes([0, 0, 1, 1]); self.ax.set_xlim(0, W); self.ax.set_ylim(y0, H); self.ax.axis("off")
 
-    def box(self, x, y, w, h, text, fc="white", fs=8.5, ec="k"):
-        self.ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.02,rounding_size=0.08", fc=fc, ec=ec, lw=1)); self.ax.text(x + w / 2, y + h / 2, text, ha="center", va="center", fontsize=fs)
+    def box(self, x, y, w, h, text, fc="white", fs=8.5, ec="k", ls="-", tc="k"):
+        self.ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.02,rounding_size=0.08", fc=fc, ec=ec, lw=1, ls=ls)); self.ax.text(x + w / 2, y + h / 2, text, ha="center", va="center", fontsize=fs, color=tc)
 
     def circle(self, x, y, sym, r=0.3):
         self.ax.add_patch(Circle((x, y), r, fc="white", ec="k", lw=1.2)); self.ax.text(x, y, sym, ha="center", va="center", fontsize=14)
@@ -214,8 +214,101 @@ def fig_fine_cfo():
     cv.save("ofdm_t_fine_cfo.png")
 
 
+# ---------------------------------------------------------------- 5. and 6. the whole receiver: the textbook block diagram and ours
+def make_rx_signals():
+    rng = np.random.default_rng(6)
+    x, d = Fm.tx_frame(preamble="sts16"); y = Fm.channel(x, SNR, cfo_hz=CFO, tau=0.3, lead=LEAD, trail=60, rng=rng)
+    R = Fm.receive(y, track="complex", return_all=True); Z0 = Fm.receive(y, track="none", return_all=True)["Z"]
+    s0, f = R["s0"], R["f"]; n = np.arange(len(y)); xr = y * np.exp(-2j * np.pi * f / FS * (n - s0))
+    t1 = s0 + 128 + 2 * Fm.CP - Fm.BACK
+    pb = y[t1 + 64:t1 + 128] * np.conj(y[t1:t1 + 64]); pa = xr[t1 + 64:t1 + 128] * np.conj(xr[t1:t1 + 64])
+    base = s0 + 128 + Fm.LTS_LEN; st = base + 10 * Fm.SYM
+    Y = np.fft.fftshift(np.fft.fft(xr[st + Fm.CP - Fm.BACK:st + Fm.CP - Fm.BACK + 64]) / 8)
+    w = y[LEAD:LEAD + 3840]; P = np.mean(np.abs(np.fft.fft(w.reshape(-1, 64), axis=1)) ** 2, axis=0)
+    M, _ = Fm.timing_metric(y, 16)
+    return dict(y=y, R=R, Z0=Z0, Z=R["Z"], xr=xr, pb=pb, pa=pa, sym=xr[st:st + Fm.SYM], Y=Y, P=np.fft.fftshift(P), M=M, s0=s0, d=d)
+
+
+RXS = None
+
+
+def fig_rx(ours):
+    global RXS
+    RXS = RXS or make_rx_signals(); S = RXS; y = S["y"]; R = S["R"]; BL = C["fpga"]; GR = "#edf2f7"; DG = "#a0aec0"
+    cv = Canvas(17.4, 12.0, (17.4, 12.0)); fb = BL if ours else "white"
+    # ---- top row: x, width, text
+    top = [(0.9, 1.6, "AD9361\n3.84 MS/s" if ours else "Radio Rx", GR if ours else "white"),
+           (2.8, 1.6, "ADC I/Q\nsample RAMs\n(2 × 1024 words)" if ours else "ADC\nI/Q", GR if ours else "white"),
+           (4.7, 2.2, "ofdm_detect.v\ncompare 256|S|² ≥ THR·E²\nguard, plateau" if ours else "Packet detect\nAGC control", fb),
+           (7.2, 2.2, "ofdm_derot.v\nNCO, gain G\n(coarse, then fine)" if ours else "Carrier offset\ncorrection", fb),
+           (9.7, 2.0, "controller (ofdm_rx.v)\nwindow 6 samples early,\nprefix skipped" if ours else "Remove guard\ninterval", fb),
+           (12.0, 1.8, "ofdm_fft.v\n64 points\nradix 2" if ours else "FFT", fb),
+           (14.1, 2.2, "ofdm_data.v\nequaliser W·Y, pilots:\ng and slope" if ours else "Pilot\ntracking", fb)]
+    yb, hb = 7.7, 0.9; yc = yb + hb / 2
+    for x, w, t, fc in top: cv.box(x, yb, w, hb, t, fc, 7.6 if ours else 9.5)
+    for i in range(len(top) - 1): cv.arrow(top[i][0] + top[i][1], yc, top[i + 1][0], yc)
+    cv.text(0.35, 9.0, "▽", fontsize=18, ha="center", va="center"); cv.line([0.35, 0.35, 0.9], [8.7, yc, yc])
+    # ---- the estimator
+    ex, ew, ey, eh = 7.0, 3.8, 5.5, 0.9
+    cv.box(ex, ey, ew, eh, "controller (fine pass) + ofdm_chan.v\nΔf = coarse (CORDIC of ΣS) + fine (MAC of T1, T2)\nH = (T1 + T2)/2 · conj(train);  W = conj(H) R / |H|²" if ours
+           else "Carrier offset\nestimation\nchannel estimation", fb, 7.4 if ours else 9.5)
+    cv.line([5.8, 5.8], [yb, yc - 2.25]); cv.arrow(5.8, yc - 2.25, ex, yc - 2.25)                              # packet detect -> estimator (the frame start and the coarse carrier)
+    cv.line([9.55, 9.55], [yc, ey + eh + 0.35]); cv.arrow(9.55, ey + eh + 0.35, 9.55, ey + eh)                  # corrected samples -> estimator
+    cv.arrow(8.0, ey + eh, 8.0, yb, ls=":"); cv.text(8.1, 6.95, "Δf̂", fontsize=11, style="italic", va="center")
+    if not ours:
+        cv.line([5.8, 1.7], [7.2, 7.2], ls=":"); cv.arrow(1.7, 7.2, 1.7, yb, ls=":"); cv.line([5.8, 5.8], [yb, 7.2], ls=":")
+        cv.text(3.7, 7.0, "gain (AGC)", fontsize=8.5, ha="center", va="top")
+    else:
+        cv.text(3.7, 7.35, "no AGC loop: fixed RF gain, digital gain G from E at the peak", fontsize=7.8, ha="center", va="top", color="#444")
+    # ---- the data path and the estimator's output go to the demapper
+    cv.line([16.3, 16.9, 16.9, 3.0], [yc, yc, 4.0, 4.0]); cv.arrow(3.0, 4.0, 3.0, 3.1)
+    cv.line([7.4, 7.4, 1.6], [ey, 4.6, 4.6], ls=":"); cv.arrow(1.6, 4.6, 1.6, 3.1, ls=":")
+    f_txt = "Δf̂ = %.0f Hz (coarse %.0f + fine %.0f);  true 9000 Hz" % (R["f"], R["f_c"], R["f_f"])
+    cv.text(7.6, 5.1, f_txt, fontsize=7.8, va="center", color=C["im"])
+    # ---- the lower row
+    yl, hl = 2.2, 0.9
+    if ours:
+        cv.box(1.0, yl, 2.6, hl, "slicer + checker (ofdm_data.v)\nGray bits, PRBS-15,\nsymbol and bit errors, EVM", BL, 7.6)
+        for x0, t in ((4.1, "counters,\nEVM sums"), (6.9, "capture RAM\n1024 corrected symbols"), (9.7, "AXI-Lite\nregisters"), (12.5, "driver,\nnotebook, GNU Radio")): cv.box(x0, yl, 2.4, hl, t, GR, 8)
+        for x0 in (3.6, 6.5, 9.3, 12.1): cv.arrow(x0, yl + hl / 2, x0 + 0.5 if x0 == 3.6 else x0 + 0.4, yl + hl / 2)
+    else:
+        cv.box(1.0, yl, 2.6, hl, "Demapper", "white", 9.5)
+        for x0, t in ((4.1, "De-Interleaver"), (6.9, "De-Puncture"), (9.7, "Viterbi\nDecoding"), (12.5, "De-Scrambler")): cv.box(x0, yl, 2.4, hl, t, "white", 9.5, ec=DG, ls="--", tc="#888")
+        for x0 in (3.6, 6.5, 9.3, 12.1): cv.arrow(x0, yl + hl / 2, x0 + 0.5 if x0 == 3.6 else x0 + 0.4, yl + hl / 2, color=DG, ls="--")
+        cv.arrow(14.9, yl + hl / 2, 15.8, yl + hl / 2); cv.text(15.9, yl + hl / 2, "bits", fontsize=9, va="center")
+    # ---- the signals
+    n = np.arange(len(y)); fs = 5.0; tt = np.arange(64)
+
+    def ins(x, yy, w, h, title): return cv.inset(x, yy, w, h, title)
+    a = ins(0.9, 9.0, 1.6, 1.75, "spectrum of the signal:\n28 carriers of 60 kHz"); fr = np.fft.fftshift(np.fft.fftfreq(64, 1 / FS)) / 1e6; a.plot(fr, 10 * np.log10(S["P"] / S["P"].max()), color=C["re"], lw=0.8); a.set_xlabel("MHz", fontsize=5, labelpad=0); a.set_ylim(-35, 3)
+    a = ins(2.8, 9.0, 1.6, 1.75, "x[n] (Re): noise,\nthen the frame"); a.plot(n[:420], y.real[:420], color=C["re"], lw=0.5); a.axvline(LEAD, color=C["ref"], lw=0.7, ls="--"); a.set_xticks([]); a.set_yticks([])
+    a = ins(4.7, 9.0, 2.2, 1.75, "M[n] = |S/E|:  plateau, threshold 0.5"); a.plot(np.arange(len(S["M"])) + 63, S["M"], color=C["re"], lw=0.8); a.axhline(0.5, color=C["sc"], lw=0.7, ls="--"); a.set_xlim(0, 420); a.set_ylim(0, 1.15); a.set_xticks([])
+    a = ins(7.2, 9.0, 2.2, 1.75, "T2·conj T1:  before (red), after (blue)"); sc = np.mean(np.abs(S["pb"])); a.scatter(S["pb"].real / sc, S["pb"].imag / sc, s=2, color=C["im"]); a.scatter(S["pa"].real / sc, S["pa"].imag / sc, s=2, color=C["re"])
+    a.axhline(0, color=C["ref"], lw=0.5); a.axvline(0, color=C["ref"], lw=0.5); a.set_aspect("equal"); a.set_xticks([]); a.set_yticks([])
+    a = ins(9.7, 9.0, 2.0, 1.75, "one symbol, after the carrier correction:\n16 prefix + 64; window 6 early"); a.plot(np.arange(80), S["sym"].real, color=C["re"], lw=0.6); a.axvspan(0, 16, color=C["sc"], alpha=0.25, lw=0); a.axvspan(Fm.CP - Fm.BACK, Fm.CP - Fm.BACK + 64, color=C["tr"], alpha=0.12, lw=0); a.set_xticks([0, 16, 80]); a.set_yticks([])
+    a = ins(12.0, 9.0, 1.8, 1.75, "|Y[k]|, one symbol:\n24 data, 4 pilots"); k = np.arange(-32, 32); Yk = np.abs(S["Y"]); ku = np.array([kk in Fm.USED for kk in k]); kp = np.array([kk in Fm.PIL for kk in k])
+    a.vlines(k[ku & ~kp], 0, Yk[ku & ~kp], color=C["re"], lw=1); a.vlines(k[kp], 0, Yk[kp], color=C["sc"], lw=1.4); a.vlines(k[~ku], 0, Yk[~ku], color=C["grey"], lw=0.6); a.set_yticks([]); a.set_xticks([-14, 0, 14])
+    g = R["gains"]; a = ins(14.1, 9.0, 2.2, 1.75, "pilot gain g per symbol (Re, Im):\nthe small residual carrier turns it"); a.plot(g.real, color=C["re"], lw=0.8); a.plot(g.imag, color=C["im"], lw=0.8); a.set_xticks([0, 44])
+    a = ins(11.1, 5.0, 2.0, 1.75, "|H[k]|: flat"); H = R["H"]; a.plot(Fm.USED, np.abs(H), ".-", color=C["re"], ms=2, lw=0.6); a.set_ylim(0, 1.5 * np.abs(H).max()); a.set_xticks([-14, 14])
+    a = ins(13.4, 5.0, 2.0, 1.75, "arg H[k]: a straight line\n(the delay)"); a.plot(Fm.USED, np.unwrap(np.angle(H)), ".-", color=C["im"], ms=2, lw=0.6); a.set_xticks([-14, 14])
+    Z = S["Z"]; a = ins(1.2, 0.3, 2.2, 1.45, "Z after the pilots: 16 clusters;\ndecisions at 0, ±2/√10"); a.scatter(Z.real.ravel(), Z.imag.ravel(), s=1.2, color=C["re"], alpha=0.6)
+    for v in (-2 / np.sqrt(10), 0, 2 / np.sqrt(10)): a.axvline(v, color=C["sc"], lw=0.6, ls="--"); a.axhline(v, color=C["sc"], lw=0.6, ls="--")
+    a.set_aspect("equal"); a.set_xticks([]); a.set_yticks([])
+    # ---- text
+    if ours:
+        cv.text(4.1, 1.45, "Our link is uncoded: the slicer's hard decisions are compared with the PRBS-15 the transmitter sent, so the error rate is measured symbol by symbol (no de-interleaver, no de-puncture, no Viterbi, no de-scrambler).\n"
+                "The channel estimate is applied before the pilot step (W · Y), not inside the demapper. Blue: blocks written for this receiver; grey: the register block and the software.", fontsize=8, va="center", color="#444")
+        cv.text(8.7, 11.6, "Our OFDM receiver (STS frame), block by block, with the signal at every block", fontsize=12, ha="center", va="center")
+    else:
+        cv.text(4.1, 1.45, "Dashed: the blocks of a coded system (IEEE 802.11a) that our link does not have. Dotted: control and side information (gain, Δf̂, the channel estimate).\n"
+                "Our link ends at the demapper: it is uncoded, so the hard decisions are counted directly.", fontsize=8, va="center", color="#444")
+        cv.text(8.7, 11.6, "The textbook OFDM receiver (after IEEE 802.11a), redrawn with the signal at every block", fontsize=12, ha="center", va="center")
+    cv.text(0.1, 0.1, "Signals: the model's STS frame, carrier offset 9 kHz, delay 0.3 sample, SNR 22 dB per subcarrier; one OFDM symbol is 80 samples (16 prefix + 64). The solid line is the signal path, the red/blue pairs are before/after.", fontsize=7.6, color="#444", va="center")
+    cv.save("ofdm_t_rx_ours.png" if ours else "ofdm_t_rx_textbook.png")
+
+
 if __name__ == "__main__":
-    for f in (fig_detector_textbook, fig_detector, fig_fine_cfo_textbook, fig_fine_cfo):
-        try: f(); print("ok", f.__name__)
+    for f in (fig_detector_textbook, fig_detector, fig_fine_cfo_textbook, fig_fine_cfo, lambda: fig_rx(False), lambda: fig_rx(True)):
+        try: f(); print("ok", getattr(f, "__name__", "fig_rx"))
         except Exception as e:
             import traceback; print("FAILED", f.__name__, repr(e)); traceback.print_exc()

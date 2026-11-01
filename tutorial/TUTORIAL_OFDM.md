@@ -8,7 +8,7 @@ This tutorial builds on [tutorial 5 (16-QAM)](TUTORIAL_QAM16.md). It does not re
 
 | Part | Content |
 |---|---|
-| A | The concepts: OFDM, the frame, **the IFFT and the cyclic prefix (A.3b)**, Schmidl and Cox, **the short training field (A.4b)**, the idle slot and the guard, the carrier, the channel, the pilots, the receiver |
+| A | The concepts: **the whole receiver on one page (A.0)**, OFDM, the frame, **the IFFT and the cyclic prefix (A.3b)**, Schmidl and Cox, **the short training field (A.4b)**, the idle slot and the guard, the carrier, the channel, the pilots, the receiver |
 | B | How it was verified: model first, bit-exact, then the board |
 | C | Run it: build, digital loopback, over the air, the B210, the GNU Radio receiver, the registers, **the 128-sample STS overlay (C.7)** |
 | D | Reading a link: SNR, EVM and the error rate, what limits the link, start-up, troubleshooting |
@@ -17,6 +17,37 @@ This tutorial builds on [tutorial 5 (16-QAM)](TUTORIAL_QAM16.md). It does not re
 ---
 
 # Part A. The concepts
+
+## A.0 How an OFDM receiver works
+
+Before the details, the whole receiver on one page. This is the block diagram of an OFDM receiver as a textbook draws it (the one of IEEE 802.11a), redrawn with the signal at every block. The signals are from the model: an STS frame (A.4b), a carrier offset of 9 kHz, a delay of 0.3 sample, 22 dB SNR per subcarrier.
+
+![the textbook OFDM receiver](img/ofdm_t_rx_textbook.png)
+
+What each block does, and where this tutorial treats it:
+
+| block | what it does | in our receiver | section |
+|---|---|---|---|
+| Radio Rx, ADC | brings the band to baseband, samples it at 3.84 MS/s; the textbook's **AGC** sets the radio gain from the level the packet detector sees | AD9361 at a fixed gain; the FPGA only scales the samples (gain G from the energy at the peak) | A.2, D.2 |
+| **Packet detect** | finds out that a frame is there, and where it starts, from a training field that repeats (delay and correlate) | `ofdm_detect.v` | A.4, A.4b, A.5 |
+| **Carrier offset estimation** | the repeat also gives the carrier offset: the phase between the two copies; coarse from the short training field, fine from the two long symbols | CORDIC in `ofdm_detect.v` (coarse), complex MAC in the controller (fine) | A.4, A.6 |
+| **Carrier offset correction** | multiplies the samples by a complex exponential that cancels the offset, before the FFT, so that the subcarriers stay orthogonal | `ofdm_derot.v` (NCO) | A.6 |
+| **Remove guard interval** | throws the cyclic prefix away: 64 samples of each 80 go to the FFT (here the window starts 6 samples early, inside the prefix, which costs nothing) | window addresses of the controller | A.3b, A.7 |
+| **FFT** | 64 samples in, 64 subcarrier values out: every subcarrier is now one complex number, `Y[k] = H[k] X[k]` | `ofdm_fft.v` | A.3b |
+| **Channel estimation** | the two long training symbols are known, so `H[k] = Y[k] / X[k]`, averaged over the two | `ofdm_chan.v` | A.7 |
+| **Pilot tracking** | four known subcarriers in every symbol give what is left: a common phase and gain, and a phase slope against k | `ofdm_data.v` | A.8 |
+| **Demapper** | divides by H (equalises) and decides which constellation point was sent; here 16-QAM, hard decisions | slicer and checker in `ofdm_data.v` | A.7, tutorial 5 |
+| De-interleaver, de-puncture, Viterbi, de-scrambler | undo the error-correcting code and the scrambler of a coded system | **not in our link**: it is uncoded, the hard decisions are compared with the PRBS-15 the transmitter sent | |
+
+Our receiver is the same diagram, cut off at the demapper, with the module that implements each block (blue: written for this receiver; grey: the register block and the software; the signals are the same, since the integer model is within a fraction of a dB of the float one):
+
+![our OFDM receiver](img/ofdm_t_rx_ours.png)
+
+Three differences from the textbook are worth reading the figure for:
+
+* **No AGC loop.** The radio gain is set by hand (`rx_gain` in the scripts, C.3) and the receiver scales the samples digitally; the loop in the textbook figure is dotted for that reason.
+* **The equaliser comes before the pilot step.** The textbook puts the channel estimate into the demapper; here `W = conj(H) R / |H|^2` is applied to every subcarrier first, and the pilots then correct only what the training could not know (the gain `g` in the top right plot slowly turns, because the carrier estimate still has an error of some hundred hertz).
+* **The estimators run before the data.** The carrier offset comes from the training fields at the start of the frame, so the data symbols are corrected as they arrive, and nothing needs to be fed back.
 
 ## A.1 Method
 
