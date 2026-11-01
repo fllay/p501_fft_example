@@ -68,27 +68,7 @@ ax[2].text(-1.05, -1.45, "red: C1 (first 31 products), green: C2 (last 31)\nw = 
 ax[2].set(xlabel="Re(x conj ZC)", ylabel="Im", ylim=(-1.6, 1.1), aspect="equal"); ax[2].set_title("x conj(ZC) with a 11.5 kHz offset: a phasor", fontsize=10); ax[2].grid(alpha=0.3)
 fig.tight_layout(); save(fig, "qam16_fig_zc.png")
 
-# 5. receiver block diagram ---------------------------------------------------------------------------------------------------------------------
-fig, ax = plt.subplots(figsize=(14, 7.2)); ax.set_xlim(0, 14); ax.set_ylim(0, 7.2); ax.axis("off")
-def blk(x, y, w, h, t, col, fs=9): ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.04", fc=col, ec="k")); ax.text(x + w / 2, y + h / 2, t, ha="center", va="center", fontsize=fs)
-def arr(x0, y0, x1, y1, c="k", st="-|>", ls="-"): ax.add_patch(FancyArrowPatch((x0, y0), (x1, y1), arrowstyle=st, mutation_scale=12, color=c, ls=ls))
-NEW, OLD = "#bee3f8", "#e2e8f0"
-blk(0.2, 5.3, 1.6, 1.2, "ADC\n3.84 MS/s\nsample RAM", OLD); blk(2.3, 5.3, 1.9, 1.2, "band-edge FLL\n(derotation)\nqpsk_fll.v", OLD); blk(4.7, 5.3, 2.3, 1.2, "polyphase matched +\nderivative filter\n(44 taps, 4 sps)", OLD)
-blk(7.5, 5.3, 1.8, 1.2, "power AGC\n(rounded)", NEW); blk(9.8, 5.3, 1.9, 1.2, "timing error\nand loop\n(acq. gains)", OLD); blk(12.2, 5.3, 1.6, 1.2, "symbols\nmi2, mq2\n(1 per symbol)", OLD)
-for a, b in ((1.8, 2.3), (4.2, 4.7), (7.0, 7.5), (9.3, 9.8), (11.7, 12.2)): arr(a, 5.9, b, 5.9)
-arr(10.75, 5.3, 10.75, 4.9, st="-"); ax.annotate("", (5.85, 5.25), (10.75, 4.9), arrowprops=dict(arrowstyle="-|>", color=ORANGE, connectionstyle="angle,angleA=0,angleB=90,rad=0")); ax.text(8.5, 4.7, "timing: polyphase phase and rate", fontsize=8, color=ORANGE)
-blk(11.0, 3.2, 2.8, 1.2, "qam_zc_sync.v\ncorrelator, rho = |C|/sum|x|,\nSEARCH-VERIFY-LOCKED,\ncarrier from the two half words", NEW, 8)
-blk(7.4, 3.2, 3.0, 1.2, "16-symbol delay line\n(D = 8 to 10)\nthe answer of the synchroniser\nis ready before symbol 1", NEW, 8)
-arr(13.0, 5.3, 13.0, 4.4); arr(12.6, 5.3, 9.9, 4.4)
-blk(3.6, 1.7, 3.0, 1.2, "derotation by the NCO\n(1024-entry sin / cos table)", OLD); blk(0.2, 1.7, 2.7, 1.2, "16-QAM slicer\nlevels +-1, +-3 (x 4096),\nthresholds 0, +-8192", NEW, 8)
-arr(8.9, 3.2, 6.6, 2.5); arr(3.6, 2.3, 2.9, 2.3); ax.text(5.0, 3.05, "z", fontsize=9)
-blk(0.2, 0.1, 3.4, 1.1, "phase detector (shift-add)\ndata: Im(z conj s); pilot x3;\nknown CP / word symbols (aided)", NEW, 8); blk(4.0, 0.1, 2.2, 1.1, "loop filter\nCA, CB -> omega, theta", OLD)
-arr(1.5, 1.7, 1.5, 1.2); arr(3.6, 0.65, 4.0, 0.65); arr(5.1, 1.2, 5.1, 1.7, c=ORANGE); ax.text(5.2, 1.45, "theta", fontsize=8, color=ORANGE)
-arr(12.4, 3.2, 12.4, 2.6, c=ORANGE); blk(10.6, 1.5, 3.2, 1.1, "events: position counter\n(CP 0-7, word 8-70, data 71-966),\ntheta0 and w at every lock", NEW, 8); arr(10.6, 2.05, 6.6, 2.1, c=ORANGE); arr(10.6, 1.7, 4.4, 1.2, c=ORANGE, ls="--")
-blk(7.0, 0.1, 3.2, 1.1, "Gray decision; PRBS-15 checker\n(symbol and bit errors, frames)\nEVM sums, capture RAM (1024)", NEW, 8); arr(2.9, 2.0, 7.0, 0.9)
-blk(10.8, 0.1, 3.0, 1.1, "AXI-Lite registers 0x00-0xD8\ncapture RAM at 0x1000", OLD, 8); arr(10.2, 0.65, 10.8, 0.65)
-ax.add_patch(plt.Rectangle((0.2, 6.85), 0.3, 0.2, fc=OLD, ec="k")); ax.text(0.6, 6.95, "as in the QPSK receiver", va="center", fontsize=9); ax.add_patch(plt.Rectangle((3.2, 6.85), 0.3, 0.2, fc=NEW, ec="k")); ax.text(3.6, 6.95, "new or changed for 16-QAM", va="center", fontsize=9)
-ax.set_title("The 16-QAM receiver (rtl/qam16_rx.v, ID 0xDD520006): the engine runs once per symbol, about 70 of the 104 clocks at 100 MHz", fontsize=10); save(fig, "qam16_fig_block_rx.png")
+# 5. the receiver block diagram: make_figures_qam16_diagrams.py (with the signal at every block)
 
 # 6. the phase detector --------------------------------------------------------------------------------------------------------------------------
 fig, ax = plt.subplots(1, 2, figsize=(12, 4.6))

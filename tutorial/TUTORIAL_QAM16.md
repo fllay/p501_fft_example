@@ -8,7 +8,7 @@ This tutorial builds on [tutorial 4 (QPSK)](TUTORIAL_QPSK.md). It does not repea
 
 | Part | Content |
 |---|---|
-| A | The concepts: why 16-QAM is harder, the frame, the Zadoff-Chu word, the receiver, the phase detector |
+| A | The concepts: **the whole receiver on one page (A.0)**, why 16-QAM is harder, the frame, the Zadoff-Chu word, the receiver, the phase detector |
 | B | How it was verified: model first, bit-exact, then the board |
 | C | Run it: build, digital loopback, over the air, the registers and the driver |
 | D | Reading a link: EVM, the power budget against QPSK, good and bad states |
@@ -17,6 +17,31 @@ This tutorial builds on [tutorial 4 (QPSK)](TUTORIAL_QPSK.md). It does not repea
 ---
 
 # Part A. The concepts
+
+## A.0 How a single-carrier QAM receiver works
+
+Before the details, the whole receiver on one page: the block diagram of a single-carrier QAM receiver as a textbook draws it, redrawn with the signal at every block. The signals are from the integer model of the FPGA receiver (`qam16/qam16_rx_fixed.py`): 45 frames of 16-QAM, a carrier offset of 9.7 kHz, a clock offset of 10.4 ppm, 22 dB SNR per symbol. The eye diagram is of a separate clean record, because with a carrier offset the eye is closed until the carrier loop has turned the symbols.
+
+![the textbook single-carrier QAM receiver](img/qam16_fig_rx_textbook.png)
+
+| block | what it does | in our receiver | section |
+|---|---|---|---|
+| Radio Rx, ADC | brings the band to baseband and samples it (3.84 MS/s, 4 samples per symbol) | AD9361, sample RAM | |
+| **AGC** | keeps the level of the symbols at the value the slicer's thresholds assume; the loop also sets the radio gain | a **digital** power AGC on the symbols (the radio gain is set by hand) | A.5, A.7 |
+| **Matched filter** | the root-raised-cosine of the transmitter again: maximises the SNR and, with the transmitter's, gives no intersymbol interference at the right instant (the eye) | polyphase matched filter and its derivative (44 taps, 16 phases) | tutorial 4 |
+| **Timing recovery** | finds the instant at which to take one value per symbol, and follows the difference of the two sample clocks (here 10.4 ppm) | the timing error from the derivative filter, a loop that settles at the clock error | tutorial 4 |
+| **Carrier recovery** | removes the carrier offset and phase: a frequency loop first (the offset is 9.7 kHz, 1 % of the symbol rate), then a phase loop that turns the symbols until the clusters stand still | the band-edge FLL in front, then the PLL with pilots and known symbols | A.4, A.6 |
+| **Frame synchronisation** | finds where the frame starts, by correlation with a known word; the word also gives the first estimate of the carrier | the Zadoff-Chu synchroniser | A.4 |
+| Equaliser | undoes a channel with echoes | **not needed**: the channel between two antennas a few centimetres apart is flat over 1.3 MHz | |
+| **Slicer** | decides which of the 16 points was sent | 16-QAM slicer, thresholds 0 and ±2 | A.2 |
+| Decoder | undoes the error-correcting code | **not in our link**: it is uncoded; the decisions are compared with the PRBS-15 the transmitter sent | D.1 |
+
+Our receiver is the same diagram drawn as the FPGA builds it, with the signal at every block (A.5): the same chain, with the frame synchroniser and the loop filter in the boxes of the data path.
+
+Two things to see in the figure above:
+
+* **The carrier loop is the block that makes 16-QAM work.** Before it the symbols lie on rings (the carrier turns them at the residual offset); after it there are 16 clusters. The rings are the signal at the output of the timing recovery: the matched filter and the timing loop work without knowing the carrier.
+* **The two loops need time.** The AGC gain and the timing rate need a few thousand symbols (a few frames) to settle; in the FPGA the loops run with wide gains for the first frames (the *acquisition mode*, A.5) and narrow ones afterwards.
 
 ## A.1 Method
 
@@ -64,7 +89,7 @@ The QPSK frame sync of tutorial 4 used an m-sequence. A **Zadoff-Chu (ZC)** sequ
 
 ![receiver](img/qam16_fig_block_rx.png)
 
-Grey blocks are the QPSK receiver's; blue ones are new or changed:
+The signal at every block comes from the integer model: 45 frames, the FLL and AGC in their acquisition mode for the first 20 frames (EVM about -13 dB, then -21 dB when the tracking gains take over). Grey blocks are the QPSK receiver's; blue ones are new or changed:
 
 * **Power AGC:** `P = mi2^2 + mq2^2`, `g += (MU * (Pref - P) + 2^23) >> 24`. The detector is exact for any constellation; the update is *rounded* (A.7). In the **acquisition mode** the timing and AGC gains are wide for the first symbols and until the synchroniser has locked and 4 frames (register NSW) have passed; a lost lock starts it again. The one-time gain kick from the word is a possible refinement; it is not used.
 * **Delay line:** the synchroniser needs about 1.5 to 3 symbols after the correlation peak to deliver `theta0` and `w`; the data must not be derotated before they are known, so `(mi2, mq2)` pass through a 16-symbol delay (D = 8 to 10). The engine runs once per symbol, about 70 of the 104 clocks, so the synchroniser (about 71 clocks, its own state machine and its own 4-DSP complex MAC) does not compete with it.
