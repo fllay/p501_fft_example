@@ -28,8 +28,8 @@ Before the details, the whole receiver on one page: the block diagram of a singl
 |---|---|---|---|
 | Radio Rx, ADC | brings the band to baseband and samples it (3.84 MS/s, 4 samples per symbol) | AD9361, sample RAM | |
 | **AGC** | keeps the level of the symbols at the value the slicer's thresholds assume; the loop also sets the radio gain | a **digital** power AGC on the symbols (the radio gain is set by hand) | A.5, A.7 |
-| **Matched filter** | the root-raised-cosine of the transmitter again: maximises the SNR and, with the transmitter's, gives no intersymbol interference at the right instant (the eye) | polyphase matched filter and its derivative (44 taps, 16 phases) | tutorial 4 |
-| **Timing recovery** | finds the instant at which to take one value per symbol, and follows the difference of the two sample clocks (here 10.4 ppm) | the timing error from the derivative filter, a loop that settles at the clock error | tutorial 4 |
+| **Matched filter** | the root-raised-cosine of the transmitter again: maximises the SNR and, with the transmitter's, gives no intersymbol interference at the right instant (the eye) | polyphase matched filter and its derivative (44 taps, 16 phases) | [tutorial 4, C.4](TUTORIAL_QPSK.md) |
+| **Timing recovery** | finds the instant at which to take one value per symbol, and follows the difference of the two sample clocks (here 10.4 ppm) | the timing error from the derivative filter, a loop that settles at the clock error | [tutorial 4, C.6](TUTORIAL_QPSK.md) |
 | **Carrier recovery** | removes the carrier offset and phase: a frequency loop first (the offset is 9.7 kHz, 1 % of the symbol rate), then a phase loop that turns the symbols until the clusters stand still | the band-edge FLL in front, then the PLL with pilots and known symbols | A.4, A.6 |
 | **Frame synchronisation** | finds where the frame starts, by correlation with a known word; the word also gives the first estimate of the carrier | the Zadoff-Chu synchroniser | A.4 |
 | Equaliser | undoes a channel with echoes | **not needed**: the channel between two antennas a few centimetres apart is flat over 1.3 MHz | |
