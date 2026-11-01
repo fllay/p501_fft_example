@@ -206,8 +206,72 @@ def fig_ours():
     cv.save("qam16_fig_block_rx.png")
 
 
+# ---------------------------------------------------------------- 3. and 4. the transmitter: the textbook chain and the FPGA module qam16_tx_fr.v, with the signal at every block
+def tx_signals():
+    import qam16_tx_model as TM
+    from qpsk_model import coef_int
+    sym = np.array(TM.frame_symbols(2), dtype=np.int64); di, dq = TM.model(7736, amp=0x4000)
+    bits = F.prbs15_bits(4 * 63)[:96]
+    return dict(TM=TM, sym=sym, di=di, dq=dq, h=np.array(coef_int(), dtype=float), bits=np.array(bits, dtype=int))
+
+
+def tx_plots(T):
+    sym = T["sym"]; PA = T["TM"].PA; out = {}
+    def bits(a): a.step(np.arange(96), T["bits"], where="post", color=C["re"], lw=0.7); a.set_ylim(-0.2, 1.3); a.set_yticks([0, 1]); a.set_xticks([0, 48, 96]); a.set_xlabel("bit (24 symbols)", fontsize=5, labelpad=0)
+    def mapper(a):
+        idx = [q for q in range(71, F.FRAME) if (q - 71) % F.BLK != F.BLK - 1]; v = sym[idx] / 64.0
+        a.scatter(v[:, 0], v[:, 1], s=2, color=C["re"]); a.set_xlim(-4.2, 4.2); a.set_ylim(-4.2, 4.2); a.set_aspect("equal"); thresholds(a); bare(a)
+    def assemble(a):
+        n = 140; m = np.hypot(sym[:n, 0], sym[:n, 1]) / PA; a.axvspan(0, 8, color=C["sc"], alpha=0.3, lw=0); a.axvspan(8, 71, color=C["tr"], alpha=0.2, lw=0)
+        a.plot(m, color=C["re"], lw=0.7); pil = [71 + b * F.BLK + F.BLK - 1 for b in range(F.N_BLK) if 71 + b * F.BLK + F.BLK - 1 < n]; a.plot(pil, m[pil], "o", ms=2.5, color=C["im"]); a.set_xlim(0, n); a.set_xticks([0, 8, 71, 134]); a.set_yticks([])
+    def upsample(a):
+        v = sym[71:71 + 12, 0] / 64.0; x = np.zeros(48); x[::4] = v; a.vlines(np.arange(48), 0, x, color=C["re"], lw=1.0); a.axhline(0, color=C["ref"], lw=0.5); a.set_xticks([0, 24, 48]); a.set_yticks([])
+    def taps(a): a.plot(T["h"], color=C["re"], lw=0.8); a.set_xticks([0, 22, 44]); a.set_yticks([])
+    def shaped(a):
+        n0 = 4 * 71 + 22; a.plot(T["di"][n0:n0 + 120], color=C["re"], lw=0.7); a.plot(T["dq"][n0:n0 + 120], color=C["im"], lw=0.7); a.set_xticks([0, 40, 80, 120]); a.set_yticks([])
+    def spectrum(a):
+        z = (T["di"] + 1j * T["dq"])[400:400 + 7000].astype(complex); P = np.mean(np.abs(np.fft.fft(z[:len(z) // 256 * 256].reshape(-1, 256) * np.hanning(256), axis=1)) ** 2, axis=0)
+        f = np.fft.fftshift(np.fft.fftfreq(256, 1 / FS)) / 1e6; a.plot(f, 10 * np.log10(np.fft.fftshift(P) / P.max()), color=C["re"], lw=0.8); a.set_ylim(-45, 3); a.set_xlabel("MHz", fontsize=5, labelpad=0)
+    return dict(bits=bits, mapper=mapper, assemble=assemble, upsample=upsample, taps=taps, shaped=shaped, spectrum=spectrum)
+
+
+def fig_tx_textbook():
+    T = tx_signals(); P = tx_plots(T); cv = Canvas(18.4, 9.0, y0=2.7); DG = "#a0aec0"
+    cv.text(9.2, 8.6, "The textbook single-carrier QAM transmitter, redrawn with the signal at every block", fontsize=12, ha="center", va="center")
+    cols = [(0.3, 1.5, "Bits", "w"), (2.1, 1.9, "Encoder,\ninterleaver", "d"), (4.3, 1.6, "Mapper\n(QAM)", "w"), (6.2, 2.0, "Add the known\nword and pilots\n(frame)", "w"), (8.5, 1.5, "Upsample\nby 4", "w"), (10.3, 1.9, "Pulse-shaping\nfilter (RRC)", "w"), (12.5, 1.6, "DAC", "w"), (14.4, 1.7, "Radio Tx\n▷", "w")]
+    yb, hb = 4.6, 0.95; yc = yb + hb / 2
+    for x, w, t, kind in cols:
+        if kind == "d": cv.box(x, yb, w, hb, t, "white", 9, ec=DG, ls="--", tc="#888")
+        else: cv.box(x, yb, w, hb, t, "white", 9.5)
+    for i in range(len(cols) - 1):
+        dash = cols[i + 1][3] == "d" or cols[i][3] == "d"; cv.arrow(cols[i][0] + cols[i][1], yc, cols[i + 1][0], yc, color=DG if dash else "k", ls="--" if dash else "-")
+    def ins(i, t, h=1.9, w=None): return cv.inset(cols[i][0], 5.85, w or cols[i][1], h, t)
+    P["bits"](ins(0, "bits (PRBS-15)")); P["mapper"](ins(2, "16-QAM symbols of\none frame")); P["assemble"](ins(3, "|symbol|, the first 140 of 967:\nprefix, word (constant), data, pilot")); P["upsample"](ins(4, "I of 12 symbols,\nthree zeros between"))
+    P["shaped"](ins(5, "the shaped signal (I, Q)")); P["spectrum"](ins(6, "spectrum"))
+    cv.text(3.05, 6.8, "(coded system only)", fontsize=8, ha="center", color="#888")
+    cv.text(0.3, 3.9, "Dashed: the blocks of a coded system that our link does not have. The known word and the pilots are added to the data symbols so that the receiver can\nfind the frame and the carrier; upsampling puts three zeros between the symbols and the root-raised-cosine filter turns them into a band-limited signal\n(its taps are in the figure of our transmitter, A.5b). Signals: the integer model of the FPGA transmitter (qam16_tx_model.py); the unit of the symbols is the level 64.", fontsize=8, va="top", color="#444")
+    cv.save("qam16_fig_tx_textbook.png")
+
+
+def fig_tx_ours():
+    T = tx_signals(); P = tx_plots(T); cv = Canvas(18.4, 9.2, y0=0.9); BL, OLD = C["fpga"], C["old"]
+    cv.text(9.2, 8.8, "Our 16-QAM transmitter in the FPGA (rtl/qam16_tx_fr.v), block by block, with the signal at every block", fontsize=12, ha="center", va="center")
+    cols = [(0.3, 1.9, "PRBS-15 (x^15 + x^14 + 1)\nrestarted every frame\n4 bits per symbol", BL), (2.5, 1.9, "Gray mapper\n00 → -192, 01 → -64,\n10 → +192, 11 → +64\n(units of 1/64)", BL), (4.7, 2.6, "symbol source: position counter\nCP 0-7 and word 8-70: ROM\nZC x 202; pilots ±202;\ndata: mapper", BL),
+            (7.6, 2.0, "history of the last\n12 symbols (I and Q)", BL), (9.9, 2.8, "polyphase RRC FIR:\n12 taps of one phase x\n12 symbols, 24 multipliers,\nsum (+ 32) >> 6", BL), (13.0, 2.4, "DAC value\nclip((y amp) >> 15)\namp Q15", BL), (15.7, 1.6, "DAC\n3.84 MS/s", OLD)]
+    yb, hb = 5.0, 1.3; yc = yb + hb / 2
+    for x, w, t, fc in cols: cv.box(x, yb, w, hb, t, fc, 7.8)
+    for i in range(len(cols) - 1): cv.arrow(cols[i][0] + cols[i][1], yc, cols[i + 1][0], yc)
+    def ins(i, t, h=1.9): return cv.inset(cols[i][0], 6.6, cols[i][1], h, t)
+    P["bits"](ins(0, "bits (24 symbols)")); P["mapper"](ins(1, "symbol values / 64")); P["assemble"](ins(2, "|symbol| (202 = 1), the first 140 of 967:\nprefix, word (constant), data, pilot (red)"))
+    P["upsample"](ins(3, "I of 12 symbols, four samples\neach (one is nonzero)")); P["taps"](ins(4, "the 45 taps h[4j + phase]\n(integers, RRC 0.35)")); P["shaped"](ins(5, "dac_i, dac_q (amp = 0.5)"))
+    cv.ax.add_patch(plt.Rectangle((0.2, 3.9), 17.2, 0.5, fc="#ebf8ff", ec=C["grey"], lw=0.8)); cv.text(8.8, 4.15, "everything on l_clk, one step per `ce` (= dac_valid of the AD9361 interface: one DAC request, 3.84 MS/s, at most every second clock): no handshake, no buffer", ha="center", va="center", fontsize=8)
+    cv.text(0.3, 3.5, "The frame: CP 8 | ZC word 63 | 14 x (63 data + 1 pilot) = 967 symbols = 1.007 ms, repeated back to back; the payload is the PRBS-15 the receiver's checker expects.\nThe 24 products are registered and summed in the next clock (the first build summed 12 products in one clock: 10.09 ns for a 10 ns clock).\nSignals: qam16_tx_model.py, the bit-exact model (xsim equals it sample for sample, 14,000 samples).", fontsize=8, va="top", color="#444")
+    P["spectrum"](cv.inset(13.0, 1.1, 3.4, 1.7, "spectrum of the DAC signal"))
+    cv.save("qam16_fig_tx.png")
+
+
 if __name__ == "__main__":
-    for f in (fig_textbook, fig_ours):
+    for f in (fig_textbook, fig_ours, fig_tx_textbook, fig_tx_ours):
         try: f()
         except Exception:
             import traceback; print("FAILED", f.__name__); traceback.print_exc()

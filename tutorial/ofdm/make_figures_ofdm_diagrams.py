@@ -349,8 +349,90 @@ def fig_block_rx():
     cv.save("ofdm_t_block_rx.png")
 
 
+# ---------------------------------------------------------------- 8. and 9. the transmitter: the textbook chain and the FPGA module ofdm_tx.v, with the signal at every block
+def thresholds(a, unit=1.0, lw=0.4):
+    for v in (-2, 0, 2): a.axvline(v * unit, color=C["sc"], lw=lw, ls="--"); a.axhline(v * unit, color=C["sc"], lw=lw, ls="--")
+
+
+def bare(a): a.set_xticks([]); a.set_yticks([])
+
+
+def tx_signals():
+    import ofdm_tx_fixed as TX
+    L = 5; slot = 3 + L                                                                # a data symbol of the S&C frame
+    X = TX.slot_values(slot, "sc"); xr, xi = TX.ifft_int(X); sr, si = TX.slot_samples(slot, "sc"); I, Q = TX.frame_samples("sc")
+    allX = [TX.slot_values(3 + l, "sc") for l in range(44)]
+    U = 1518.0
+    return dict(TX=TX, L=L, X=X, x=(xr + 1j * xi) / U, s=(sr + 1j * si) / U, frame=(I + 1j * Q) / U, allX=allX, U=U, bits=TX.BITS[L * 96:(L + 1) * 96])
+
+
+def tx_plots(T):
+    """-> dict of functions plot(axes) for the signals of the transmitter"""
+    TX = T["TX"]; U = T["U"]; out = {}
+    def bits(a): a.step(np.arange(96), T["bits"], where="post", color=C["re"], lw=0.7); a.set_ylim(-0.2, 1.3); a.set_yticks([0, 1]); a.set_xticks([0, 48, 96]); a.set_xlabel("bit (one symbol)", fontsize=5, labelpad=0)
+    def mapper(a):
+        pts = np.array([(r, i) for X in T["allX"] for k, (r, i) in X.items() if k not in Fm.PIL]) / 480.0; a.scatter(pts[:, 0], pts[:, 1], s=2, color=C["re"]); a.set_xlim(-3.8, 3.8); a.set_ylim(-3.8, 3.8); a.set_aspect("equal"); thresholds(a, 1.0); bare(a)
+    def alloc(a):
+        k = np.arange(-32, 32); Xk = np.zeros(64)
+        for kk, (r, i) in T["X"].items(): Xk[kk + 32] = np.hypot(r, i) / U
+        used = np.array([kk in Fm.USED for kk in k]); pil = np.array([kk in Fm.PIL for kk in k])
+        a.vlines(k[used & ~pil], 0, Xk[used & ~pil], color=C["re"], lw=1.2); a.vlines(k[pil], 0, Xk[pil], color=C["sc"], lw=1.6); a.set_xticks([-14, 0, 14]); a.set_yticks([]); a.set_ylim(0, 1.6)
+    def ifft(a): a.plot(T["x"].real, color=C["re"], lw=0.7); a.plot(T["x"].imag, color=C["im"], lw=0.7); a.set_xticks([0, 63]); a.set_yticks([])
+    def symbol(a): a.plot(np.arange(80), T["s"].real, color=C["re"], lw=0.7); a.plot(np.arange(80), T["s"].imag, color=C["im"], lw=0.7); a.axvspan(0, 16, color=C["sc"], alpha=0.25, lw=0); a.set_xticks([0, 16, 80]); a.set_yticks([])
+    def frame(a):
+        f = np.abs(T["frame"]); a.plot(f[:560], color=C["re"], lw=0.6)
+        for lo, hi, col in ((0, 80, C["sc"]), (80, 240, C["tr"])): a.axvspan(lo, hi, color=col, alpha=0.3, lw=0)
+        a.set_xlim(0, 560); a.set_xticks([0, 80, 240, 560]); a.set_yticks([])
+    def spectrum(a):
+        P = np.mean(np.abs(np.fft.fft(T["frame"].reshape(-1, 64), axis=1)) ** 2, axis=0); f = np.fft.fftshift(np.fft.fftfreq(64, 1 / FS)) / 1e6
+        a.plot(f, 10 * np.log10(np.fft.fftshift(P) / P.max()), color=C["re"], lw=0.8); a.set_ylim(-35, 3); a.set_xlabel("MHz", fontsize=5, labelpad=0)
+    return dict(bits=bits, mapper=mapper, alloc=alloc, ifft=ifft, symbol=symbol, frame=frame, spectrum=spectrum)
+
+
+def fig_tx_textbook():
+    T = tx_signals(); P = tx_plots(T); cv = Canvas(18.4, 9.0, (18.4, 7.1), y0=1.9); DG = "#a0aec0"
+    cv.text(9.2, 8.6, "The textbook OFDM transmitter (after IEEE 802.11a), redrawn with the signal at every block", fontsize=12, ha="center", va="center")
+    cols = [(0.3, 1.5, "Bits", "w"), (2.1, 1.9, "Scrambler,\nencoder,\ninterleaver", "d"), (4.3, 1.6, "Mapper\n(QAM)", "w"), (6.2, 2.0, "Pilots and zeros\ninserted:\nX[k]", "w"), (8.5, 1.5, "IFFT\n64 points", "w"), (10.3, 1.9, "Add cyclic\nprefix", "w"), (12.5, 1.9, "Insert the\ntraining\nsymbols", "w"), (14.8, 1.4, "DAC", "w"), (16.5, 1.5, "Radio Tx\n▷", "w")]
+    yb, hb = 4.6, 0.95; yc = yb + hb / 2
+    for x, w, t, kind in cols:
+        if kind == "d": cv.box(x, yb, w, hb, t, "white", 9, ec=DG, ls="--", tc="#888")
+        else: cv.box(x, yb, w, hb, t, "white", 9.5)
+    for i in range(len(cols) - 1):
+        dash = cols[i + 1][3] == "d" or cols[i][3] == "d"; cv.arrow(cols[i][0] + cols[i][1], yc, cols[i + 1][0], yc, color=DG if dash else "k", ls="--" if dash else "-")
+    def ins(i, t, h=1.9): return cv.inset(cols[i][0], 5.85, cols[i][1], h, t)
+    P["bits"](ins(0, "bits of one symbol\n(PRBS-15)")); P["mapper"](ins(2, "16-QAM values of the\n44 data symbols")); P["alloc"](ins(3, "|X[k]| of one symbol: 24 data,\n4 pilots (orange), zeros"))
+    P["ifft"](ins(4, "64 samples of one\nsymbol (Re, Im)")); P["symbol"](ins(5, "80 samples: the last 16\nare copied in front")); P["frame"](ins(6, "|x[n]|: S&C, T1, T2 (shaded),\nthen data symbols")); P["spectrum"](ins(7, "spectrum"))
+    cv.text(3.05, 6.8, "(coded system only)", fontsize=8, ha="center", color="#888")
+    cv.text(0.3, 3.9, "Dashed: the blocks of a coded system that our link does not have (the data are a known PRBS-15,\nso the receiver can count errors).\n"
+            "Pilots and the zeros of the unused subcarriers (and of the DC) are inserted next to the data; the IFFT turns the 64 values\ninto 64 samples, the cyclic prefix copies the end of them in front; the training symbols are put in front of the data symbols.\n"
+            "Signals: the integer model of the FPGA transmitter (ofdm_tx_fixed.py), Schmidl-and-Cox frame; the unit is the amplitude of one loaded subcarrier.", fontsize=8, va="top", color="#444")
+    cv.save("ofdm_t_tx_textbook.png")
+
+
+def fig_tx_ours():
+    T = tx_signals(); P = tx_plots(T); cv = Canvas(18.4, 9.2, (18.4, 8.3), y0=0.9); BL, OLD = C["fpga"], C["old"]; OR = C["sc"]
+    cv.text(9.2, 8.8, "Our OFDM transmitter in the FPGA (rtl/ofdm_tx.v, S&C frame), block by block, with the signal at every block", fontsize=12, ha="center", va="center")
+    cols = [(0.3, 1.9, "PRBS-15\n(restarted every frame)\n4 bits per subcarrier", BL), (2.5, 1.9, "Gray mapper\n00 → -1440, 01 → -480,\n10 → +1440, 11 → +480", BL), (4.7, 2.5, "slot sequencer\npilots ±1073 x polarity,\ntraining and S&C values\n(ROM, ±1073 / ±1518)", BL),
+            (7.5, 2.4, "IFFT: ofdm_fft.v on the\nconjugated values,\nx = conj(FFT(conj X))\n9 us per symbol", BL), (10.2, 1.9, "4 banks of 64\nsamples (ping-pong)\ntoggle handshakes", BL), (12.4, 2.0, "player: the last 16,\nthen the 64 samples;\nidle slot: zeros", BL), (14.7, 1.8, "DAC value\nclip((x amp) >> 15)", BL), (16.8, 1.3, "DAC\n3.84 MS/s", OLD)]
+    yb, hb = 5.0, 1.3; yc = yb + hb / 2
+    for x, w, t, fc in cols: cv.box(x, yb, w, hb, t, fc, 7.8)
+    for i in range(len(cols) - 1): cv.arrow(cols[i][0] + cols[i][1], yc, cols[i + 1][0], yc)
+    def ins(i, t, h=1.9): return cv.inset(cols[i][0], 6.6, cols[i][1], h, t)
+    P["bits"](ins(0, "bits of one symbol")); P["mapper"](ins(1, "16-QAM values (counts / 480)")); P["alloc"](ins(2, "|X[k]| of one symbol\n(1518 counts = 1)")); P["ifft"](ins(3, "IFFT output of one symbol\n(Re, Im; rms 8032 counts)"))
+    P["symbol"](ins(5, "what the player sends:\nprefix + 64")); P["frame"](cv.inset(14.7, 6.6, 3.4, 1.9, "|x[n]|: S&C, T1, T2, the first data symbols"))
+    # clock domains
+    cv.ax.add_patch(plt.Rectangle((0.2, 3.9), 11.9, 0.5, fc="#ebf8ff", ec=C["grey"], lw=0.8)); cv.text(6.15, 4.15, "generator on the 100 MHz AXI clock: one symbol (one transform) at a time, up to three slots ahead", ha="center", va="center", fontsize=8)
+    cv.ax.add_patch(plt.Rectangle((12.3, 3.9), 5.9, 0.5, fc="#f7fafc", ec=C["grey"], lw=0.8)); cv.text(15.25, 4.15, "l_clk: one sample per DAC request (260 ns)", ha="center", va="center", fontsize=8)
+    cv.arrow(11.2, 6.4, 12.9, 5.1, OR, ":") if False else None
+    cv.text(0.3, 3.5, "The frame: S&C | T1 | T2 | 44 data symbols | idle: 48 slots of 80 samples = 3840 samples = 1 ms. \nThe STS overlay (parameter STS) makes the 128-sample short training field instead: the 64-sample IFFT twice, a different slot table.\n"
+            "The amplitude register `amp` (Q15, 1.0 = 8034 counts rms) is the only control;\nthe pilots, the training symbols and the data share the same 1518-count unit.\n"
+            "Signals: ofdm_tx_fixed.py, the bit-exact model (xsim equals it sample for sample);\nthe IFFT and the symbol are the data symbol 5 of the frame.", fontsize=8, va="top", color="#444")
+    p = cv.inset(13.0, 1.1, 3.4, 1.7, "spectrum of the DAC signal"); P["spectrum"](p)
+    cv.save("ofdm_t_tx.png")
+
+
 if __name__ == "__main__":
-    for f in (fig_detector_textbook, fig_detector, fig_fine_cfo_textbook, fig_fine_cfo, lambda: fig_rx(False), lambda: fig_rx(True), fig_block_rx):
+    for f in (fig_detector_textbook, fig_detector, fig_fine_cfo_textbook, fig_fine_cfo, lambda: fig_rx(False), lambda: fig_rx(True), fig_block_rx, fig_tx_textbook, fig_tx_ours):
         try: f(); print("ok", getattr(f, "__name__", "fig_rx"))
         except Exception as e:
             import traceback; print("FAILED", f.__name__, repr(e)); traceback.print_exc()

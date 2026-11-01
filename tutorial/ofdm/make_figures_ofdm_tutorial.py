@@ -122,19 +122,7 @@ def fig_cp():
     return out
 
 # ---------------------------------------------------------------- 3d. the transmitter chain
-def fig_tx():
-    fig, ax = plt.subplots(figsize=(13.5, 5.2)); ax.set_xlim(0, 13.5); ax.set_ylim(0, 5.2); ax.axis("off")
-    xs = [0.1, 2.15, 4.2, 6.25, 8.3, 10.35]; labs = ["bits\n(PRBS-15 now,\nyour data later)", "mapper\n4 bits -> one\n16-QAM value", "carrier allocator\n24 data + 4 pilots\n+ zeros = X[k]", "IFFT\n64 points", "cyclic prefix\n16 samples copied\nfrom the end", "preamble + idle\n(tagged stream\nmux)"]
-    cols = [C["old"], C["py"], C["gnu"], C["gnu"], C["gnu"], C["gnu"]]
-    for x, l, c in zip(xs, labs, cols): box(ax, x, 3.1, 1.85, 1.4, l, c, 8)
-    for a, b in zip(xs[:-1], xs[1:]): arrow(ax, a + 1.85, 3.8, b, 3.8)
-    box(ax, 12.4, 3.1, 1.0, 1.4, "DAC\n3.84 MS/s", C["fpga"], 8); arrow(ax, 12.2, 3.8, 12.4, 3.8)
-    ax.text(0.1, 4.95, "The transmitter chain (GNU Radio flowgraphs ofdm_b210_frame_tx_stock.grc and ..._sts_stock.grc; the model ofdm_model.tx_frame)", fontsize=10, weight="bold")
-    ax.add_patch(plt.Rectangle((0.1, 0.1), 6.5, 2.6, fc="#edf2f7", ec="k")); ax.text(0.25, 2.55, "today, in the notebook (the P501 as transmitter)", fontsize=9.5, weight="bold", va="top")
-    ax.text(0.25, 2.15, "The whole chain runs once, on the PC (Python):\none frame of 3840 samples is saved (ofdm_frame_sts.npy).\nThe notebook copies it into a buffer and the DAC DMA\nreplays it every millisecond; the FPGA only moves samples.\nEvery frame is the same: the known PRBS-15 payload,\nwhich is what the error counters need.", fontsize=8.6, va="top")
-    ax.add_patch(plt.Rectangle((6.9, 0.1), 6.5, 2.6, fc="#ebf8ff", ec="k")); ax.text(7.05, 2.55, "an FPGA transmitter (not built yet)", fontsize=9.5, weight="bold", va="top")
-    ax.text(7.05, 2.15, "Mapper, allocator, one IFFT (the FFT block of the receiver run\nbackwards: conjugate in, conjugate out), the prefix from a small\nRAM, the preamble from a ROM, bits from a FIFO or a counter;\none frame every 3840 sample clocks. Then any payload can be\nsent, and an encoder (FEC) can sit in front of the mapper.", fontsize=8.6, va="top")
-    fig.tight_layout(); fig.savefig(os.path.join(IMG, "ofdm_t_tx.png"), dpi=130); plt.close(fig)
+# (the transmitter figure ofdm_t_tx.png is made by make_figures_ofdm_diagrams.py)
 
 # ---------------------------------------------------------------- 4b. the short training field
 def fig_sts():
@@ -303,7 +291,7 @@ def fig_grc():
 # ---------------------------------------------------------------- the textbook fine-carrier estimator (two identical symbols)
 
 if __name__ == "__main__":
-    for f in (fig_method, fig_frame, fig_symbol, fig_ifft, fig_cp, fig_tx, fig_guard, fig_grc, fig_sc, fig_cfo, fig_equalizer, fig_sts, fig_sts_metric, fig_frame_sts):
+    for f in (fig_method, fig_frame, fig_symbol, fig_ifft, fig_cp, fig_guard, fig_grc, fig_sc, fig_cfo, fig_equalizer, fig_sts, fig_sts_metric, fig_frame_sts):
         try: f(); print("ok", f.__name__)
         except Exception as e:
             import traceback; print("FAILED", f.__name__, repr(e)); traceback.print_exc()

@@ -95,9 +95,11 @@ The **idle slot** is there so that a host can send the frame as a repeated buffe
 
 ## A.3b From bits to samples: the IFFT and the cyclic prefix
 
-The receiver of this tutorial is in the FPGA, the transmitter is not (yet): the frame is made once, on the PC, by the same steps that an FPGA transmitter would do, and the board's DAC DMA replays it. These steps are the heart of OFDM, so here they are one by one.
+The transmitter makes the frame from the bits in the steps of the textbook chain: map the bits, put the values on the subcarriers (with the pilots), take the IFFT, copy the end of each symbol in front, put the training symbols before the data. The first figure is the textbook transmitter (after IEEE 802.11a) with the signal at every block, from the integer model of the FPGA transmitter. These steps are the heart of OFDM, so here they are one by one; the FPGA does them in C.8, and the second figure is that module, block by block. (Before C.8 the frame was made once on the PC and the DAC DMA replayed it.)
 
-![the transmitter chain](img/ofdm_t_tx.png)
+![the textbook OFDM transmitter](img/ofdm_t_tx_textbook.png)
+
+![our OFDM transmitter in the FPGA](img/ofdm_t_tx.png)
 
 | Step | What it does | Where it is in the repository |
 |---|---|---|

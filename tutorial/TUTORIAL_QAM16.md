@@ -96,6 +96,25 @@ The signal at every block comes from the integer model: 45 frames, the FLL and A
 * **Derotation, slicer, PD, loop filter:** A.6.
 * **Checker and read-back:** Gray decision, symbol and bit errors against the PRBS-15 (counted only in complete frames), EVM sums for the last frame, a capture RAM of 1024 soft symbols for the constellation, counters of every event of the synchroniser (`N_PEAK`, `N_LOCK`, `N_HIT`, `N_MISS`, `N_LOST`), all behind the AXI-Lite registers (C.4).
 
+## A.5b The transmitter
+
+The transmitter is the mirror image of the receiver, and simpler: nothing in it has to be found or tracked. The first figure is the textbook single-carrier QAM transmitter with the signal at every block, from the integer model of the FPGA transmitter (`qam16/qam16_tx_model.py`):
+
+![the textbook QAM transmitter](img/qam16_fig_tx_textbook.png)
+
+| block | what it does | in our transmitter |
+|---|---|---|
+| bits | the data; here a known PRBS-15, restarted at the first symbol of every frame, so that the receiver can count errors | the 15-bit LFSR of `qam16_tx_fr.v` |
+| encoder, interleaver | error-correcting code (not in our link) | none |
+| **mapper** | 4 bits to one of 16 points (Gray code, levels ±1 and ±3) | levels ±64 and ±192 (units of 1/64), the Gray code of A.2 |
+| **frame** | the known word and the pilots are put among the data so that the receiver can find the frame, the gain and the carrier | position counter: the cyclic prefix and the Zadoff-Chu word from a ROM, a pilot ±202 after every 63 data symbols (A.3, A.4) |
+| upsample, **pulse-shaping filter** | four samples per symbol, a root-raised-cosine filter limits the band to 1.3 MHz | one polyphase FIR: the 12 taps of the phase of the sample times the last 12 symbols, so the three zeros of the upsampling are never multiplied (24 multipliers, I and Q) |
+| DAC | the samples go to the converter | `clip((y · amp) >> 15)`, `amp` from a register |
+
+The second figure is the module itself. It runs on one clock (`l_clk`), one step per DAC request, with no buffer and no handshake, which is why it is much simpler than the OFDM transmitter of tutorial 6 (C.8 there):
+
+![our 16-QAM transmitter](img/qam16_fig_tx.png)
+
 ## A.6 The phase detector with pilots and known symbols
 
 ![phase detector](img/qam16_fig_pll.png)
